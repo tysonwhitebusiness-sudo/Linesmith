@@ -22,6 +22,21 @@ import { GameCard } from './GameCard';
 
 export function SlateSectionNav({ sections }: { sections: SlateSection[] }) {
   const [active, setActive] = useState<string | null>(sections[0]?.id ?? null);
+  // The page's own header (TopBar + the date strip) is sticky at `top: 0`, and
+  // its height is not a constant — golf's strip, tennis's and the team sports'
+  // are all different, and the strip itself reflows at 400px. Sticking this nav
+  // at a hard-coded offset put it ON TOP of the strip. Measured instead.
+  const [headerH, setHeaderH] = useState(0);
+
+  useEffect(() => {
+    const header = document.querySelector('header');
+    if (!header) return;
+    const measure = () => setHeaderH(header.getBoundingClientRect().height);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
 
   // Which section the reader is actually looking at, so the nav follows the
   // page rather than only the last thing clicked.
@@ -34,16 +49,20 @@ export function SlateSectionNav({ sections }: { sections: SlateSection[] }) {
         const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
         if (visible[0]) setActive(visible[0].target.id.replace('slate-', ''));
       },
-      { rootMargin: '-96px 0px -60% 0px' },
+      { rootMargin: `-${headerH + 56}px 0px -60% 0px` },
     );
     nodes.forEach((n) => io.observe(n));
     return () => io.disconnect();
-  }, [sections]);
+  }, [sections, headerH]);
 
   if (sections.length === 0) return null;
 
   return (
-    <nav aria-label="Slate sections" className="lb-scroll-x sticky top-0 z-20 -mx-4 mb-3 flex gap-1 bg-paper/95 px-4 py-2 backdrop-blur">
+    <nav
+      aria-label="Slate sections"
+      style={{ top: headerH }}
+      className="lb-scroll-x sticky z-10 -mx-4 mb-3 flex gap-1 bg-paper/95 px-4 py-2 backdrop-blur"
+    >
       {sections.map((s) => {
         const on = s.id === active;
         return (
@@ -85,7 +104,7 @@ export function SlateGames({ data, loading }: { data: SlateData | null; loading:
 
   if (loading && !games) {
     return (
-      <section id="slate-games" className="mb-6 scroll-mt-[72px]">
+      <section id="slate-games" className="mb-6 scroll-mt-[150px]">
         <h2 className="mb-2 text-title text-ink">Games</h2>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-3">
           {[0, 1, 2].map((i) => (
@@ -111,7 +130,7 @@ export function SlateGames({ data, loading }: { data: SlateData | null; loading:
   const count = (v: SlateStatus | 'all') => (v === 'all' ? games.counts.all : games.counts[v]);
 
   return (
-    <section id="slate-games" className="mb-6 scroll-mt-[72px]">
+    <section id="slate-games" className="mb-6 scroll-mt-[150px]">
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <h2 className="text-title text-ink">{games.noun === 'matches' ? 'Matches' : 'Games'}</h2>
         {games.cards.length > 0 ? (

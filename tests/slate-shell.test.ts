@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { code } from './ui-scope';
 import { buildSlateGames, sanePrices } from '../lib/sports/shared/buildSlate';
 import { slateSections } from '../lib/sports/shared/slateShapes';
 import type { SlateGame } from '../lib/odds/matching';
@@ -214,5 +215,56 @@ test('every sport has a slate adapter, and they all export the same name', () =>
 test('the Slate page never branches on sport', () => {
   for (const f of ['components/slate/GameCard.tsx', 'components/slate/SlateSections.tsx']) {
     assert.doesNotMatch(readFileSync(f, 'utf8'), /sport === '/, `${f} must not branch on sport`);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* S2                                                                         */
+/* -------------------------------------------------------------------------- */
+
+test('the Slate never says "since open" — the opener is not held', () => {
+  // `odds_archive.open_line` / `open_price` were null on every live row when
+  // measured: 0 of 21,476 since 2026-09-08. What the Slate reads is the first
+  // OBSERVATION of a book's price, which is a weaker claim and must be worded
+  // as one.
+  const files = [
+    'components/slate/SlateMarket.tsx',
+    'components/slate/SlateSections.tsx',
+    'components/slate/GameCard.tsx',
+    'lib/slate/marketMoves.ts',
+    'app/api/slate/market/route.ts',
+  ];
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    // The phrase is allowed only where the doc comment explains WHY it is
+    // never used — matched case-insensitively in the code itself.
+    assert.doesNotMatch(code(src), /since open/i, `${f} must say "since first seen", not "since open"`);
+  }
+});
+
+test('the market cards call a price gap a price gap, not an edge', () => {
+  const src = readFileSync('components/slate/SlateMarket.tsx', 'utf8');
+  assert.match(src, /not a model edge/, 'both captions must say what the number is not');
+  // Nothing may compute or name a difference against a model.
+  assert.doesNotMatch(code(src), /\bedge\b(?!\.)/i.source ? /edgePts|modelEdge|\bEdge\b/ : /$^/, 'no edge column');
+});
+
+test('Movers is not built, and the reason is written down', () => {
+  // S2's third card. The movement data is real; the signal is not extractable
+  // from it yet. If someone builds it, they must remove this test and say why.
+  const route = readFileSync('app/api/slate/market/route.ts', 'utf8');
+  assert.match(route, /WHAT IS NOT HERE: Movers/, 'the absence must stay explained');
+  assert.ok(!existsSync('components/slate/SlateMovers.tsx'));
+});
+
+test('the slate day defaults to Eastern, not UTC', () => {
+  // At 03:00 UTC it is 23:00 the previous evening in New York and the same
+  // slate is still being played. Defaulting to `toISOString()` emptied every
+  // Games section the moment the clock passed midnight UTC — found by
+  // rendering at 23:06 ET, with fifteen MLB games still on the page above.
+  for (const f of ['app/api/slate/route.ts', 'app/api/slate/market/route.ts']) {
+    const src = readFileSync(f, 'utf8');
+    assert.match(src, /if \(raw == null\) return easternDate\(\);/, `${f} must default the slate day to Eastern`);
+    assert.doesNotMatch(code(src), /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/, `${f} must not default the slate day to UTC`);
   }
 });

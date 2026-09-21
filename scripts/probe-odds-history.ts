@@ -31,45 +31,18 @@ for (const line of readFileSync('.env.local', 'utf8').split(/\r?\n/)) {
 import { pgAll } from '../lib/db/pgClient';
 
 const QUERIES: Array<[string, string]> = [
-  [
-    'game_odds_history columns',
-    `SELECT column_name, data_type FROM information_schema.columns WHERE table_name='game_odds_history' ORDER BY ordinal_position`,
-  ],
-  [
-    'game_odds_history, last 3 days',
-    `SELECT count(*) n, count(DISTINCT event_id) games, count(DISTINCT bookmaker) books,
-            min(observed_at) first_seen, max(observed_at) last_seen
-     FROM game_odds_history WHERE observed_at > now() - interval '3 days'`,
-  ],
-  [
-    'game_odds_history markets, last 3 days',
-    `SELECT market, count(*) n FROM game_odds_history WHERE observed_at > now() - interval '3 days' GROUP BY market ORDER BY n DESC LIMIT 10`,
-  ],
-  [
-    'game lines with 2+ observations of the same book+market+side in 36h',
-    `SELECT count(*) AS movable, count(DISTINCT event_id) AS games FROM (
-       SELECT event_id, bookmaker, market, side FROM game_odds_history
-       WHERE observed_at > now() - interval '36 hours'
-       GROUP BY event_id, bookmaker, market, side HAVING count(*) > 1
-     ) t`,
-  ],
-  [
-    'prop_odds_history columns',
-    `SELECT column_name, data_type FROM information_schema.columns WHERE table_name='prop_odds_history' ORDER BY ordinal_position`,
-  ],
-  [
-    'prop_odds_history, last 3 days',
-    `SELECT count(*) n, count(DISTINCT bookmaker) books, min(observed_at) first_seen, max(observed_at) last_seen
-     FROM prop_odds_history WHERE observed_at > now() - interval '3 days'`,
-  ],
-  [
-    'prop lines with 2+ observations in 36h',
-    `SELECT count(*) AS movable FROM (
-       SELECT subject_id, market_key, line, side, bookmaker FROM prop_odds_history
-       WHERE observed_at > now() - interval '36 hours'
-       GROUP BY subject_id, market_key, line, side, bookmaker HAVING count(*) > 1
-     ) t`,
-  ],
+  ['prop_odds columns', `SELECT column_name, data_type FROM information_schema.columns WHERE table_name='prop_odds' ORDER BY ordinal_position`],
+  ['prop_odds today', `SELECT count(*) n, count(DISTINCT bookmaker) books, count(DISTINCT game_id) games FROM prop_odds`],
+  ['lines with 5+ books quoting the same subject+market+line+side',
+   `SELECT count(*) AS n FROM (
+      SELECT subject_id, market_key, line, side FROM prop_odds
+      GROUP BY 1,2,3,4 HAVING count(DISTINCT bookmaker) >= 5
+    ) t`],
+  ['subjects where books disagree on the LINE itself',
+   `SELECT count(*) AS n FROM (
+      SELECT subject_id, market_key FROM prop_odds
+      GROUP BY 1,2 HAVING count(DISTINCT line) > 1
+    ) t`],
 ];
 
 async function main() {

@@ -125,11 +125,14 @@ export interface SlateSection {
  * `propCount` comes from the Props board, which is still client-side (its rows
  * are Scan's, unchanged), so it is passed in rather than read off `SlateData`.
  */
-export function slateSections(data: SlateData | null, propCount: number | null): SlateSection[] {
+export function slateSections(data: SlateData | null, propCount: number | null, marketCount?: number | null): SlateSection[] {
   const out: SlateSection[] = [];
   if (data?.games && data.games.cards.length > 0) {
     out.push({ id: 'games', label: 'Games', count: data.games.counts.all });
   }
+  // S2's two market cards. `Movers` is deliberately not here — see
+  // `app/api/slate/market/route.ts` and ledger SL-18.
+  if (marketCount != null && marketCount > 0) out.push({ id: 'market', label: 'Books', count: marketCount });
   if (propCount != null && propCount > 0) out.push({ id: 'props', label: 'Props', count: propCount });
   return out;
 }

@@ -39,6 +39,7 @@ import { ScanTable, ScanTableSkeleton, type ScanTableProps } from './ScanTable';
 import { PlayerSkeleton, ScanListSkeleton } from './Skeleton';
 import { useSlate } from './slate/useSlate';
 import { SlateGames, SlateSectionNav } from './slate/SlateSections';
+import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
 import {
   DensityToggle,
@@ -229,6 +230,10 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // rather than inside it, so the top of the page draws while the props
   // board's own 20-odd megabytes are still arriving (SL-11).
   const slateRead = useSlate(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
+  // S2's market cards, on their own route and their own clock: they take two
+  // to six seconds against the real tables and must not delay either of the
+  // two sections that matter.
+  const marketRead = useSlateMarket(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
   // Round Score (one row per golfer, betting on the round total). Filters
   // the base candidate list itself, so every existing tab/filter (Good Bets,
@@ -718,10 +723,16 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 Players/Games TOGGLE is gone (D1): games are always a section,
                 not a view you had to leave the table to see. `GameLinesView`
                 and `GameLine` went with it. */}
-            <SlateSectionNav sections={slateSections(slateRead.data, views.all.length || null)} />
+            <SlateSectionNav
+              sections={slateSections(
+                slateRead.data,
+                views.all.length || null,
+                (marketRead.data?.outliers.length ?? 0) + (marketRead.data?.disagreements.length ?? 0) || null,
+              )}
+            />
 
             {sport === 'golf' ? (
-              <section id="slate-games" className="mb-6 scroll-mt-[72px]">
+              <section id="slate-games" className="mb-6 scroll-mt-[150px]">
                 <h2 className="mb-2 text-title text-ink">Winner prices</h2>
                 <TournamentLinesView
                   lines={golfLines.result?.lines ?? []}
@@ -734,6 +745,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             ) : (
               <SlateGames data={slateRead.data} loading={slateRead.loading} />
             )}
+
+            {/* Golf has no prop-market cards: its winner prices are cached,
+                not stored per book, so there is no book-by-book spread to
+                compare (slate-sheet-cards.md §4.8). */}
+            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} />}
 
             {golfFieldPending ? (
               <TournamentNotStartedNotice eventName={snapshot?.eventName} />
@@ -776,7 +792,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                   />
                 ) : null}
 
-                <div id="slate-props" className="min-w-0 flex-1 scroll-mt-[72px]">
+                <div id="slate-props" className="min-w-0 flex-1 scroll-mt-[150px]">
                   <h2 className="mb-2 text-title text-ink">Props</h2>
                   {/* S1: Scan's own tabs, rebuilt on the kit's `Tabs` with real
                       counts (D3 freezes the TABLE, not the controls around it).

@@ -31,6 +31,7 @@ import { NextResponse } from 'next/server';
 import { cachedRoute } from '@/lib/cachedRoute';
 import { readSnapshotCache, readGameOddsBookLinesForSport, listGamePickHistory } from '@/lib/db/client';
 import type { SlateGame } from '@/lib/odds/matching';
+import { easternDate } from '@/lib/sports/mlb/statsapi';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { EloPick } from '@/lib/sports/shared/buildSlate';
 import type { SlateData } from '@/lib/sports/shared/slateShapes';
@@ -55,7 +56,11 @@ const TOURS = new Set(['atp', 'wta']);
 const PICK_WINDOW = 200;
 
 function parseDate(raw: string | null): string | undefined {
-  if (raw == null) return new Date().toISOString().slice(0, 10);
+  // EASTERN, not UTC. A slate is a US sports day: at 03:00 UTC it is still
+  // 23:00 the previous evening in New York and the same slate is still being
+  // played. Defaulting to `toISOString()` emptied every Games section the
+  // moment the clock passed midnight UTC — found by rendering at 23:06 ET.
+  if (raw == null) return easternDate();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
   const year = Number(raw.slice(0, 4));
   if (year < 2000 || year > 2100) return undefined;
