@@ -104,6 +104,16 @@ Practical rules that follow:
 
 **Why this matters**: without this convention, every new sport means re-implementing every shared page from scratch (`NflPlayerDetail.tsx`, `NflTeamDetail.tsx`, `NflGameDetail.tsx` all existed as full duplicates of their MLB counterparts before this architecture, and drifted from them in ways nobody caught until the whole file was read side by side). One adapter file per sport per component keeps the UI itself — layout, interaction, visual language — defined exactly once.
 
+## The Slate (`/{sport}`) — read before touching the sport home page
+
+The sport home page is the **Slate**: a sticky section nav over sections (Games · Books · Spotlights · Specials · Model · Your lines · Props). It follows the adapter rule above, with three additions learned building it (S1–S6, `docs/design/master-gameplan-ui-and-slate.md`):
+
+1. **One `toSlateData` per sport** in `lib/sports/{sport}/adapters/slateAdapter.ts`, fed by `/api/slate` (a `cachedRoute`). The shared work is `buildSlateGames` (`lib/sports/shared/buildSlate.ts`); a sport's file is only what it genuinely has (MLB's starters and weather, soccer's `hideLines`). **A section exists because the DATA declares it, never because of a sport check**: `SlateData.modelPicks` is set only by MLB's adapter, and `slateSections()` derives the nav from the data so a section cannot be in the nav and missing from the page.
+2. **The line-reading rules are measured, not assumed** — every one was wrong once: every price on a `BookmakerOdds` is DECIMAL; `game_odds_book_lines.sport` is the generic key (`soccer`) while `game_picks` is granular (`soccer_epl`); a live game's `state` is a phrase ("In Progress", "Manager challenge"); a consensus needs three books and is the modal point, not the median of American odds; a slate is an **Eastern** day. `tests/slate-shell.test.ts` pins each.
+3. **No edge, anywhere on it.** The model may be shown beside a price only where its gate allows, and nothing computes, names, sorts by or colours the difference. The model's tier words (`baseline`, `gated`, …) are internal. `tests/scan-no-edge.test.ts` covers every Slate file.
+
+**The Scan table is frozen (decision D3).** `components/ScanTable.tsx` and `components/ScanCard.tsx` — columns, cells, colours, heat, rank chips, row layout — do not change, and neither do the cell components they draw with (`StatCells.tsx`, `OddsChip.tsx`). `tests/slate-shell.test.ts` pins both files by content hash; `tests/ui-scope.ts`'s `OUT_OF_SCOPE` keeps them out of the UI sweeps. The Slate replaced Scan's page *around* the table, not the table.
+
 ## Backend provider-job architecture (`python-odds-service/`)
 
 The Python odds-refresh worker (Render background worker, replacing the TS proactive scheduler's odds-provider jobs — see `docs/phase2-hardening-gameplan-2026-08-20.md`) uses the same plug-and-play principle as the frontend's sport-adapter architecture above, applied to jobs instead of pages: **one shared runner, one declared list of providers per job — never a hand-rolled copy of the cap-check/fetch/record-spend/write sequence.**

@@ -127,3 +127,86 @@ test('Model % and IP are presented identically, so neither reads as the recommen
     );
   }
 });
+
+/* ------------------------------------------------------------------ Slate */
+
+/**
+ * S6 — the same rule over every section of the Slate. The Slate is where the
+ * model, the books and the reader's own lines now sit on one page, so it is
+ * the easiest place for a difference to creep back in: a "gap" column, a
+ * sort by "value", a green cell where the model beats the price.
+ */
+const SLATE = [
+  'components/slate/GameCard.tsx',
+  'components/slate/SlateMarket.tsx',
+  'components/slate/SlateModel.tsx',
+  'components/slate/SlateSections.tsx',
+  'components/slate/SlateSpecials.tsx',
+  'components/slate/SlateSpotlights.tsx',
+  'components/slate/SlateYourLines.tsx',
+  'lib/slate/marketMoves.ts',
+  'lib/slate/modelPicks.ts',
+  'lib/slate/specials.ts',
+  'lib/slate/spotlights.ts',
+  'lib/slate/yourLines.ts',
+  'lib/sports/shared/buildSlate.ts',
+  'lib/sports/shared/slateShapes.ts',
+  'app/api/slate/route.ts',
+  'app/api/slate/market/route.ts',
+  'app/api/slate/model/route.ts',
+  'app/api/slate/specials/route.ts',
+  ...['mlb', 'nfl', 'nba', 'nhl', 'soccer', 'tennis', 'golf'].map((s) => `lib/sports/${s}/adapters/slateAdapter.ts`),
+];
+
+/** A Tailwind class list, not copy: every token is a lowercase utility. */
+function isClassList(s: string): boolean {
+  const tokens = s.trim().split(/\s+/);
+  return tokens.every((t) => /^[a-z0-9:!\[\]\/().%#_-]+$/.test(t)) && tokens.some((t) => t.includes('-'));
+}
+
+/** Only the strings a reader could see: JSX text and string literals. */
+function visibleStrings(src: string): string[] {
+  const code = stripComments(src);
+  const out: string[] = [];
+  for (const m of code.matchAll(/'([^'\n]{3,})'|"([^"\n]{3,})"|`([^`]{3,})`/g)) out.push(m[1] ?? m[2] ?? m[3]);
+  for (const m of code.matchAll(/>([^<>{}\n]*[A-Za-z][^<>{}\n]*)</g)) out.push(m[1]);
+  return out;
+}
+
+test('no Slate section subtracts the market from the model', () => {
+  const OPERANDS = ['impliedProb', 'implied', 'marketProb', 'modelProb', 'probability', 'winProb', 'homeWinProb', 'awayWinProb'];
+  for (const file of SLATE) {
+    const code = stripComments(read(file));
+    for (const a of OPERANDS) {
+      for (const b of OPERANDS) {
+        if (a === b || a.toLowerCase().includes(b.toLowerCase()) || b.toLowerCase().includes(a.toLowerCase())) continue;
+        assert.ok(!new RegExp(`\b${a}\s*-\s*(\w+\.)?${b}\b`).test(code), `${file} computes ${a} - ${b}`);
+      }
+    }
+  }
+});
+
+test('no Slate copy names an edge, value or the model tiers', () => {
+  // The model vocabulary is internal (M1): baseline, gated, simple, advanced,
+  // "not validated" decide what renders and never appear on a customer surface.
+  const BANNED = [/\bedges?\b/i, /\+EV\b/, /\bexpected value\b/i, /\bvalue bets?\b/i, /\bbaseline\b/i, /\bgated\b/i, /\bnot validated\b/i, /\bsharp (play|side|money)\b/i, /\block of the day\b/i];
+  for (const file of SLATE) {
+    for (const s of visibleStrings(read(file))) {
+      // Identifiers and class lists are not copy.
+      if (!/\s/.test(s) || isClassList(s)) continue;
+      for (const re of BANNED) {
+        // "not a model edge" / "not an edge" is the copy SAYING there is none.
+        if (/not (a |an )?(model )?edge/i.test(s)) continue;
+        assert.doesNotMatch(s, re, `${file}: "${s.slice(0, 80)}"`);
+      }
+    }
+  }
+});
+
+test('no Slate section sorts or tints by a model-vs-price difference', () => {
+  for (const file of SLATE) {
+    // Identifiers only: string literals are copy, and the copy is checked above.
+    const code = stripComments(read(file)).replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''");
+    assert.doesNotMatch(code, /\b(edge|evPct|expectedValue|valueScore|gapToModel|modelGap)\b/, file);
+  }
+});
