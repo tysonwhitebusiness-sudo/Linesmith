@@ -70,7 +70,7 @@ AND the Slate's own tables on fixtures, and the borrowed pieces.
 1. `docs/design/master-gameplan-ui-and-slate.md` — §5's phase table is current.
    **Next phase: S3 (Spotlights).** S2 is part-done; its open piece is Movers,
    and Q9 explains why it is open.
-2. `docs/design/SIGNOFF-QUEUE.md` — Q0–Q8, and the phase sign-offs owed.
+2. `docs/design/SIGNOFF-QUEUE.md` — Q0–Q9, and the phase sign-offs owed.
 3. `docs/design/ui-system-master-prompt.md` — the U track's status line and its
    findings ledger (U-1 … U-10) are current.
 4. This file's "What is not done" below, which is the honest list.
@@ -100,8 +100,8 @@ piece of work. `game_odds_history` has no `sport` column; it is keyed by
   they did.
 - **Team records** ("92-63") are absent on every card: the snapshot's
   `SlateGame` does not carry one (SL-17).
-- The lines block has **no "since first seen" movement** yet — that is S2's
-  aggregation.
+- The lines block has **no "since first seen" movement**, and will not until
+  Movers is buildable (Q9) — it would read off the same quotes.
 - "N props →" is a **label, not a link**; it does not yet set the Games filter.
 
 **In U2, as a named ratchet, not a zero:** six hand-rolled tables remain, each
@@ -121,8 +121,9 @@ totals of 0.5, 1.5, 2.5, 3, 3.25, 3.5, 5.5, 6.5, 7.5 and 8.5 across 21 books,
 because `game_odds_book_lines` holds alternative and derivative markets beside
 the main one and the per-book merge does not record which is which. Grouping on
 the modal point rescues football and baseball; it does not rescue a sport where
-a "moneyline" can be a goal line. The card says so. **S2 is where this gets
-sorted**, because S2 reads that family of tables in anger.
+a "moneyline" can be a goal line. The card says so. S2 read that family of
+tables in anger and did NOT sort it out — it found the same problem one layer
+down (Q9), so this stays open and is the same piece of work.
 
 **No signed-in surface was verified** — there are no credentials in the repo
 beyond Supabase's public anon key, and none were created. S5's "Your lines" is
@@ -138,14 +139,14 @@ empty card) is the half that can be checked here.
   NFL/CFB/soccer again on its next rebuild. No agent can do it.
 - **A deploy, if you want any of this live.** Nothing in U or S needs the
   worker, so nothing was deployed and nothing is waiting on one.
-- **Sign-off:** the nine queue rows, plus R10/R11/R12 and M1–M3 from before.
+- **Sign-off:** the ten queue rows, plus R10/R11/R12 and M1–M3 from before.
 
 ---
 
 ## Findings worth knowing before the next phase
 
-All five of these were found by RENDERING, not by typing — the tests came
-after, and each is pinned by one now (`tests/slate-shell.test.ts`).
+All of these were found by RENDERING, not by typing — the tests came after,
+and each is pinned by one now (`tests/slate-shell.test.ts`).
 
 - **Every price on a `BookmakerOdds` is DECIMAL**, not just the moneyline. Only
   `homeOdds` carries a comment saying so. Spreads and totals had vanished from
