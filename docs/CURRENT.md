@@ -134,9 +134,10 @@ empty card) is the half that can be checked here.
 
 ## Owed by you
 
-- **Rebuild and restart the port-3000 production server.** Still outstanding,
-  carried since M0. It predates the 2026-09-19 ESPN range fix and will blank
-  NFL/CFB/soccer again on its next rebuild. No agent can do it.
+- ~~Rebuild and restart the port-3000 production server.~~ **DONE 2026-09-20
+  23:18 ET**, at the operator's request, from `6188c30`. It has the ESPN range
+  fix and every phase below. `/mlb` serves in 0.9 s there against 60-90 s in
+  dev, and `/kit` correctly 404s. Restart it after any future `npm run build`.
 - **A deploy, if you want any of this live.** Nothing in U or S needs the
   worker, so nothing was deployed and nothing is waiting on one.
 - **Sign-off:** the ten queue rows, plus R10/R11/R12 and M1–M3 from before.
