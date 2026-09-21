@@ -6,8 +6,8 @@
 
 # WHAT HAPPENED WHILE YOU WERE OUT
 
-Five phases of `docs/design/master-gameplan-ui-and-slate.md` were built,
-verified and pushed: **U0, U1, U2, U5 and S1.** Nothing was deployed —
+Six phases of `docs/design/master-gameplan-ui-and-slate.md` were built,
+verified and pushed: **U0, U1, U2, U5, S1 and two thirds of S2.** Nothing was deployed —
 `render.yaml` has `autoDeploy: false`, so pushing is safe and the worker is
 still on `c5baee4`. Every phase is on `main`.
 
@@ -21,10 +21,16 @@ sections, and the Games section is real on every sport.
 | `96defca` | U2 | the Hybrid `DataTable`, `Card.count` / `flush`, `Pagination`, the kit's table fixtures |
 | `9bb8867` | U5 | `Chip.dot`, `Tag`, `Tabs.count`, `SegmentedToggle.icon`, `AvatarLabel`, `AvatarGroup`, `FeaturedIcon` |
 | `a458a17` | S1 | `/api/slate`, 7 sport adapters, SectionNav, GameCards, the props board |
+| `170c06e` | S2 (part) | Price outliers and Line disagreements. **Movers deliberately not built** — see below |
 
-**Decisions taken on a default are in `docs/design/SIGNOFF-QUEUE.md`** — nine
-rows now (Q0–Q8). The expensive ones to reverse are **Q6** (soccer and tennis
+**Decisions taken on a default are in `docs/design/SIGNOFF-QUEUE.md`** — ten
+rows now (Q0–Q9). The expensive ones to reverse are **Q6** (soccer and tennis
 show no lines block) and **Q7** (the Games section is one DAY, not a week).
+**Q9 is the one to read first**: Movers was measured and not built.
+
+**Seven numbered phases remain**: S3 Spotlights, S4 Specials and receipts, S5
+Model and Your lines, U3 Form controls, U4 Overlays, U6 Page sweep, and the two
+closes S6 and U7. Movers is the open piece of S2.
 
 ---
 
@@ -40,6 +46,10 @@ Open `/mlb` and you get, under the unchanged top bar and date strip:
   final scores, a three-column lines block (spread · total · moneyline) with
   the consensus, the best price and its book and the book count, a weather
   chip, and links to the game page and the prop count;
+- **"Where the books differ"** — Price outliers (one book well off the median
+  of at least five others, the gap in implied points with a magnitude bar) and
+  Line disagreements (who is hanging the other number, and how many). Both
+  captioned as facts about the books, not as edges;
 - the **props board**, with its tabs rebuilt on the kit and carrying real
   counts. **The table itself is untouched** and a content-hash test now pins it.
 
@@ -58,16 +68,24 @@ AND the Slate's own tables on fixtures, and the borrowed pieces.
 ## Start here
 
 1. `docs/design/master-gameplan-ui-and-slate.md` — §5's phase table is current.
-   **Next phase: S2 (Movers, Price outliers, Line disagreements).**
+   **Next phase: S3 (Spotlights).** S2 is part-done; its open piece is Movers,
+   and Q9 explains why it is open.
 2. `docs/design/SIGNOFF-QUEUE.md` — Q0–Q8, and the phase sign-offs owed.
 3. `docs/design/ui-system-master-prompt.md` — the U track's status line and its
    findings ledger (U-1 … U-10) are current.
 4. This file's "What is not done" below, which is the honest list.
 
-**S2's premise was measured before anything was built on it** and it HOLDS —
-see `scripts/probe-odds-history.ts`, which carries the numbers in its header:
-3,769 movable book+market+side combinations across 52 games in 36h, and 120,495
-movable prop lines. `game_odds_history` has no `sport` column; it is keyed by
+**On Movers, and why it is not built.** The premise was measured first
+(`scripts/probe-odds-history.ts`) and the DATA holds: 3,769 moved game lines
+across 52 games in 36 hours, and 120,495 moved prop lines. The SIGNAL does not.
+At every threshold tried — raw, ±5000, ±2000, pick'em books excluded, grouped
+by point, capped at 25 implied points — the largest moves are the same two or
+three books (Fanatics, HardRockBet, ProphetX) swinging a price 25 points on a
+line that did not move. That is quote quality, not a market changing its mind;
+real steam is one to eight points. The readers exist and are tested in
+`lib/slate/marketMoves.ts`, so building the card later is wiring rather than
+research — what it needs first is a per-book quality pass, which is its own
+piece of work. `game_odds_history` has no `sport` column; it is keyed by
 `event_id`, so a per-sport read joins through the snapshot's game ids.
 
 ---
