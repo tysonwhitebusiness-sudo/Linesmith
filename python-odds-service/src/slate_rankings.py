@@ -138,8 +138,8 @@ async def first_start(sport: str, slate: date) -> datetime | None:
 # ---------------------------------------------------------------------------
 
 MLB_HR_FACTORS = (
-    Factor("hr_per_pa", "HR/PA", info="Home runs per plate appearance this season."),
-    Factor("vs_hand_hr_pa", "vs hand", info="HR per PA against the hand this starter throws (Statcast split)."),
+    Factor("hr_per_pa", "HR/PA", info="Share of plate appearances ending in a home run this season."),
+    Factor("vs_hand_hr_pa", "vs hand", info="The same share against the hand this starter throws (Statcast split)."),
     Factor("starter_hr_per_start", "SP HR allowed", info="Home runs the opposing starter has allowed per start."),
     Factor("park_factor", "Park", info="Park run factor this season: 1.18 = 18% more runs than average."),
     Factor("opp_staff_hr_rate", "Staff HR%", info="Share of games the opposing staff has allowed a home run."),
@@ -297,7 +297,7 @@ async def build_mlb_k(conn, slate: date) -> list[Candidate]:
 
 TD_FACTORS = (
     Factor("td_per_game", "TD/G", info="Rushing + receiving touchdowns per game, last two seasons."),
-    Factor("team_share", "Team TD share", info="His share of his team's rushing + receiving touchdowns."),
+    Factor("team_share", "Team TD share", info="The player's share of the team's rushing + receiving touchdowns."),
     Factor("opp_td_allowed", "Opp TD/G", info="Touchdowns the opponent allows per game to this position group."),
     Factor("implied_points", "Team pts", info="The team's implied points from today's spread and total."),
 )

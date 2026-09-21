@@ -50,7 +50,7 @@ function TennisMatchPage({ tour, gameId }: { tour: TennisTour; gameId: string })
           league={tour}
           onLeagueChange={(next) => router.push(`/tennis/${next}`)}
           leading={
-            <BackLink href={`/tennis/${tour}`} label="Scan" />
+            <BackLink href={`/tennis/${tour}`} label="Slate" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

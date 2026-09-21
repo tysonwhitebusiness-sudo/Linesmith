@@ -440,6 +440,18 @@
 }
 
 /* Horizontal tab strips scroll rather than wrap on a phone. */
+/* A containing block, so what is positioned inside scrolls INSIDE. Without
+   it, every `sr-only` label in a table cell (position: absolute) resolved
+   against an ancestor outside the scroller, escaped its clipping and
+   stretched the whole document: /nfl at phone width was 853px wide and
+   scrolled sideways into blank space. In `@layer base` so a `sticky`
+   utility on a scroller still wins — unlayered, this beat it and the Slate's
+   section nav slid down over the game cards. */
+@layer base {
+  .lb-scroll-x {
+    position: relative;
+  }
+}
 .lb-scroll-x {
   overflow-x: auto;
   scrollbar-width: none;

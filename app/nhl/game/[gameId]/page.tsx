@@ -35,7 +35,7 @@ export default function NhlGameDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <BackLink href="/nhl" label="Scan" />
+            <BackLink href="/nhl" label="Slate" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

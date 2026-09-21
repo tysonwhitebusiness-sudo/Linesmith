@@ -40,7 +40,7 @@ export default function GameDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <BackLink href="/mlb" label="Scan" />
+            <BackLink href="/mlb" label="Slate" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

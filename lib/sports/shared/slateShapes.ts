@@ -130,6 +130,7 @@ export function slateSections(
   propCount: number | null,
   marketCount?: number | null,
   spotlightCount?: number | null,
+  specialsCount?: number | null,
 ): SlateSection[] {
   const out: SlateSection[] = [];
   if (data?.games && data.games.cards.length > 0) {
@@ -139,6 +140,7 @@ export function slateSections(
   // `app/api/slate/market/route.ts` and ledger SL-18.
   if (marketCount != null && marketCount > 0) out.push({ id: 'market', label: 'Books', count: marketCount });
   if (spotlightCount != null && spotlightCount > 0) out.push({ id: 'spotlights', label: 'Spotlights', count: spotlightCount });
+  if (specialsCount != null && specialsCount > 0) out.push({ id: 'specials', label: 'Specials', count: specialsCount });
   if (propCount != null && propCount > 0) out.push({ id: 'props', label: 'Props', count: propCount });
   return out;
 }

@@ -86,8 +86,19 @@ export function TopBar({
   return (
     <div className="flex h-12 items-center gap-2 px-2 sm:gap-3 sm:px-3">
       {/* Identity + sport */}
-      <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
-        <img src="/brand/linesmith-mark.png" alt="" width={28} height={18} className="h-[18px] w-auto select-none" />
+      {/* Shrinkable, not `shrink-0`: with a league or tour select beside the
+          sport one, the fixed pieces outgrew a phone and pushed Slip and
+          Sign in past the right edge. The selects truncate instead. */}
+      <div className="flex min-w-0 shrink items-center gap-1 sm:gap-1.5">
+        {/* Below `sm`, a second select (league, tour) needs the mark's room more
+            than the mark does: with both, the selects truncated to "S" and "P". */}
+        <img
+          src="/brand/linesmith-mark.png"
+          alt=""
+          width={28}
+          height={18}
+          className={cx('h-[18px] w-auto select-none', (sport === 'soccer' || sport === 'tennis') && league && onLeagueChange && 'hidden sm:block')}
+        />
         {/* Wordmark and Diagnostics drop below `sm`: at 400px the bar was 31px
             wider than the screen on every page, so phones scrolled sideways.
             The mark stays as the identity; Diagnostics is an admin tool. */}
@@ -104,7 +115,7 @@ export function TopBar({
             navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : e.target.value === 'tennis' ? '/tennis/atp' : `/${e.target.value}`)
           }
           disabled={isPending && pendingTarget === 'sport'}
-          className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden disabled:cursor-wait disabled:opacity-70 sm:max-w-none"
+          className="min-w-[3.25rem] max-w-[5.5rem] shrink cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden disabled:cursor-wait disabled:opacity-70 sm:max-w-none"
         >
           {SPORTS.map((s) => (
             <option key={s} value={s}>
@@ -121,7 +132,7 @@ export function TopBar({
               id="lb-league"
               value={league}
               onChange={(e) => onLeagueChange(e.target.value as SoccerLeague)}
-              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
+              className="min-w-[3.25rem] max-w-[5.5rem] shrink cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
             >
               {SOCCER_LEAGUES.map((l) => (
                 <option key={l} value={l}>
@@ -140,7 +151,7 @@ export function TopBar({
               id="lb-tour"
               value={league}
               onChange={(e) => onLeagueChange(e.target.value as TennisTour)}
-              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
+              className="min-w-[3.25rem] max-w-[5.5rem] shrink cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
             >
               {TENNIS_TOURS.map((t) => (
                 <option key={t} value={t}>
@@ -154,7 +165,10 @@ export function TopBar({
       </div>
 
       {/* Navigation */}
-      <nav className="lb-scroll-x flex min-w-0 flex-1 items-center justify-center gap-1">
+      {/* `justify-center-safe`, not `justify-center`: a centred row that
+          overflows spills off BOTH ends, and the start is unreachable by
+          scrolling — at phone width "Slate" and half of "Players" vanished. */}
+      <nav className="lb-scroll-x flex min-w-0 flex-1 items-center justify-center-safe gap-1">
         {leading}
         {tab && onTabChange
           ? TABS.filter(

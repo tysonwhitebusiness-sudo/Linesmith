@@ -41,6 +41,7 @@ import { useSlate } from './slate/useSlate';
 import { SlateGames, SlateSectionNav } from './slate/SlateSections';
 import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
 import { SlateSpotlights } from './slate/SlateSpotlights';
+import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
 import { buildSpotlights } from '@/lib/slate/spotlights';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
 import {
@@ -236,6 +237,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // to six seconds against the real tables and must not delay either of the
   // two sections that matter.
   const marketRead = useSlateMarket(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
+  // S4 — the Specials, from `slate_rankings` (the table M3 actually wrote).
+  const specialsRead = useSlateSpecials(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
   // Round Score (one row per golfer, betting on the round total). Filters
   // the base candidate list itself, so every existing tab/filter (Good Bets,
@@ -740,6 +743,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 views.all.length || null,
                 (marketRead.data?.outliers.length ?? 0) + (marketRead.data?.disagreements.length ?? 0) || null,
                 spotlights.reduce((n, c) => n + c.rows.length, 0) || null,
+                specialsRead.data?.rankings.length || null,
               )}
             />
 
@@ -764,6 +768,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} />}
 
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
+
+            <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} />
 
             {golfFieldPending ? (
               <TournamentNotStartedNotice eventName={snapshot?.eventName} />

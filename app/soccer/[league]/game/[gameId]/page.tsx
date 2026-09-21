@@ -50,7 +50,7 @@ function SoccerGamePage({ league, gameId }: { league: SoccerLeague; gameId: stri
           league={league}
           onLeagueChange={(next) => router.push(`/soccer/${next}`)}
           leading={
-            <BackLink href={`/soccer/${league}`} label="Scan" />
+            <BackLink href={`/soccer/${league}`} label="Slate" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

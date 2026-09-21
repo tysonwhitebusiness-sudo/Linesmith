@@ -147,7 +147,7 @@ export default function LiveBetsPage() {
         <TopBar
           sport="mlb"
           leading={
-            <BackLink href="/mlb" label="Scan" />
+            <BackLink href="/mlb" label="Slate" />
           }
           slipCount={0}
           onOpenSlip={() => {}}

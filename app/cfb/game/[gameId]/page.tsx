@@ -36,7 +36,7 @@ export default function CfbGameDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <BackLink href="/cfb" label="Scan" />
+            <BackLink href="/cfb" label="Slate" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}
