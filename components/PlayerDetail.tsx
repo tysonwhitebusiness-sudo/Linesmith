@@ -60,7 +60,6 @@ import { OddsChip, GetOddsButton, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
 import { PropOddsBoard } from './PropOddsPanel';
-import { LiveLineTrackerCard } from './LiveLineTrackerCard';
 import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
 import { GolfPlayerStatsCard } from './GolfPlayerStatsCard';
 import type { AdvancedStat, GolferStrokesGained } from '@/lib/sports/golf/pgatourStats';
@@ -1954,7 +1953,6 @@ export function PlayerDetail({
               2026-08-23.md, Part 2. null for golf/soccer/tennis (no
               per-player live data source yet, see each adapter's own
               null-with-reason comment). */}
-          {data.liveLineTracker ? <LiveLineTrackerCard data={data.liveLineTracker} subjectName={data.subject.name} /> : null}
 
           {data.seasonStatsCard ? (
             <GolfPlayerStatsCard

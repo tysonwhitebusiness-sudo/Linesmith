@@ -263,23 +263,8 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveLineTracker: {
-      subjectId: active.subjectId,
-      sport: 'nhl',
-      gameId: todaysGame?.gamePk ?? null,
-      availableStats: NHL_TRACKABLE_STATS,
-    },
   };
 }
-
-const NHL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
-  { key: 'goals', label: 'Goals' },
-  { key: 'assists', label: 'Assists' },
-  { key: 'points', label: 'Points' },
-  { key: 'shots_on_goal', label: 'Shots on Goal' },
-  { key: 'hits', label: 'Hits' },
-  { key: 'blocked_shots', label: 'Blocked Shots' },
-];
 
 /**
  * The player page's shared research sections (Seasons, Trends, Splits, Game

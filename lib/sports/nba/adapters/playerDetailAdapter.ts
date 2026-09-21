@@ -271,23 +271,8 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveLineTracker: {
-      subjectId: active.subjectId,
-      sport: 'nba',
-      gameId: todaysGame?.gamePk ?? null,
-      availableStats: NBA_TRACKABLE_STATS,
-    },
   };
 }
-
-const NBA_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
-  { key: 'points', label: 'Points' },
-  { key: 'rebounds', label: 'Rebounds' },
-  { key: 'assists', label: 'Assists' },
-  { key: 'steals', label: 'Steals' },
-  { key: 'blocks', label: 'Blocks' },
-  { key: 'turnovers', label: 'Turnovers' },
-];
 
 /**
  * The player page's shared research sections (Seasons, Trends, Splits, Game

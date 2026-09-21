@@ -25,11 +25,12 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 
 | # | phase | status |
 |---|---|---|
-| 1 | C7 delete the live line tracker (six role keys → five) | **next** |
-| 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | — |
+| 1 | C7 delete the live line tracker (the role keys stay six: the tracker was never one) | **done** |
+| 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **next** |
 | 3 | C1 charcoal section bands (Movers included) | — |
 | 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | — |
 | 5 | C2 player hero | — |
+| 5b | C2b team hero, same rework as the player hero | — |
 | 6 | PY-B spotlight rankings, NFL/NBA/NHL first (**deploy**) | — |
 | 7 | C3 player search rail | — |
 | 8 | C4 Slate imagery (Movers included) | — |

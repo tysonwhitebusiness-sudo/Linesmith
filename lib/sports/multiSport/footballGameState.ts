@@ -8,7 +8,7 @@
  *
  * THE BOX SCORE NAMES PLAYERS, IT DOES NOT ID THEM. ESPN's football summary
  * carries `athlete.displayName` only, so the subject's row is matched by name —
- * the same match `useLiveLineValues` already makes for these two sports. A miss
+ * the same match the (since deleted) live line tracker made for these two sports. A miss
  * reads as "not in the box score yet", which is also the true state for a
  * player who has not touched the ball.
  */

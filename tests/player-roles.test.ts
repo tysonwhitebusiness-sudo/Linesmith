@@ -166,3 +166,16 @@ test('a role that is built is returned from the adapter, not from a nested liter
   assert.ok(checked > 0, 'no built roles found in any adapter -- this test is checking nothing');
   assert.deepEqual(offences, [], `\n\n${offences.join('\n')}\n`);
 });
+
+test('C7: the live line tracker is gone, and tracked_lines still backs the watchlist', () => {
+  // Deleted everywhere (D-C9). Not a role key: the six roles stay six.
+  const { existsSync, readFileSync } = require('node:fs') as typeof import('node:fs');
+  assert.equal(existsSync('components/LiveLineTrackerCard.tsx'), false);
+  assert.equal(existsSync('components/useLiveLineValues.ts'), false);
+  for (const s of ['mlb', 'nfl', 'cfb', 'nba', 'nhl']) {
+    assert.doesNotMatch(readFileSync(`lib/sports/${s}/adapters/playerDetailAdapter.ts`, 'utf8'), /liveLineTracker|TRACKABLE_STATS/, s);
+  }
+  assert.ok(existsSync('app/api/tracked-lines/route.ts'));
+  assert.ok(existsSync('components/useTrackedLines.ts'));
+  assert.equal(PLAYER_ROLE_KEYS.length, 6);
+});

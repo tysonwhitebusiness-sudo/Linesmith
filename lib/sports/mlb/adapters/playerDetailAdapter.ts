@@ -279,26 +279,6 @@ export interface PlayerDetailData {
   gameState?: GameStateSlot | null;
   /** Golf only — the round-in-progress hole-by-hole scorecard vs. a tee-time groupmate. */
   liveMatchup?: import('@/lib/sports/golf/adapter').LiveRoundMatchup | null;
-  /**
-   * Live line tracker (docs/live-matchup-and-line-tracker-gameplan-
-   * 2026-08-23.md, Part 2) — what this subject can be tracked on today, not
-   * the user's saved tracked lines themselves (those are per-user mutable
-   * state, fetched client-side through `/api/tracked-lines` by
-   * `LiveLineTrackerCard`, same "user-owned state stays out of the cached
-   * adapter payload" reasoning as watchlist). `gameId` is this sport's own
-   * live-game id (feeds `/api/{sport}/game/{gameId}/live`, the same Part 1
-   * routes the hero card's Live tab already uses) — null if the subject has
-   * no game today. `availableStats` is empty for a sport with no
-   * player-level live data source (soccer, tennis) rather than omitted, so
-   * the card can render an honest "nothing trackable yet" state instead of
-   * hiding entirely. `null` only for golf (no live-game concept at all).
-   */
-  liveLineTracker?: {
-    subjectId: string;
-    sport: Sport;
-    gameId: string | null;
-    availableStats: Array<{ key: string; label: string }>;
-  } | null;
   /** Golf only — season/advanced stats card, passed straight through from the caller's already-fetched `golfStats` prop. */
   seasonStatsCard?: {
     strokesGained: import('@/lib/sports/golf/pgatourStats').GolferStrokesGained | null;
@@ -539,7 +519,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     wantOver,
   };
 
-
   // ---- Prop odds board (PlayerDetail.tsx:1784-1817; universal, no branch) ----
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
@@ -743,8 +722,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   // prop block no longer repeats them, so both roles are null for MLB.
   const spatialGrid = null;
 
-
-
   return {
     subject: {
       subjectId: active.subjectId,
@@ -777,35 +754,8 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     spatialGrid,
     binarySplit: null,
     careerH2H,
-    liveLineTracker: {
-      subjectId: active.subjectId,
-      sport: 'mlb',
-      gameId: todaysGame?.game?.gamePk != null ? String(todaysGame.game.gamePk) : null,
-      availableStats: MLB_TRACKABLE_STATS,
-    },
   };
 }
-
-/**
- * Curated, not exhaustive — batting stats only (this app's MLB player pages
- * are batter-focused, per `hitterStats`'s own "Quality of Contact" framing
- * above); a pitcher subject simply won't see a live value light up for
- * these yet. Keys are deliberately the exact same market `dimension`
- * strings `STAT_MARKET_BY_DIMENSION` (`lib/sports/mlb/adapter.ts`) already
- * uses for grading/live-value lookups — not a new vocabulary — so the
- * tracker's live-value hook can call `liveMarketValues()` directly with no
- * translation layer.
- */
-const MLB_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
-  { key: 'hit-in-game', label: 'Hits' },
-  { key: 'home-runs', label: 'Home Runs' },
-  { key: 'rbis', label: 'RBI' },
-  { key: 'total-bases', label: 'Total Bases' },
-  { key: 'walks', label: 'Walks' },
-  { key: 'batter-strikeouts', label: 'Strikeouts' },
-  { key: 'doubles', label: 'Doubles' },
-  { key: 'stolen-bases', label: 'Stolen Bases' },
-];
 
 // Only isOk is needed elsewhere via this module's re-export surface today;
 // kept imported (not re-exported) so callers of formWindows can branch the

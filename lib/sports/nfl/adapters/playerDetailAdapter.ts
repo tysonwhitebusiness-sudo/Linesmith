@@ -324,24 +324,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveLineTracker: {
-      subjectId: active.subjectId,
-      sport: 'nfl',
-      gameId: todaysGame?.gamePk ?? null,
-      availableStats: FOOTBALL_TRACKABLE_STATS,
-    },
   };
 }
-
-const FOOTBALL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
-  { key: 'passing_yards', label: 'Passing Yards' },
-  { key: 'passing_tds', label: 'Passing TDs' },
-  { key: 'rushing_yards', label: 'Rushing Yards' },
-  { key: 'rushing_tds', label: 'Rushing TDs' },
-  { key: 'receiving_yards', label: 'Receiving Yards' },
-  { key: 'receiving_tds', label: 'Receiving TDs' },
-  { key: 'receptions', label: 'Receptions' },
-];
 
 /**
  * The player page's shared research sections (Seasons, Trends, Splits, Game
