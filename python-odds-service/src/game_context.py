@@ -504,6 +504,11 @@ async def load_nhl_games() -> list[Game]:
             home_abbr=g["homeAbbr"],
             game_date=g["date"] or "",
             is_final=g["isFinal"],
+            # PY-A: the NHL ranking joins history on these, the same NHL API
+            # ids `player_game_history.team_id` carries. Parsed and dropped
+            # until now, like MLB's were before M3.
+            home_team_id=g.get("homeTeamId"),
+            away_team_id=g.get("awayTeamId"),
         )
         for g in by_id.values()
     ]

@@ -113,6 +113,10 @@ class WeatherContext:
     source: str
     approximate_location: bool
     forecast: list[ForecastHour] = field(default_factory=list)
+    # The raw direction the wind blows FROM, in degrees: `wind_dir` is its
+    # compass word, which is too coarse to split a wind into out/in against a
+    # park's bearing (predict/park_orientation.py).
+    wind_from_deg: float | None = None
 
 
 async def get_weather(client: httpx.AsyncClient, latitude: float, longitude: float, approximate: bool, at: datetime | None = None) -> WeatherContext | None:
@@ -169,7 +173,12 @@ async def get_weather(client: httpx.AsyncClient, latitude: float, longitude: flo
         source="Open-Meteo",
         approximate_location=approximate,
         forecast=forecast,
+        wind_from_deg=_finite(hourly.wind_dir[best_index] if best_index < len(hourly.wind_dir) else None),
     )
+
+
+def _finite(v) -> float | None:
+    return float(v) if v is not None and math.isfinite(float(v)) else None
 
 
 # ---------------------------------------------------------------------------

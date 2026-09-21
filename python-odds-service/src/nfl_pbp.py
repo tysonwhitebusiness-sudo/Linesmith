@@ -44,6 +44,37 @@ import db
 
 RELEASE_BASE = "https://github.com/nflverse/nflverse-data/releases/download"
 
+# ESPN athlete id -> GSIS id, from nflverse's players release. Every NFL page
+# and ranking is keyed by ESPN ids and `nfl_target_events` by GSIS ids;
+# `athlete_crosswalk` does not bridge them for the NFL. TypeScript reads the
+# same file (`lib/sports/nfl/nflverse.ts`, `getEspnToGsisMap`).
+_GSIS_TTL_S = 24 * 60 * 60
+_gsis_cache: tuple[float, dict[str, str]] | None = None
+
+
+async def espn_to_gsis(client: httpx.AsyncClient) -> dict[str, str]:
+    """{espn_id: gsis_id}, cached in-process for a day. Empty on a failed
+    fetch - a ranking then simply has no air-yard factors, never guessed ones."""
+    global _gsis_cache
+    import csv
+    import io
+    import time
+
+    if _gsis_cache and time.monotonic() - _gsis_cache[0] < _GSIS_TTL_S:
+        return _gsis_cache[1]
+    try:
+        res = await client.get(f"{RELEASE_BASE}/players/players.csv", follow_redirects=True,
+                               timeout=httpx.Timeout(60.0))
+    except httpx.HTTPError:
+        return {}
+    if res.status_code != 200:
+        return {}
+    out = {r["espn_id"]: r["gsis_id"] for r in csv.DictReader(io.StringIO(res.text))
+           if r.get("espn_id") and r.get("gsis_id")}
+    _gsis_cache = (time.monotonic(), out)
+    return out
+
+
 # Rows per write. Well under the 32,767-parameter ceiling at 13 columns
 # (2,000 x 13 = 26,000), and small enough that a failure mid-season loses
 # little work.

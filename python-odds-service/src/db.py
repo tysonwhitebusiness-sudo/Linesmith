@@ -2387,16 +2387,19 @@ async def write_slate_rankings(rows: list[dict]) -> int:
     await pool.executemany(
         """
         INSERT INTO slate_rankings (sport, slate_date, ranking_id, subject_id, rank, score,
-                                    subject_name, team, opponent, game_id, factors, computed_at)
-        VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, now())
+                                    subject_name, team, opponent, game_id, factors, kind,
+                                    team_id, opponent_id, computed_at)
+        VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, now())
         ON CONFLICT (sport, slate_date, ranking_id, subject_id) DO UPDATE SET
           rank = excluded.rank, score = excluded.score, subject_name = excluded.subject_name,
           team = excluded.team, opponent = excluded.opponent, game_id = excluded.game_id,
-          factors = excluded.factors, computed_at = now()
+          factors = excluded.factors, kind = excluded.kind, team_id = excluded.team_id,
+          opponent_id = excluded.opponent_id, computed_at = now()
         WHERE slate_rankings.frozen_at IS NULL
         """,
         [(r["sport"], r["slate_date"], r["ranking_id"], r["subject_id"], r["rank"], r["score"],
-          r["subject_name"], r["team"], r["opponent"], r["game_id"], r["factors"]) for r in rows],
+          r["subject_name"], r["team"], r["opponent"], r["game_id"], r["factors"],
+          r.get("kind", "special"), r.get("team_id"), r.get("opponent_id")) for r in rows],
     )
     return len(rows)
 
@@ -2422,14 +2425,35 @@ async def ungraded_frozen_rankings(slate_date, top_n: int = 5) -> list[dict]:
     pool = await get_pool()
     rows = await pool.fetch(
         """
-        SELECT sport, slate_date, ranking_id, subject_id, rank, subject_name, game_id
+        SELECT sport, slate_date, ranking_id, subject_id, rank, subject_name, game_id, team_id
           FROM slate_rankings
-         WHERE slate_date = $1::date AND frozen_at IS NOT NULL AND outcome IS NULL AND rank <= $2
+         WHERE slate_date = $1::date AND frozen_at IS NOT NULL AND outcome IS NULL
+           AND rank BETWEEN 1 AND $2 AND subject_id <> '__leader__'
          ORDER BY sport, ranking_id, rank
         """,
         slate_date, top_n,
     )
     return [dict(r) for r in rows]
+
+
+async def write_ranking_leader(row: dict) -> int:
+    """PY-A: the slate's actual leader for a "longest" ranking, whether we
+    ranked him or not. One row per ranking and slate, `subject_id='__leader__'`,
+    rank 0, written already frozen and already graded - it is a receipt, not a
+    ranking, so it never enters a refresh."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        INSERT INTO slate_rankings (sport, slate_date, ranking_id, subject_id, rank, score, subject_name,
+                                    team, factors, kind, frozen_at, outcome, computed_at)
+        VALUES ($1, $2::date, $3, '__leader__', 0, NULL, $4, $5, '{}'::jsonb, $6, now(), $7::jsonb, now())
+        ON CONFLICT (sport, slate_date, ranking_id, subject_id) DO UPDATE SET
+          subject_name = excluded.subject_name, team = excluded.team, outcome = excluded.outcome
+        """,
+        row["sport"], row["slate_date"], row["ranking_id"], row.get("subject_name"), row.get("team"),
+        row.get("kind", "special"), row["outcome"],
+    )
+    return 1
 
 
 async def write_ranking_outcomes(rows: list[dict]) -> int:

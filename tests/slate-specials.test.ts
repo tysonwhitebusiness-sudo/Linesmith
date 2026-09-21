@@ -20,7 +20,7 @@ function pyFactorGroups(): Map<string, Array<{ key: string; label: string; info:
   const groups = new Map<string, Array<{ key: string; label: string; info: string }>>();
   const groupRe = /^(\w+_FACTORS)\s*=\s*\(([\s\S]*?)^\)/gm;
   for (const m of PY.matchAll(groupRe)) {
-    const factors = [...m[2].matchAll(/Factor\("([^"]+)",\s*"([^"]+)",\s*info="([^"]+)"\)/g)].map((f) => ({ key: f[1], label: f[2], info: f[3] }));
+    const factors = [...m[2].matchAll(/Factor\("([^"]+)",\s*"([^"]+)",\s*info="([^"]+)"(?:,\s*higher_better=(?:True|False))?\)/g)].map((f) => ({ key: f[1], label: f[2], info: f[3] }));
     groups.set(m[1], factors);
   }
   return groups;
@@ -39,7 +39,7 @@ function pyRankings() {
 
 test('every Python ranking is mirrored, with the same title, promo and not-held note', () => {
   const py = pyRankings();
-  assert.equal(py.length, 5, 'the parser found every RankingDef');
+  assert.equal(py.length, 8, 'the parser found every RankingDef');
   assert.deepEqual(py.map((r) => r.id).sort(), Object.keys(SPECIAL_RANKINGS).sort());
   for (const r of py) {
     const ts = SPECIAL_RANKINGS[r.id];
@@ -77,4 +77,20 @@ test('a did-not-play is shown as neither a hit nor a miss', () => {
   const src = readFileSync('lib/slate/specials.ts', 'utf8');
   assert.match(src, /o\.played === false \? null/);
   assert.match(src, /filter\(\(o\) => o\.played !== false\)/);
+});
+
+test('PY-A: the leader row is never a subject, and `_` factor keys are never values', () => {
+  const src = readFileSync('lib/slate/specials.ts', 'utf8');
+  assert.match(src, /subject_id <> '\$\{LEADER_ID\}'/);
+  assert.match(src, /String\(x\.subject_id\) !== LEADER_ID/);
+  assert.match(src, /if \(!k\.startsWith\('_'\)\) values\[k\] = num\(v\)/);
+  // The writer stores the leader as rank 0, so `rank <= 5` alone would not exclude it.
+  assert.match(readFileSync('python-odds-service/src/db.py', 'utf8'), /'__leader__', 0,/);
+});
+
+test('PY-A: every Python ranking declares a hit rule and a kind the reader understands', () => {
+  const body = PY.slice(PY.indexOf('RANKINGS: tuple[RankingDef, ...] = ('));
+  for (const m of body.matchAll(/hit_rule="(\w+)"/g)) assert.ok(['any', 'gte2', 'slate_max'].includes(m[1]), m[1]);
+  assert.match(PY, /HIT_RULES = \("any", "gte2", "slate_max"\)/);
+  assert.match(PY, /KINDS = \("special", "spotlight"\)/);
 });

@@ -28,8 +28,8 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 1 | C7 delete the live line tracker (the role keys stay six: the tracker was never one) | **done** |
 | 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **done** |
 | 3 | C1 charcoal section bands (Movers included) | **done** |
-| 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | **next** |
-| 5 | C2 player hero | — |
+| 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | **done** |
+| 5 | C2 player hero | **next** |
 | 5b | C2b team hero, same rework as the player hero | — |
 | 6 | PY-B spotlight rankings, NFL/NBA/NHL first (**deploy**) | — |
 | 7 | C3 player search rail | — |
@@ -90,6 +90,17 @@ Update this table and the run doc's §2 after every phase commit, then push.
   for good/bad-by-definition values, and `heat` for a rank.
 - **Scan's cell components stay frozen** (`StatCells`, `OddsChip`). C6
   unfreezes only the filter-bar files.
+- **PY-A: per-HR distance was already stored.** `mlb_statcast_player_season`
+  payload `hrList[]` carries `distance` (5,019 of 5,027 in 2026), so the
+  planned `hit_distance_sc` column and backfill were skipped. The rollup
+  rebuilds daily; longest-HR grading waits until it has run past noon UTC the
+  day after the slate.
+- **PY-A: the ESPN->GSIS map is not in `athlete_crosswalk`** (zero NFL rows
+  bridge to nflverse). `nfl_pbp.espn_to_gsis` reads nflverse `players.csv`,
+  the same file TypeScript's `getEspnToGsisMap` does, cached 24h.
+- **PY-A: migration `20260921120000` was applied by hand before the deploy.**
+  It is additive (defaulted `kind`, nullable ids), so the old worker kept
+  writing through it.
 - **C1: a HIDDEN Browser pane never fires `requestAnimationFrame`**, and
   React 19's streaming reveal (`$RC` -> `$RB` -> rAF -> `$RV`) waits on it, so
   every Suspense page (player, team) sits in `<div hidden id="S:0">` with
