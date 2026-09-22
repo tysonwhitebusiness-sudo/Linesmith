@@ -2,8 +2,9 @@
 
 import { useState, type ReactNode } from 'react';
 import type { SlateGame } from '@/lib/odds/matching';
-import { ChevronDownIcon, PeopleIcon, ShieldIcon, TargetIcon, BarsIcon, FlameIcon, SlidersIcon, BookIcon, SnowflakeIcon, CheckCircleIcon } from './icons';
-import { FilterDropdown, CheckboxList, BooleanCheckboxRow, FilterOddsRangeInputs, FilterSelect } from './FilterBar';
+import { ChevronDownIcon, PeopleIcon, ShieldIcon, TargetIcon, BarsIcon, FlameIcon, SlidersIcon, SnowflakeIcon, CheckCircleIcon } from './icons';
+import { Button } from './ui';
+import { FilterDropdown, CheckboxList, BooleanCheckboxRow, FilterOddsRangeInputs, HitRatePicker, FilterSelect } from './FilterBar';
 import { GameMatchupLabel } from './SubjectAvatar';
 
 /**
@@ -34,18 +35,13 @@ function AccordionSection({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="mb-5">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="mb-3 flex w-full items-center justify-between text-left"
-      >
-        <span className="flex items-center gap-2 text-[14px] font-semibold text-ink">
+      <Button variant="tertiary" size="md" onPress={() => setOpen(!open)} className="mb-3 w-full justify-between">
+        <span className="flex items-center gap-2 text-body font-semibold text-ink">
           {icon}
           {title}
         </span>
         <ChevronDownIcon className={`text-ink-muted transition-transform ${open ? '' : '-rotate-90'}`} />
-      </button>
+      </Button>
       {open ? <div className="flex flex-col gap-2.5">{children}</div> : null}
     </div>
   );
@@ -87,8 +83,6 @@ export interface FilterSidebarProps {
   showNoOdds: boolean;
   onToggleShowNoOdds: () => void;
 }
-
-const HIT_RATE_OPTIONS = [65, 50, 0];
 
 export function FilterSidebar({
   games,
@@ -142,30 +136,10 @@ export function FilterSidebar({
           <CheckboxList options={marketOptions} selected={dimensions} onToggle={onToggleDimension} onClear={onClearDimensions} />
         </FilterDropdown>
         {bookOptions && bookOptions.length > 1 && onSetSportsbook ? (
-          <FilterSelect
-            icon={<BookIcon size={14} />}
-            label="Book"
-            value={sportsbook ?? ''}
-            onChange={(v) => onSetSportsbook(v || null)}
-            options={bookOptions}
-            fullWidth
-          />
+          <FilterSelect label="Book" value={sportsbook ?? ''} onChange={(v) => onSetSportsbook(v || null)} options={bookOptions} />
         ) : null}
         <FilterDropdown icon={<TargetIcon size={14} />} label="Hit rate" badge={hitRateMin != null ? `≥${hitRateMin}%` : undefined} active={hitRateMin != null} fullWidth>
-          <div className="space-y-1 p-1">
-            {HIT_RATE_OPTIONS.map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                onClick={() => onSetHitRateMin(pct === 0 ? null : pct)}
-                className={`block w-full rounded-lg px-2 py-1.5 text-left text-[13px] ${
-                  hitRateMin === pct || (pct === 0 && hitRateMin === null) ? 'bg-accent-soft font-semibold text-masters' : 'hover:bg-accent-soft/30'
-                }`}
-              >
-                {pct === 0 ? 'Any' : `≥ ${pct}%`}
-              </button>
-            ))}
-          </div>
+          <HitRatePicker value={hitRateMin} onChange={onSetHitRateMin} />
         </FilterDropdown>
       </AccordionSection>
 

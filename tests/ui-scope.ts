@@ -20,14 +20,7 @@
 export const OUT_OF_SCOPE: readonly string[] = [
   'components/ScanTable.tsx',
   'components/ScanCard.tsx',
-  'components/FilterBar.tsx',
-  'components/FilterSidebar.tsx',
-  'components/PlayerFilterDrawer.tsx',
-  'components/DateGameStrip.tsx',
   'components/AppShell.tsx',
-  // U7: the glider toggle's last importer is `FilterBar` (Scan's filter bar,
-  // above). It is part of that frozen surface, not an in-scope survivor.
-  'components/SegmentedToggle.tsx',
 ];
 
 /** True when a repo-relative path (either slash flavour) is out of scope. */

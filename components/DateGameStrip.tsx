@@ -5,6 +5,7 @@ import type { SlateGame } from '@/lib/odds/matching';
 import { liveFor } from '@/lib/odds/matching';
 import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
 import { CalendarIcon, ChevronLeftIcon, PauseIcon, PlayIcon } from './icons';
+import { Button, IconButton, Input } from './ui';
 import { TeamMark, formatGameTime, splitAbbrevs } from './GamesStrip';
 
 const COLLAPSE_KEY = 'linesmith:date-strip-collapsed';
@@ -147,52 +148,31 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
     <div className="flex items-center gap-2 border-t border-line bg-ink/[0.02] px-3 py-2">
       {!collapsed ? (
         <>
-          <button
-            type="button"
-            onClick={() => onSetDate(undefined)}
-            aria-pressed={isToday}
-            className={`shrink-0 rounded-xl px-4 py-2 text-[13px] font-semibold transition-colors ${
-              isToday ? 'bg-masters text-white shadow-card' : 'border border-line bg-card text-ink-muted hover:border-masters/30'
-            }`}
-          >
+          <Button variant={isToday ? 'secondary' : 'tertiary'} size="sm" onPress={() => onSetDate(undefined)}>
             Today
-          </button>
-          <button
-            type="button"
-            onClick={() => onSetDate(tomorrow)}
-            aria-pressed={isTomorrow}
-            className={`shrink-0 rounded-xl px-4 py-2 text-[13px] font-semibold transition-colors ${
-              isTomorrow ? 'bg-masters text-white shadow-card' : 'border border-line bg-card text-ink-muted hover:border-masters/30'
-            }`}
-          >
+          </Button>
+          <Button variant={isTomorrow ? 'secondary' : 'tertiary'} size="sm" onPress={() => onSetDate(tomorrow)}>
             Tomorrow
-          </button>
+          </Button>
 
-          {/* Calendar icon with an invisible native date input on top — same overlay trick FilterBar's FilterSelect already uses, so the OS's own picker handles the calendar UI. */}
-          <span className="relative flex shrink-0 items-center justify-center rounded-xl border border-line bg-card p-2.5 text-ink-muted hover:border-masters/30">
-            <CalendarIcon size={16} />
-            <input
-              type="date"
-              value={scanDate ?? ''}
-              min={easternDate()}
-              onChange={(e) => onSetDate(e.target.value || undefined)}
-              aria-label="Pick a date"
-              className="absolute inset-0 cursor-pointer opacity-0"
-            />
-          </span>
+          <Input
+            type="date"
+            size="sm"
+            leading={<CalendarIcon size={16} />}
+            value={scanDate ?? ''}
+            min={easternDate()}
+            onChange={(e) => onSetDate(e.target.value || undefined)}
+            aria-label="Pick a date"
+            className="shrink-0"
+          />
         </>
       ) : null}
 
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        aria-expanded={!collapsed}
+      <IconButton
         aria-label={collapsed ? 'Show date controls' : 'Hide date controls'}
-        title={collapsed ? 'Show date controls' : 'Hide date controls'}
-        className="shrink-0 rounded-xl border border-line bg-card p-2.5 text-ink-muted hover:border-masters/30"
-      >
-        <ChevronLeftIcon size={14} className={collapsed ? 'rotate-180' : ''} />
-      </button>
+        icon={<ChevronLeftIcon size={14} className={collapsed ? 'rotate-180' : ''} />}
+        onPress={toggleCollapsed}
+      />
 
       <div
         ref={scrollRef}
@@ -208,19 +188,12 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
         onClickCapture={onClickCapture}
         className="lb-scroll-x flex min-w-0 flex-1 cursor-grab select-none items-center gap-2 active:cursor-grabbing"
       >
-        <button
-          type="button"
-          onClick={() => onSelectGame(null)}
-          aria-pressed={selectedGamePk === null}
-          className={`shrink-0 rounded-xl px-3 py-2 text-[12px] font-semibold transition-colors ${
-            selectedGamePk === null ? 'bg-masters text-white shadow-card' : 'border border-line bg-card text-ink-muted hover:border-masters/30'
-          }`}
-        >
+        <Button variant={selectedGamePk === null ? 'secondary' : 'tertiary'} size="sm" onPress={() => onSelectGame(null)}>
           All
-        </button>
+        </Button>
 
         {games.length === 0 ? (
-          <span className="shrink-0 text-[11px] text-ink-muted">No games scheduled</span>
+          <span className="shrink-0 text-label text-ink-muted">No games scheduled</span>
         ) : (
           ordered.map((game) => {
             const gamePk = Number(game.gamePk);
@@ -234,23 +207,21 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
             const score = live.liveScore ? `${live.liveScore.away}–${live.liveScore.home}` : null;
 
             return (
-              <button
+              <Button
                 key={gamePk}
-                type="button"
-                onClick={() => onNavigateToGame(gamePk)}
-                aria-pressed={selected}
-                className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl border px-4 py-2 leading-tight transition-colors ${
-                  selected ? 'border-masters bg-accent-soft text-masters' : 'border-line bg-card text-ink-muted hover:border-masters/30'
-                }`}
+                variant={selected ? 'secondary' : 'tertiary'}
+                size="sm"
+                onPress={() => onNavigateToGame(gamePk)}
+                className="flex h-auto shrink-0 flex-col items-center gap-0.5 px-4 py-2 leading-tight"
               >
-                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                <span className="flex items-center gap-1.5 text-body-sm font-semibold text-ink">
                   {logoFor ? (
                     <TeamMark logoUrl={logoFor(awayAbbrev)} />
                   ) : game.awayTeamId ? (
                     <TeamMark teamId={game.awayTeamId} />
                   ) : null}
                   <span>{awayAbbrev}</span>
-                  <span className="text-[10px] font-normal text-ink-muted">@</span>
+                  <span className="text-label font-normal text-ink-muted">@</span>
                   <span>{homeAbbrev}</span>
                   {logoFor ? (
                     <TeamMark logoUrl={logoFor(homeAbbrev)} />
@@ -258,9 +229,9 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
                     <TeamMark teamId={game.homeTeamId} />
                   ) : null}
                 </span>
-                <span className="text-[11px]">
+                <span className="text-label">
                   {isLive ? (
-                    <span className="inline-flex items-center gap-1 font-semibold text-good">
+                    <span className="inline-flex items-center gap-1 font-semibold text-good-ink">
                       <span className="inline-block h-1.5 w-1.5 animate-lb-pulse rounded-full bg-good" />
                       {score ?? formatGameTime(game.firstPitch)}
                       {live.livePeriod ? <span className="font-normal opacity-70">{live.livePeriod}</span> : null}
@@ -271,22 +242,19 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
                     <span className="text-ink-muted">{formatGameTime(game.firstPitch)}</span>
                   )}
                 </span>
-              </button>
+              </Button>
             );
           })
         )}
       </div>
 
       {/* Discreet — barely there until you look for it or hover it. */}
-      <button
-        type="button"
-        onClick={() => setPlaying((v) => !v)}
+      <IconButton
         aria-label={playing ? 'Pause game strip auto-scroll' : 'Resume game strip auto-scroll'}
-        title={playing ? 'Pause auto-scroll' : 'Resume auto-scroll'}
-        className="shrink-0 rounded-full p-1.5 text-ink-muted opacity-40 transition-opacity hover:opacity-100"
-      >
-        {playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
-      </button>
+        icon={playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
+        onPress={() => setPlaying((v) => !v)}
+        className="shrink-0 opacity-40 transition-opacity hover:opacity-100"
+      />
     </div>
   );
 }

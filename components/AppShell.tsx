@@ -59,6 +59,7 @@ import {
   FilterOddsRangeInputs,
   OverflowMenu,
   IconToggleButton,
+  HitRatePicker,
 } from './FilterBar';
 import { FilterSidebar } from './FilterSidebar';
 import { PeopleIcon, BarsIcon, ShieldIcon, TargetIcon, SlidersIcon, FlameIcon, SidebarIcon, BookIcon, SnowflakeIcon, CheckCircleIcon, PositionIcon } from './icons';
@@ -67,8 +68,8 @@ import { TournamentLinesView } from './TournamentLinesView';
 import { TournamentNotStartedNotice } from './TournamentNotStartedNotice';
 import { TeamLogo, GameMatchupLabel, nflTeamLogoUrl } from './SubjectAvatar';
 import { buildSlate, type SlateEntry, type SlateGame } from '@/lib/odds/matching';
-import { useFilters, applyFilters, filtersActive } from './useFilters';
-import { SegmentedToggle, Toggle, Chip, Button, SectionBand } from './ui';
+import { useFilters, applyFilters, filtersActive, activeFilterCount } from './useFilters';
+import { SegmentedToggle, Toggle, Chip, Button, SlideoutMenu, SectionBand } from './ui';
 import { easternDate } from '@/lib/sports/mlb/statsapi';
 
 /**
@@ -209,6 +210,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const setGolfScanMode = (mode: 'holes' | 'rounds') => setGolfMarketView(mode);
   const [slipOpen, setSlipOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  // C6: the <640 filter sheet.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   // Redesign Brief — default (button row) vs. sidebar filter layout.
   const [sidebarLayout, setSidebarLayout] = useState(false);
   const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set());
@@ -623,6 +626,52 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     );
   };
 
+  // C6: the eight filter pills — shared by the inline row (fullWidth=false)
+  // and the <640 sheet (fullWidth=true).
+  const filterPills = (fullWidth: boolean) => (
+    <>
+      <FilterDropdown icon={<PeopleIcon size={15} />} label="Games" badge={filters.gamePks.size > 0 ? filters.gamePks.size : undefined} active={filters.gamePks.size > 0} fullWidth={fullWidth}>
+        <CheckboxList
+          options={games.map((g) => ({
+            value: String(g.gamePk ?? ''),
+            label: <GameMatchupLabel label={g.matchup ?? ''} awayTeamId={g.awayTeamId} homeTeamId={g.homeTeamId} />,
+          }))}
+          selected={new Set([...filters.gamePks].map(String))}
+          onToggle={(v) => toggleGame(Number(v))}
+          onClear={() => setGamePks(new Set())}
+        />
+      </FilterDropdown>
+      <FilterDropdown icon={<BarsIcon size={15} />} label="Market" badge={filters.dimensions.size > 0 ? filters.dimensions.size : undefined} active={filters.dimensions.size > 0} fullWidth={fullWidth}>
+        <CheckboxList options={marketOptions} selected={filters.dimensions} onToggle={toggleDimension} onClear={() => filters.dimensions.forEach((d) => toggleDimension(d))} />
+      </FilterDropdown>
+      <FilterDropdown icon={<ShieldIcon size={15} />} label="Team" badge={filters.teams.size > 0 ? filters.teams.size : undefined} active={filters.teams.size > 0} fullWidth={fullWidth}>
+        <CheckboxList options={teamOptions} selected={filters.teams} onToggle={toggleTeam} onClear={() => filters.teams.forEach((t) => toggleTeam(t))} />
+      </FilterDropdown>
+      <FilterDropdown icon={<PositionIcon size={15} />} label="Position" badge={filters.positions.size > 0 ? filters.positions.size : undefined} active={filters.positions.size > 0} fullWidth={fullWidth}>
+        <CheckboxList options={positionOptions} selected={filters.positions} onToggle={togglePosition} onClear={() => setPositions(new Set())} />
+      </FilterDropdown>
+      <FilterDropdown icon={<TargetIcon size={15} />} label="Hit rate" badge={filters.hitRateMin != null ? `≥${filters.hitRateMin}%` : undefined} active={filters.hitRateMin != null} fullWidth={fullWidth}>
+        <HitRatePicker value={filters.hitRateMin} onChange={setHitRateMin} />
+      </FilterDropdown>
+      <FilterDropdown icon={<SlidersIcon size={15} />} label="Odds" badge={filters.oddsMin !== null || filters.oddsMax !== null ? `${filters.oddsMin ?? '−∞'} to ${filters.oddsMax ?? '+∞'}` : undefined} active={filters.oddsMin !== null || filters.oddsMax !== null || !filters.showNoOdds} fullWidth={fullWidth}>
+        <FilterOddsRangeInputs min={filters.oddsMin} max={filters.oddsMax} onChange={setOddsRange} />
+        <div className="mt-1 border-t border-line pt-1">
+          <BooleanCheckboxRow label="Show players with no odds" checked={filters.showNoOdds} onChange={toggleShowNoOdds} />
+        </div>
+      </FilterDropdown>
+      <FilterDropdown icon={<FlameIcon size={15} />} label="Streak" badge={[filters.hotStreak, filters.coldStreak, filters.consistentOnly].filter(Boolean).length || undefined} active={filters.hotStreak || filters.coldStreak || filters.consistentOnly} fullWidth={fullWidth}>
+        <div className="space-y-0.5">
+          <BooleanCheckboxRow label="Hot streak" checked={filters.hotStreak} onChange={toggleHotStreak} icon={<FlameIcon size={14} className="text-ink-muted" />} />
+          <BooleanCheckboxRow label="Cold streak" checked={filters.coldStreak} onChange={toggleColdStreak} icon={<SnowflakeIcon size={14} className="text-ink-muted" />} />
+          <BooleanCheckboxRow label="Consistent" checked={filters.consistentOnly} onChange={toggleConsistentOnly} icon={<CheckCircleIcon size={14} className="text-ink-muted" />} />
+        </div>
+      </FilterDropdown>
+      {hasPropsPipeline && bookOptions.length > 1 ? (
+        <FilterSelect label="Book" value={filters.sportsbook ?? ''} onChange={(value) => setSportsbook(value || null)} options={bookOptions} />
+      ) : null}
+    </>
+  );
+
   return (
     <div className="min-h-screen pb-24">
       <header className="sticky top-0 z-20 border-b border-line bg-paper/95 backdrop-blur">
@@ -848,22 +897,14 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                     <div className="flex-1" />
                     <DensityToggle dense={dense} onChange={setDense} />
                     <OverflowMenu active={selectedSubjects.size > 0 || filters.sportsbook != null}>
-                      <button
-                        type="button"
-                        onClick={() => setFilterOpen(true)}
-                        className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-accent-soft/30"
-                      >
-                        <span>Players</span>
+                      <Button variant="tertiary" size="sm" onPress={() => setFilterOpen(true)} className="w-full justify-between">
+                        Players
                         <span className="text-ink-muted">{selectedSubjects.size > 0 ? selectedSubjects.size : 'All'}</span>
-                      </button>
+                      </Button>
                       {filtersActive(filters) ? (
-                        <button
-                          type="button"
-                          onClick={clearAll}
-                          className="w-full rounded-lg px-2 py-1.5 text-left text-[13px] text-bad hover:bg-bad/5"
-                        >
+                        <Button variant="tertiary" size="sm" onPress={clearAll} className="w-full">
                           Clear all filters
-                        </button>
+                        </Button>
                       ) : null}
                     </OverflowMenu>
                     <IconToggleButton
@@ -874,129 +915,37 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                     />
                   </div>
 
-                  {/* Filter button row — only in the default (non-sidebar) layout. */}
+                  {/* Filter button row — only in the default (non-sidebar) layout.
+                      Desktop/tablet show the row inline; <640 folds it into a
+                      slideout behind a "Filters (n)" button. */}
                   {!sidebarLayout ? (
-                    <FilterBar>
-                      <FilterDropdown
-                        icon={<PeopleIcon size={15} />}
-                        label="Games"
-                        badge={filters.gamePks.size > 0 ? filters.gamePks.size : undefined}
-                        active={filters.gamePks.size > 0}
-                      >
-                        <CheckboxList
-                          options={games.map((g) => ({
-                            value: String(g.gamePk ?? ''),
-                            label: <GameMatchupLabel label={g.matchup ?? ''} awayTeamId={g.awayTeamId} homeTeamId={g.homeTeamId} />,
-                          }))}
-                          selected={new Set([...filters.gamePks].map(String))}
-                          onToggle={(v) => toggleGame(Number(v))}
-                          onClear={() => setGamePks(new Set())}
-                        />
-                      </FilterDropdown>
-
-                      <FilterDropdown
-                        icon={<BarsIcon size={15} />}
-                        label="Market"
-                        badge={filters.dimensions.size > 0 ? filters.dimensions.size : undefined}
-                        active={filters.dimensions.size > 0}
-                      >
-                        <CheckboxList
-                          options={marketOptions}
-                          selected={filters.dimensions}
-                          onToggle={toggleDimension}
-                          onClear={() => filters.dimensions.forEach((d) => toggleDimension(d))}
-                        />
-                      </FilterDropdown>
-
-                      <FilterDropdown
-                        icon={<ShieldIcon size={15} />}
-                        label="Team"
-                        badge={filters.teams.size > 0 ? filters.teams.size : undefined}
-                        active={filters.teams.size > 0}
-                      >
-                        <CheckboxList
-                          options={teamOptions}
-                          selected={filters.teams}
-                          onToggle={toggleTeam}
-                          onClear={() => filters.teams.forEach((t) => toggleTeam(t))}
-                        />
-                      </FilterDropdown>
-
-                      <FilterDropdown
-                        icon={<PositionIcon size={15} />}
-                        label="Position"
-                        badge={filters.positions.size > 0 ? filters.positions.size : undefined}
-                        active={filters.positions.size > 0}
-                      >
-                        <CheckboxList
-                          options={positionOptions}
-                          selected={filters.positions}
-                          onToggle={togglePosition}
-                          onClear={() => setPositions(new Set())}
-                        />
-                      </FilterDropdown>
-
-                      <FilterDropdown
-                        icon={<TargetIcon size={15} />}
-                        label="Hit rate"
-                        badge={filters.hitRateMin != null ? `≥${filters.hitRateMin}%` : undefined}
-                        active={filters.hitRateMin != null}
-                      >
-                        <div className="space-y-1 p-1">
-                          {[65, 50, 0].map((pct) => (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() => setHitRateMin(pct === 0 ? null : pct)}
-                              className={`block w-full rounded-lg px-2 py-1.5 text-left text-[13px] ${
-                                filters.hitRateMin === pct || (pct === 0 && filters.hitRateMin === null)
-                                  ? 'bg-accent-soft font-semibold text-masters'
-                                  : 'hover:bg-accent-soft/30'
-                              }`}
-                            >
-                              {pct === 0 ? 'Any' : `≥ ${pct}%`}
-                            </button>
-                          ))}
-                        </div>
-                      </FilterDropdown>
-
-                      <FilterDropdown
-                        icon={<SlidersIcon size={15} />}
-                        label="Odds"
-                        badge={filters.oddsMin !== null || filters.oddsMax !== null ? `${filters.oddsMin ?? '−∞'} to ${filters.oddsMax ?? '+∞'}` : undefined}
-                        active={filters.oddsMin !== null || filters.oddsMax !== null || !filters.showNoOdds}
-                      >
-                        <FilterOddsRangeInputs min={filters.oddsMin} max={filters.oddsMax} onChange={setOddsRange} />
-                        <div className="mt-1 border-t border-line pt-1">
-                          <BooleanCheckboxRow label="Show players with no odds" checked={filters.showNoOdds} onChange={toggleShowNoOdds} />
-                        </div>
-                      </FilterDropdown>
-
-                      <FilterDropdown
-                        icon={<FlameIcon size={15} />}
-                        label="Streak"
-                        badge={
-                          [filters.hotStreak, filters.coldStreak, filters.consistentOnly].filter(Boolean).length || undefined
-                        }
-                        active={filters.hotStreak || filters.coldStreak || filters.consistentOnly}
-                      >
-                        <div className="space-y-0.5">
-                          <BooleanCheckboxRow label="Hot streak" checked={filters.hotStreak} onChange={toggleHotStreak} icon={<FlameIcon size={14} className="text-ink-muted" />} />
-                          <BooleanCheckboxRow label="Cold streak" checked={filters.coldStreak} onChange={toggleColdStreak} icon={<SnowflakeIcon size={14} className="text-ink-muted" />} />
-                          <BooleanCheckboxRow label="Consistent" checked={filters.consistentOnly} onChange={toggleConsistentOnly} icon={<CheckCircleIcon size={14} className="text-ink-muted" />} />
-                        </div>
-                      </FilterDropdown>
-
-                      {hasPropsPipeline && bookOptions.length > 1 ? (
-                        <FilterSelect
-                          icon={<BookIcon size={15} />}
-                          label="Book"
-                          value={filters.sportsbook ?? ''}
-                          onChange={(value) => setSportsbook(value || null)}
-                          options={bookOptions}
-                        />
-                      ) : null}
-                    </FilterBar>
+                    <>
+                      <div className="max-sm:hidden">
+                        <FilterBar>{filterPills(false)}</FilterBar>
+                      </div>
+                      <div className="sm:hidden">
+                        <Button variant="secondary" size="sm" icon={<SlidersIcon size={15} />} onPress={() => setFiltersOpen(true)}>
+                          Filters{activeFilterCount(filters) > 0 ? ` (${activeFilterCount(filters)})` : ''}
+                        </Button>
+                        <SlideoutMenu
+                          isOpen={filtersOpen}
+                          onClose={() => setFiltersOpen(false)}
+                          title="Filters"
+                          footer={
+                            <div className="flex items-center gap-2">
+                              <Button variant="tertiary" size="sm" onPress={clearAll} className="flex-1">
+                                Reset
+                              </Button>
+                              <Button variant="secondary" size="sm" onPress={() => setFiltersOpen(false)} className="flex-1">
+                                Show {displayList.length} props
+                              </Button>
+                            </div>
+                          }
+                        >
+                          <div className="flex flex-col gap-2">{filterPills(true)}</div>
+                        </SlideoutMenu>
+                      </div>
+                    </>
                   ) : null}
 
                   {/* C6: the four tab counts became one line; active filters

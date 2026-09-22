@@ -1,9 +1,8 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { type ReactNode } from 'react';
 import { ChevronDownIcon, MoreIcon } from './icons';
-import { SegmentedToggle } from './SegmentedToggle';
+import { Button, IconButton, Input, Checkbox, SegmentedToggle, Popover, Select, SearchIcon, RadioGroup } from './ui';
 
 /**
  * Filters as one uniform row of buttons — Redesign Brief: "every button is
@@ -27,52 +26,27 @@ export function FilterBar({ children, trailing }: { children: ReactNode; trailin
   );
 }
 
-const FILTER_BASE = 'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition-colors';
-const FILTER_INACTIVE = 'border-line bg-card text-ink-muted hover:border-masters/30';
-const FILTER_ACTIVE = 'border-masters bg-accent-soft text-masters';
-
-/**
- * A native select dressed as a chip. Native is the right call on a phone —
- * the OS picker handles long option lists better than anything custom.
- */
+/** The book picker — the kit `Select`, so it no longer zooms on a phone. */
 export function FilterSelect({
-  icon,
   label,
   value,
   options,
   onChange,
-  fullWidth = false,
 }: {
-  icon: ReactNode;
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
-  /** Stretch to fill its container — for the sidebar's stacked rows, matching FilterDropdown's fullWidth. */
-  fullWidth?: boolean;
 }) {
-  const current = options.find((o) => o.value === value);
-  const active = options.length > 0 && value !== options[0].value;
-
   return (
-    <span className={`relative ${FILTER_BASE} ${fullWidth ? 'w-full justify-between' : ''} ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}>
-      {icon}
-      <span className="text-ink-muted">{label}</span>
-      <span className="max-w-[120px] truncate font-semibold">{current?.label ?? value}</span>
-      <ChevronDownIcon className="text-ink-muted" />
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={label}
-        className="absolute inset-0 cursor-pointer opacity-0"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </span>
+    <Select
+      label={label}
+      size="sm"
+      value={value}
+      onChange={onChange}
+      className="shrink-0"
+      options={options.map((o) => ({ value: o.value, label: o.label }))}
+    />
   );
 }
 
@@ -87,20 +61,16 @@ export function FilterSearchBox({
   placeholder?: string;
 }) {
   return (
-    <span className="flex max-w-[280px] flex-1 items-center gap-2 rounded-xl border border-line bg-card px-3.5 py-2.5">
-      <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-ink-muted">
-        <circle cx="11" cy="11" r="7" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-      <input
-        type="search"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        className="w-full bg-transparent text-[13px] outline-hidden placeholder:text-ink-muted"
-      />
-    </span>
+    <Input
+      type="search"
+      size="sm"
+      leading={SearchIcon}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      className="max-w-[280px] flex-1"
+    />
   );
 }
 
@@ -122,24 +92,26 @@ export function FilterOddsRangeInputs({
   };
   return (
     <div className="flex items-center gap-2 p-1">
-      <input
+      <Input
         type="number"
+        size="sm"
         inputMode="numeric"
         value={min ?? ''}
         onChange={(e) => onChange(parse(e.target.value), max)}
         placeholder="-300"
         aria-label="Minimum odds"
-        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-hidden placeholder:text-ink-muted focus:border-masters"
+        className="w-16"
       />
       <span className="text-ink-muted">to</span>
-      <input
+      <Input
         type="number"
+        size="sm"
         inputMode="numeric"
         value={max ?? ''}
         onChange={(e) => onChange(min, parse(e.target.value))}
         placeholder="+300"
         aria-label="Maximum odds"
-        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-hidden placeholder:text-ink-muted focus:border-masters"
+        className="w-16"
       />
     </div>
   );
@@ -187,99 +159,24 @@ export function FilterDropdown({
   iconOnly = false,
   fullWidth = false,
 }: FilterDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<PopoverCoords | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  // The trigger row (FilterBar) horizontally scrolls with overflow-y clipped,
-  // so an absolutely-positioned popover nested inside it renders invisible in
-  // that layout — it's clipped by its own scroll ancestor before it ever
-  // reaches the button's actual screen position. Portaling to <body> and
-  // positioning from getBoundingClientRect sidesteps that ancestor entirely,
-  // so the popover shows up regardless of which container the trigger sits in.
-  const updateCoords = useCallback(() => {
-    const el = triggerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (fullWidth) {
-      setCoords({ top: rect.bottom + 6, left: rect.left, width: rect.width });
-    } else if (align === 'right') {
-      setCoords({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
-    } else {
-      setCoords({ top: rect.bottom + 6, left: rect.left });
-    }
-  }, [align, fullWidth]);
-
-  useEffect(() => {
-    if (!open) return;
-    updateCoords();
-    const close = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target)) return;
-      if (popoverRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    const reposition = () => updateCoords();
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', esc);
-    window.addEventListener('resize', reposition);
-    // capture:true so this also catches scroll on the FilterBar's own
-    // scrolling row, not just the window.
-    window.addEventListener('scroll', reposition, true);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', esc);
-      window.removeEventListener('resize', reposition);
-      window.removeEventListener('scroll', reposition, true);
-    };
-  }, [open, updateCoords]);
-
+  const trigger = iconOnly ? (
+    <IconButton aria-label={label} icon={icon} variant={active ? 'secondary' : 'tertiary'} />
+  ) : (
+    <Button
+      variant={active ? 'secondary' : 'tertiary'}
+      size="sm"
+      icon={icon}
+      iconTrailing={<ChevronDownIcon size={13} className="text-ink-muted" />}
+      className={fullWidth ? 'w-full justify-between' : 'shrink-0 whitespace-nowrap'}
+    >
+      <span className="text-ink-muted">{label}</span>
+      {badge != null && badge !== '' && badge !== 0 ? <span className="font-semibold">{badge}</span> : null}
+    </Button>
+  );
   return (
-    <div className={fullWidth ? 'w-full' : 'shrink-0'}>
-      {iconOnly ? (
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          aria-label={label}
-          title={label}
-          className={`flex h-[42px] w-[42px] items-center justify-center rounded-xl border transition-colors ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}
-        >
-          {icon}
-        </button>
-      ) : (
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          className={`${FILTER_BASE} ${fullWidth ? 'w-full justify-between' : ''} ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}
-        >
-          {icon}
-          <span>{label}</span>
-          {badge != null && badge !== '' && badge !== 0 ? <span className="font-semibold">{badge}</span> : null}
-          <ChevronDownIcon className={`text-ink-muted ${fullWidth ? 'ml-auto' : ''}`} />
-        </button>
-      )}
-
-      {open && coords
-        ? createPortal(
-            <div
-              ref={popoverRef}
-              style={{ position: 'fixed', top: coords.top, left: coords.left, right: coords.right, width: coords.width }}
-              className={`z-30 ${coords.width ? '' : 'min-w-[200px]'} rounded-xl border border-line bg-card p-2 shadow-pop`}
-            >
-              {children}
-            </div>,
-            document.body,
-          )
-        : null}
-    </div>
+    <Popover trigger={trigger} label={label} placement={align === 'right' ? 'bottom end' : 'bottom start'}>
+      {children}
+    </Popover>
   );
 }
 
@@ -300,51 +197,30 @@ export function CheckboxList({
   onClear,
 }: CheckboxListProps) {
   if (options.length === 0) {
-    return <p className="py-2 text-center text-[11px] text-ink-muted">Nothing to filter</p>;
+    return <p className="py-2 text-center text-label text-ink-muted">Nothing to filter</p>;
   }
 
   return (
-    <div className="max-h-[240px] overflow-y-auto">
+    <div className="max-h-[240px] overflow-y-auto p-1">
       {(onSelectAll || onClear) ? (
         <div className="mb-1 flex gap-2 border-b border-line pb-1.5">
-          {onSelectAll ? (
-            <button
-              type="button"
-              onClick={onSelectAll}
-              className="text-[11px] font-semibold text-masters"
-            >
-              All
-            </button>
-          ) : null}
-          {onClear ? (
-            <button
-              type="button"
-              onClick={onClear}
-              className="text-[11px] text-ink-muted"
-            >
-              Clear
-            </button>
-          ) : null}
+          {onSelectAll ? <Button variant="tertiary" size="sm" onPress={onSelectAll}>All</Button> : null}
+          {onClear ? <Button variant="tertiary" size="sm" onPress={onClear}>Clear</Button> : null}
         </div>
       ) : null}
-      {options.map((opt) => {
-        const checked = selected.has(opt.value);
-        return (
-          <label
-            key={opt.value}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-accent-soft/30"
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={() => onToggle(opt.value)}
-              className="h-3.5 w-3.5 accent-masters"
-            />
+      {options.map((opt) => (
+        <Checkbox
+          key={opt.value}
+          isSelected={selected.has(opt.value)}
+          onChange={() => onToggle(opt.value)}
+          className="rounded-lg px-2 py-1.5 hover:bg-accent-soft/30"
+        >
+          <span className="flex items-center gap-1.5">
             {opt.icon}
             <span className="truncate">{opt.label}</span>
-          </label>
-        );
-      })}
+          </span>
+        </Checkbox>
+      ))}
     </div>
   );
 }
@@ -362,11 +238,28 @@ export function BooleanCheckboxRow({
   icon?: ReactNode;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-accent-soft/30">
-      <input type="checkbox" checked={checked} onChange={onChange} className="h-3.5 w-3.5 accent-masters" />
-      {icon}
-      <span>{label}</span>
-    </label>
+    <Checkbox isSelected={checked} onChange={onChange} className="rounded-lg px-2 py-1.5 hover:bg-accent-soft/30">
+      <span className="flex items-center gap-1.5">
+        {icon}
+        <span>{label}</span>
+      </span>
+    </Checkbox>
+  );
+}
+
+/** The Hit-rate filter's three-way choice — Any / ≥50% / ≥65% — on the kit. */
+export function HitRatePicker({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  return (
+    <RadioGroup
+      label="Hit rate"
+      value={value === null ? 'any' : String(value)}
+      onChange={(v) => onChange(v === 'any' ? null : Number(v))}
+      options={[
+        { value: '65', label: '≥ 65%' },
+        { value: '50', label: '≥ 50%' },
+        { value: 'any', label: 'Any' },
+      ]}
+    />
   );
 }
 
@@ -381,26 +274,16 @@ export function ScanScopeToggle({
   labels?: { players: string; games: string };
 }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-0.5 rounded-xl bg-ink/[0.05] p-1">
-      {(
-        [
-          { key: 'players' as const, label: labels?.players ?? 'Players' },
-          { key: 'games' as const, label: labels?.games ?? 'Games' },
-        ]
-      ).map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          onClick={() => onChange(option.key)}
-          aria-pressed={scope === option.key}
-          className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-            scope === option.key ? 'bg-card text-ink shadow-card' : 'text-ink-muted'
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </span>
+    <SegmentedToggle
+      label="Scan scope"
+      size="sm"
+      value={scope}
+      onChange={onChange}
+      options={[
+        { value: 'players', label: labels?.players ?? 'Players' },
+        { value: 'games', label: labels?.games ?? 'Games' },
+      ]}
+    />
   );
 }
 
@@ -422,15 +305,14 @@ export function GolfScanModeToggle({
 }) {
   return (
     <SegmentedToggle
-      options={[
-        { key: 'holes' as const, label: 'Hole Props' },
-        { key: 'rounds' as const, label: 'Round Score' },
-      ]}
+      label="Golf market"
+      size="sm"
       value={mode}
       onChange={onChange}
-      className="rounded-xl border border-line p-1"
-      buttonClassName="whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px]"
-      gliderClassName="rounded-lg"
+      options={[
+        { value: 'holes', label: 'Hole Props' },
+        { value: 'rounds', label: 'Round Score' },
+      ]}
     />
   );
 }
@@ -444,26 +326,16 @@ export function DensityToggle({
   onChange: (dense: boolean) => void;
 }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5">
-      {[
-        { key: false, label: 'Card view', icon: <GridGlyph /> },
-        { key: true, label: 'Row view', icon: <ListGlyph /> },
-      ].map((option) => (
-        <button
-          key={String(option.key)}
-          type="button"
-          onClick={() => onChange(option.key)}
-          aria-pressed={dense === option.key}
-          aria-label={option.label}
-          title={option.label}
-          className={`flex h-[42px] w-[42px] items-center justify-center rounded-xl border transition-colors ${
-            dense === option.key ? FILTER_ACTIVE : FILTER_INACTIVE
-          }`}
-        >
-          {option.icon}
-        </button>
-      ))}
-    </span>
+    <SegmentedToggle
+      label="View"
+      size="sm"
+      value={dense ? 'rows' : 'cards'}
+      onChange={(v) => onChange(v === 'rows')}
+      options={[
+        { value: 'cards', label: 'Cards', icon: <GridGlyph /> },
+        { value: 'rows', label: 'Rows', icon: <ListGlyph /> },
+      ]}
+    />
   );
 }
 
@@ -491,12 +363,16 @@ function ListGlyph() {
   );
 }
 
-/** The "..." overflow trigger — icon-only FilterDropdown, right-aligned popover, for controls that don't fit the uniform 6-filter row (Players multi-select, Sportsbook, Good Bet, Clear all). */
+/** The "..." overflow trigger — icon-only, right-aligned popover, for controls that don't fit the uniform filter row (Players multi-select, Clear all). */
 export function OverflowMenu({ children, active }: { children: ReactNode; active?: boolean }) {
   return (
-    <FilterDropdown icon={<MoreIcon size={17} />} label="More options" active={active} align="right" iconOnly>
+    <Popover
+      label="More options"
+      placement="bottom end"
+      trigger={<IconButton aria-label="More options" icon={<MoreIcon size={16} />} variant={active ? 'secondary' : 'tertiary'} />}
+    >
       <div className="min-w-[220px] space-y-1">{children}</div>
-    </FilterDropdown>
+    </Popover>
   );
 }
 
@@ -512,18 +388,7 @@ export function IconToggleButton({
   active?: boolean;
   onClick: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      title={label}
-      className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border transition-colors ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}
-    >
-      {icon}
-    </button>
-  );
+  return <IconButton aria-label={label} icon={icon} onPress={onClick} variant={active ? 'secondary' : 'tertiary'} />;
 }
 
 export default FilterBar;

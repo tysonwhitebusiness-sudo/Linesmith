@@ -18,7 +18,8 @@ const CHIP_ALLOWED: Record<string, { count: number; why: string }> = {
 };
 
 const TOGGLE_ALLOWED: Record<string, string> = {
-  'components/FilterBar.tsx': 'OUT_OF_SCOPE — S1 rebuilds Scan’s filter bar on the kit',
+  // C6 rebuilt Scan's filter bar on the kit `SegmentedToggle`, and the glider
+  // `components/SegmentedToggle.tsx` was deleted — nothing imports it now.
 };
 
 const SKELETON_ALLOWED: Record<string, string> = {
