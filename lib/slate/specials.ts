@@ -373,14 +373,26 @@ export interface SpecialRow {
 
 export interface ReceiptRow {
   rank: number;
+  /** C5: the receipts table draws a face and a team mark, like every other row. */
+  subjectId: string;
   subjectName: string;
   team: string | null;
+  teamId: string | null;
   opponent: string | null;
+  opponentId: string | null;
   /** null when the player did not play: that is neither a hit nor a miss. */
   hit: boolean | null;
   value: number | null;
   /** The stat line ("22 car · 118 yds · 1 TD", "Did not play"). */
   detail: string | null;
+}
+
+/** One graded slate's count, for the "last 7 slates" bars. */
+export interface ReceiptSlate {
+  date: string;
+  hits: number;
+  /** Players who actually played. A did-not-play is in neither number. */
+  played: number;
 }
 
 /** A "longest" ranking's real leader on the graded slate, ranked by us or not. */
@@ -402,6 +414,12 @@ export interface SpecialRanking {
     top5: ReceiptRow[];
     /** Across the last seven graded slates: top-5 players who did it, of those who played. */
     week: { hits: number; played: number; slates: number };
+    /**
+     * C5: the same seven slates, one entry each, newest first — the card draws
+     * a bar per slate rather than one running total, because "9 of 31" hides
+     * whether that was one good day or seven ordinary ones.
+     */
+    slates: ReceiptSlate[];
     leader: ReceiptLeader | null;
   };
 }
@@ -434,7 +452,8 @@ export async function readSpecials(sport: string, date: string): Promise<Special
   // Receipts: every GRADED row in the week before this slate. The ranking job
   // grades the frozen top five the next morning into `outcome`.
   const graded = await pgAll<Record<string, unknown>>(
-    `SELECT ranking_id, slate_date::text AS slate_date, rank, subject_id, subject_name, team, opponent, outcome
+    `SELECT ranking_id, slate_date::text AS slate_date, rank, subject_id, subject_name, team, team_id,
+            opponent, opponent_id, outcome
      FROM slate_rankings
      WHERE sport = ? AND slate_date < ?::date AND slate_date >= ?::date - 7
        AND rank <= 5 AND outcome IS NOT NULL
@@ -490,7 +509,12 @@ export async function readSpecials(sport: string, date: string): Promise<Special
     if (!def) continue;
     const all = receiptsBy.get(id) ?? [];
     const g = all.filter((x) => String(x.subject_id) !== LEADER_ID);
-    const latest = g[0]?.slate_date ? String(g[0].slate_date) : null;
+    // The latest graded slate, counting the leader row. Measured 2026-09-22:
+    // `nfl-longest-reception` for 09-21 has a leader row and NO graded player
+    // rows (the grader skips a row whose team's game has not landed in
+    // `player_game_history` yet), and reading `latest` from player rows alone
+    // threw away a real measurement of what happened.
+    const latest = all[0]?.slate_date ? String(all[0].slate_date) : null;
     const parse = (o: unknown) =>
       (typeof o === 'string' ? JSON.parse(o) : (o ?? {})) as { played?: boolean; hit?: boolean; value?: number; detail?: string };
     const leaderRow = all.find((x) => String(x.subject_id) === LEADER_ID && String(x.slate_date) === latest);
@@ -503,15 +527,29 @@ export async function readSpecials(sport: string, date: string): Promise<Special
         const o = parse(x.outcome);
         return {
           rank: Number(x.rank),
+          subjectId: String(x.subject_id),
           subjectName: String(x.subject_name ?? ''),
           team: x.team == null ? null : String(x.team),
+          teamId: x.team_id == null ? null : String(x.team_id),
           opponent: x.opponent == null ? null : String(x.opponent),
+          opponentId: x.opponent_id == null ? null : String(x.opponent_id),
           hit: o.played === false ? null : Boolean(o.hit),
           value: typeof o.value === 'number' ? o.value : null,
           detail: typeof o.detail === 'string' ? o.detail : null,
         };
       });
     const played = g.map((x) => parse(x.outcome)).filter((o) => o.played !== false);
+    // One entry per graded slate, newest first: the bars the card draws.
+    const bySlate = new Map<string, ReceiptSlate>();
+    for (const x of g) {
+      const o = parse(x.outcome);
+      if (o.played === false) continue;
+      const d = String(x.slate_date);
+      const s = bySlate.get(d) ?? { date: d, hits: 0, played: 0 };
+      s.played += 1;
+      if (o.hit) s.hits += 1;
+      bySlate.set(d, s);
+    }
     out.push({
       def,
       slateDate: date,
@@ -521,6 +559,7 @@ export async function readSpecials(sport: string, date: string): Promise<Special
         date: latest,
         top5,
         week: { hits: played.filter((o) => o.hit).length, played: played.length, slates: new Set(g.map((x) => String(x.slate_date))).size },
+        slates: [...bySlate.values()],
         leader,
       },
     });

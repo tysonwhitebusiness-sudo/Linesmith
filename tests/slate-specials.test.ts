@@ -75,6 +75,43 @@ test('the card says what the score is not, and names the weights', () => {
   for (const word of [/\bedge\b/i, /\bbaseline\b/i, /\bgated\b/i, /impliedProb|americanOdds/]) assert.doesNotMatch(body, word);
 });
 
+/**
+ * C5 — the receipts card reads the payload defensively.
+ *
+ * FOUND BY RENDERING, NOT BY `tsc`. `/api/slate/specials` is a `cachedRoute`
+ * and `snapshot_cache` survives deploys, so for one TTL after this payload's
+ * shape changed the page was handed the OLD shape: `receipts.slates` was
+ * undefined, `.length` on it threw, and the whole Slate went down with a
+ * client-side error. The type said the field was there; the cached bytes
+ * disagreed. Any array added to a cached payload needs the same treatment.
+ */
+test('C5: the receipts card survives a payload cached before its shape changed', () => {
+  const src = readFileSync('components/slate/SlateSpecials.tsx', 'utf8');
+  assert.match(src, /const top5 = receipts\.top5 \?\? \[\]/);
+  assert.match(src, /const slates = receipts\.slates \?\? \[\]/);
+  // And nothing reaches into the payload's arrays directly any more.
+  const body = code(src);
+  assert.doesNotMatch(body, /receipts\.top5\./);
+  assert.doesNotMatch(body, /receipts\.slates\./);
+});
+
+test('C5: the receipts say what they are not — separate calls, not a parlay', () => {
+  const src = readFileSync('components/slate/SlateSpecials.tsx', 'utf8');
+  assert.match(src, /a ranking of separate calls, not a parlay/);
+  assert.match(src, /neither a hit nor a miss/);
+  // The result mark is the kit's, and a did-not-play has its own kind.
+  assert.match(src, /ResultMark result=\{r\.hit == null \? 'dnp'/);
+});
+
+test('C5: a graded slate counts only players who played', () => {
+  const src = readFileSync('lib/slate/specials.ts', 'utf8');
+  // The per-slate bars skip a did-not-play before counting either side.
+  assert.match(src, /if \(o\.played === false\) continue;/);
+  // And the latest graded slate counts the leader row, which for a "longest"
+  // ranking can be the only row graded (measured, nfl-longest-reception 09-21).
+  assert.match(src, /const latest = all\[0\]\?\.slate_date/);
+});
+
 test('a did-not-play is shown as neither a hit nor a miss', () => {
   const src = readFileSync('lib/slate/specials.ts', 'utf8');
   assert.match(src, /o\.played === false \? null/);
