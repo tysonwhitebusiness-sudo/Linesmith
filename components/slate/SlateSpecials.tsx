@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Chip, DataTable, EmptyState, Tabs, type Column, SectionBand } from '@/components/ui';
+import { Avatar, Card, Chip, DataTable, EmptyState, Tabs, type Column, SectionBand } from '@/components/ui';
 import { TeamLogo } from '../SubjectAvatar';
-import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
+import { headshotFor, teamLogoFor } from '@/lib/sports/shared/identity';
 import type { SpecialRanking, SpecialRow, SpecialsData } from '@/lib/slate/specials';
 import { formatFactor } from '@/lib/slate/specialsFormat';
 
@@ -43,7 +43,14 @@ function whyOf(row: SpecialRow, ranking: SpecialRanking): string {
   return `Ranks here mostly on ${parts.join(' and ')} across today's pool.`;
 }
 
-function columnsFor(ranking: SpecialRanking, logoOf: (id: string) => string | undefined): Column<SpecialRow>[] {
+/** A team mark in the "team vs opponent" line: logo + abbreviation, plain text when a sport has no logo. */
+function TeamMark({ sport, teamId, abbr }: { sport: string; teamId: string | null; abbr: string | null }) {
+  if (!abbr) return null;
+  const url = teamLogoFor(sport, teamId, abbr);
+  return url ? <TeamLogo logoUrl={url} abbreviation={abbr} size={14} /> : <span>{abbr}</span>;
+}
+
+function columnsFor(ranking: SpecialRanking, sport: string): Column<SpecialRow>[] {
   return [
     { key: 'rank', label: '#', numeric: true, sortable: false, render: (r) => r.rank },
     {
@@ -53,10 +60,18 @@ function columnsFor(ranking: SpecialRanking, logoOf: (id: string) => string | un
       render: (r) => (
         <span className="flex min-w-0 flex-col">
           <span className="flex items-center gap-1.5">
-            {logoOf(r.subjectId) ? <TeamLogo logoUrl={logoOf(r.subjectId)} size={16} /> : null}
+            <Avatar label={r.subjectName} src={headshotFor(sport, r.subjectId) ?? undefined} size={24} decorative />
             <span className="truncate font-semibold text-ink text-body-sm">{r.subjectName}</span>
           </span>
-          <span className="truncate text-label text-ink-muted">{[r.team, r.opponent ? `vs ${r.opponent}` : null].filter(Boolean).join(' ')}</span>
+          <span className="flex flex-wrap items-center gap-1.5 text-label text-ink-muted">
+            <TeamMark sport={sport} teamId={r.teamId} abbr={r.team} />
+            {r.opponent ? (
+              <>
+                <span>vs</span>
+                <TeamMark sport={sport} teamId={r.opponentId} abbr={r.opponent} />
+              </>
+            ) : null}
+          </span>
         </span>
       ),
     },
@@ -107,11 +122,10 @@ function Receipts({ ranking }: { ranking: SpecialRanking }) {
   );
 }
 
-export function SlateSpecials({ data, loading, teamLogoBySubject }: { data: SpecialsData | null; loading: boolean; teamLogoBySubject?: Map<string, string> }) {
+export function SlateSpecials({ data, loading, sport }: { data: SpecialsData | null; loading: boolean; sport: string }) {
   const rankings = data?.rankings ?? [];
   const [tab, setTab] = useState<string | null>(null);
   const active = rankings.find((r) => r.def.id === tab) ?? rankings[0];
-  const logoOf = (id: string): string | undefined => teamLogoBySubject?.get(athleteIdOf(id));
 
   if (!loading && rankings.length === 0) return null;
 
@@ -143,7 +157,7 @@ export function SlateSpecials({ data, loading, teamLogoBySubject }: { data: Spec
           {active.rows.length > 0 ? (
             <DataTable
               caption={active.def.title}
-              columns={columnsFor(active, logoOf)}
+              columns={columnsFor(active, sport)}
               rows={active.rows}
               rowKey={(r) => `${r.rank}-${r.subjectId}`}
               expand={(r) => <p className="text-body-sm text-ink-secondary">{whyOf(r, active)}</p>}

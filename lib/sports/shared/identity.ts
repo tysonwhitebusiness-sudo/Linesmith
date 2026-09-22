@@ -55,6 +55,13 @@ export function headshotFor(sport: string, id: string | number | null | undefine
   return null;
 }
 
+/** A team mark from the id/abbreviation a ranking row carries. MLB keys on the numeric id; NFL on the abbreviation. */
+export function teamLogoFor(sport: string, teamId: string | number | null | undefined, abbr: string | null | undefined): string | null {
+  if (sport === 'mlb') return mlbTeamLogo(teamId);
+  if (sport === 'nfl' && abbr) return `https://a.espncdn.com/i/teamlogos/nfl/500/${abbr.toLowerCase()}.png`;
+  return null;
+}
+
 /** MLB's own crest, keyed by StatsAPI team id. */
 export function mlbTeamLogo(id: string | number | null | undefined): string | null {
   return id == null || id === '' ? null : `https://www.mlbstatic.com/team-logos/${id}.svg`;

@@ -754,7 +754,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
 
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
 
-            <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} teamLogoBySubject={teamLogoBySubject} />
+            <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} sport={sport} />
 
             {slateRead.data?.modelPicks ? (
               <SlateModel data={modelRead.data} note={slateRead.data.modelPicks.note} loading={modelRead.loading} />
