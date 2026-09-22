@@ -20,7 +20,7 @@
 
 ## Session state — 2026-09-21
 
-**C4 is shipped in full** — two commits:
+**C4 is shipped in full** — three commits:
 - First C4 commit (`5d3ca40`): book domains, game-card stripe + 36px logos +
   live treatment, Books-section marks + gap pill + AvatarGroup.
 - C4 imagery follow-up (`f7bc9fe`): Spotlights headshots/logos
@@ -30,6 +30,13 @@
   GameCard footer book-marks `AvatarGroup` (`SlateMarket.booksList`, populated
   in `buildSlate.ts` `marketFor`). `tests/slate-model-lines.test.ts` key pin
   updated for the two new logo keys.
+- C4 image audit (`5b7c997`) — the operator's pass over the rendered cards:
+  team logos on the market-shape cards (from the snapshot's subjects, no player
+  faces there) and as a badge on Spotlight rows; Model logos moved next to each
+  team name (not stacked at the start); Specials made text-only; the GameCard
+  footer book marks and `SlateMarket.booksList` removed; and the MLB headshot
+  unified to `w_213` (identity.ts was still serving `w_80` to the search rail,
+  Movers and game research).
 Next phase: **C6** props controls (tabs → filters).
 
 ### Corrections to the previous session's chat
@@ -57,11 +64,12 @@ Next phase: **C6** props controls (tabs → filters).
 - **C6** Props controls (Track C, phase 9, no deploy): tabs → filters, Home
   Runs board deleted. Read the run doc §3 correction 3 first — `AppShell.tsx`
   line numbers have moved.
-- **C4 follow-ups (done):** headshots/logos and the footer book-marks are in.
-  Still left for later, both *data* additions to `lib/slate/marketMoves.ts`:
-  Movers game-line rows still show text matchups (no team logos — `ConsensusMover`
-  carries no team ids), and the Movers "books moved" cell still shows a count
-  (no per-book marks — no book list on the mover row).
+- **C4 follow-ups (done):** headshots/logos and the footer book-marks are in,
+  and the operator's image audit is applied. Still left for later, both *data*
+  additions to `lib/slate/marketMoves.ts`: Movers game-line rows still show text
+  matchups (no team logos — `ConsensusMover` carries no team ids), and the
+  Movers "books moved" cell still shows a count (no per-book marks — no book
+  list on the mover row).
 - **C3 follow-ups:** `matchup` typed but not populated; team/game/injury rail
   filters not wired; `statusLine` kept for other consumers.
 - **NBA spotlights deferred** (run doc A6): needs a Python `'nba'` games loader.
@@ -230,3 +238,35 @@ UI wiring against existing sources, not a new data pipeline.
 
 **Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
 clean. Pushed (`faf3e2b..f7bc9fe`).
+
+### Entry 7 — C4 image audit (commit `5b7c997`)
+
+The operator's pass over the rendered cards. One commit, ten files, no data
+pass — everything was already on the page or on the snapshot.
+
+- `components/slate/SlateMarket.tsx`: the "Player" column on both market-shape
+  cards now leads with the player's team mark (16px) and still no headshot.
+  The logo comes from a `teamLogoBySubject` map AppShell builds from the
+  snapshot's own subjects, matched on the bare athlete id (`athleteIdOf`) so it
+  works for namespaced ids too.
+- `components/AppShell.tsx`: builds that map in a `useMemo` and passes it to
+  `SlateMarket`.
+- `components/slate/SlateSpotlights.tsx` + `lib/slate/spotlights.ts`: a
+  `teamLogoUrl` field (team only — golf's flag stays out of the badge) renders
+  as a small badge on the row's headshot, the same pattern as the player search
+  rail.
+- `components/slate/SlateModel.tsx`: the game cell splits the matchup and puts
+  each team's logo beside its own name instead of stacking both at the start.
+- `components/slate/SlateSpecials.tsx`: the subject cell is now text-only (name
+  + team/vs line) — no avatar, no silhouette.
+- `components/slate/GameCard.tsx`: the footer book-marks `AvatarGroup` is gone
+  (no sportsbook logos on game cards); the footer is just props + Research →.
+  `SlateMarket.booksList` (added in `f7bc9fe` for exactly this) is removed from
+  `slateShapes.ts` and `buildSlate.ts` with it.
+- `lib/sports/shared/identity.ts`: `mlbHeadshot` was still building an `w_80`
+  image (no default fallback) for the search rail, Movers and game research —
+  unified to the `w_213,d_people:…` URL the adapters already use.
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
+clean; prod server rebuilt and restarted on `:3000`. Pushed
+(`64fbe4e..5b7c997`).
