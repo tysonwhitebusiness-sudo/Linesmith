@@ -37,6 +37,17 @@
   footer book marks and `SlateMarket.booksList` removed; and the MLB headshot
   unified to `w_213` (identity.ts was still serving `w_80` to the search rail,
   Movers and game research).
+- C4 image fixes (`6fc0eac`) — the operator read the rendered cards again and
+  reversed three of the audit's calls: the market-shape cards now show a player
+  FACE with the team mark as a badge (not the team mark alone); Specials get a
+  team mark beside the name (not text-only); and the GameCard footer book marks
+  are back. The real sizing bug was found and fixed at the source: MLB's CDN
+  returns a **213×320 portrait** for `w_213`, which `object-cover` centre-crops
+  in the circle and slices the head. Every MLB headshot URL now requests
+  `c_thumb,g_face,w_213,h_213` (a 213×213 face crop) — `identity.ts`,
+  `SubjectAvatar.tsx`, `mlb/adapter.ts`, `mlb/teamResearch.ts`,
+  `playerBio.ts` — and a shared `headshotFor(sport, id)` dispatcher now serves
+  the Slate market cards (NFL was already fine: ESPN serves square headshots).
 Next phase: **C6** props controls (tabs → filters).
 
 ### Corrections to the previous session's chat
@@ -270,3 +281,29 @@ pass — everything was already on the page or on the snapshot.
 **Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
 clean; prod server rebuilt and restarted on `:3000`. Pushed
 (`64fbe4e..5b7c997`).
+
+### Entry 8 — C4 image fixes (commit `6fc0eac`)
+
+The operator read the rendered cards a second time and reversed three of Entry
+7's calls, plus found the real MLB sizing bug.
+
+- **Market-shape cards** (`SlateMarket.tsx`): the player column now leads with
+  the player's face (`Avatar` 24px) and the team mark sits as a small badge on
+  it — not the team mark alone. `SlateMarket` gained a required `sport` prop
+  and resolves faces through the new shared `headshotFor`.
+- **Specials** (`SlateSpecials.tsx`): a 16px team mark leads the player's name
+  (from the same `teamLogoBySubject` map), instead of a bare text row.
+- **GameCard** (`GameCard.tsx` + `slateShapes.ts` + `buildSlate.ts`): the
+  footer book-marks `AvatarGroup` and `SlateMarket.booksList` are restored.
+- **The MLB sizing bug** — measured, not guessed: `w_213` on MLB's CDN returns
+  a **213×320 portrait**, which `Avatar`'s `object-cover` centre-crops inside
+  the circle and cuts the head in half. NFL was fine because ESPN serves
+  square headshots. Every MLB headshot URL now requests
+  `c_thumb,g_face,w_213,h_213` (a verified 213×213 face crop) in
+  `identity.ts`, `SubjectAvatar.tsx`, `mlb/adapter.ts`, `mlb/teamResearch.ts`
+  and `playerBio.ts`; `identity.ts` gains `headshotFor(sport, id)` as the one
+  dispatcher the Slate cards use.
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
+clean; prod server rebuilt and restarted on `:3000`. Pushed
+(`da2858c..6fc0eac`).
