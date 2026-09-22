@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, DataTable, EmptyState, cx, type Column, SectionBand } from '@/components/ui';
+import { Card, Chip, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { BookLogo, bookLabel } from '../BookLogo';
 import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
 
 /**
@@ -31,10 +32,6 @@ function marketLabel(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function bookLabel(book: string): string {
-  return book.charAt(0).toUpperCase() + book.slice(1);
-}
-
 const OUTLIER_COLUMNS: Column<OutlierRow>[] = [
   {
     key: 'subject',
@@ -49,7 +46,12 @@ const OUTLIER_COLUMNS: Column<OutlierRow>[] = [
       </span>
     ),
   },
-  { key: 'bookmaker', label: 'Book', sortable: false, render: (r) => bookLabel(r.bookmaker) },
+  { key: 'bookmaker', label: 'Book', sortable: false, render: (r) => (
+    <span className="flex items-center gap-1.5">
+      <BookLogo bookId={r.bookmaker} size={18} />
+      <span className="text-ink">{bookLabel(r.bookmaker)}</span>
+    </span>
+  ) },
   { key: 'odds', label: 'Price', numeric: true, render: (r) => american(r.odds) },
   {
     key: 'medianOdds',
@@ -58,7 +60,7 @@ const OUTLIER_COLUMNS: Column<OutlierRow>[] = [
     info: 'The median of every book quoting the same player, market and line. Gaps above 15 implied points are dropped as stale or exchange quotes rather than shown as bargains.',
     render: (r) => american(r.medianOdds),
   },
-  { key: 'gapPts', label: 'Gap', numeric: true, render: (r) => `${r.gapPts.toFixed(1)} pts`, bar: (r) => Math.min(1, r.gapPts / 15) },
+  { key: 'gapPts', label: 'Gap', numeric: true, render: (r) => <Chip tone="warn" size="sm">{r.gapPts.toFixed(1)} pts</Chip> },
   { key: 'books', label: 'Books', numeric: true },
 ];
 
@@ -99,7 +101,18 @@ const DISAGREEMENT_COLUMNS: Column<DisagreementRow>[] = [
     label: 'At the other line',
     sortable: false,
     wrap: true,
-    render: (r) => r.otherBookmakers.map(bookLabel).join(', '),
+    render: (r) => (
+      <span className="flex items-center gap-1">
+        {r.otherBookmakers.slice(0, 5).map((b) => (
+          <Tooltip key={b} content={bookLabel(b)}>
+            <span className="inline-flex"><BookLogo bookId={b} size={18} /></span>
+          </Tooltip>
+        ))}
+        {r.otherBookmakers.length > 5 ? (
+          <span className="text-label text-ink-muted">+{r.otherBookmakers.length - 5}</span>
+        ) : null}
+      </span>
+    ),
   },
 ];
 

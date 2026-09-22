@@ -26,6 +26,11 @@ const BOOK_DOMAIN: Record<string, string> = {
   bovada: 'bovada.lv',
   pointsbet: 'pointsbet.com',
   unibet: 'unibet.com',
+  // C4: the books the Slate shows most often but the map lacked.
+  kalshi: 'kalshi.com',
+  prophetx: 'prophetx.co',
+  hardrockbet: 'hardrock.bet',
+  betrivers: 'betrivers.com',
 };
 
 const BOOK_LABEL: Record<string, string> = {
@@ -40,6 +45,10 @@ const BOOK_LABEL: Record<string, string> = {
   bovada: 'Bovada',
   pointsbet: 'PointsBet',
   unibet: 'Unibet',
+  kalshi: 'Kalshi',
+  prophetx: 'ProphetX',
+  hardrockbet: 'Hard Rock Bet',
+  betrivers: 'BetRivers',
 };
 
 export function bookLabel(id: string | undefined | null): string {

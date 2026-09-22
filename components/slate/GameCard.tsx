@@ -1,6 +1,8 @@
 'use client';
 
 import { Avatar, Button, Chip, Tooltip, cx } from '@/components/ui';
+import { useTeamColors } from '../useTeamColors';
+import { teamColor } from '@/lib/sports/shared/teamColors';
 import type { SlateGameCard, SlateMarket, SlateTeam } from '@/lib/sports/shared/slateShapes';
 
 /**
@@ -23,7 +25,7 @@ import type { SlateGameCard, SlateMarket, SlateTeam } from '@/lib/sports/shared/
 function TeamRow({ team, live }: { team: SlateTeam; live: boolean }) {
   return (
     <div className="flex items-center gap-2">
-      <Avatar kind="logo" label={team.name} src={team.logoUrl ?? undefined} size={24} decorative />
+      <Avatar kind="logo" label={team.name} src={team.logoUrl ?? undefined} size={36} decorative />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-1.5">
           {team.rank != null ? <span className="text-label font-semibold text-ink-muted tabular-nums">#{team.rank}</span> : null}
@@ -68,14 +70,29 @@ function MarketCell({ label, market }: { label: string; market: SlateMarket | nu
   );
 }
 
-export function GameCard({ card }: { card: SlateGameCard }) {
+export function GameCard({ card, sport }: { card: SlateGameCard; sport: string }) {
   const live = card.status === 'live';
+  const colors = useTeamColors(sport, null);
+  const awayColor = teamColor(colors, { abbr: card.away.abbr ?? card.away.name })?.primary;
+  const homeColor = teamColor(colors, { abbr: card.home.abbr ?? card.home.name })?.primary;
   return (
-    <section className="flex min-w-0 flex-col rounded-card border border-line-soft bg-card shadow-card">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-card border border-line-soft bg-card shadow-card">
+      {/* C4: a 5px stripe split into the two teams' primaries. */}
+      <div aria-hidden className="flex h-[5px] shrink-0">
+        <span className="flex-1" style={{ background: awayColor ?? 'var(--line)' }} />
+        <span className="flex-1" style={{ background: homeColor ?? 'var(--line)' }} />
+      </div>
       <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-3">
-        <Chip tone={live ? 'live' : 'neutral'} size="sm">
-          {card.statusText}
-        </Chip>
+        {live ? (
+          <span className="flex items-center gap-1.5 text-label font-semibold text-bad-ink">
+            <span aria-hidden className="size-1.5 rounded-full bg-bad" />
+            LIVE · {card.statusText}
+          </span>
+        ) : (
+          <Chip tone="neutral" size="sm">
+            {card.statusText}
+          </Chip>
+        )}
         {card.venue ? <span className="truncate text-label text-ink-muted">{card.venue}</span> : null}
       </header>
 

@@ -161,7 +161,7 @@ export function SlateGames({ data, loading }: { data: SlateData | null; loading:
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-3">
           {shown.map((c) => (
-            <GameCard key={c.id} card={c} />
+            <GameCard key={c.id} card={c} sport={data.sport} />
           ))}
         </div>
       )}
