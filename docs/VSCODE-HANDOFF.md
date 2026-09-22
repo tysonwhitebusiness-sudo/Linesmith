@@ -20,13 +20,11 @@
 
 ## Session state — 2026-09-21
 
-**C2b is functionally complete and verified, but NOT yet committed.** Two
-design follow-ups the operator asked for are also done (crest disc, headers).
-Everything is in the working tree, awaiting the operator's visual sign-off
-before committing.
+**C2b and C1b are shipped** — committed and pushed (operator signed off
+2026-09-21). Next phase: **PY-B** spotlight rankings (deploy).
 
-- HEAD: `e12e6c6` — `C2: the player hero - team-colour band, ranked tiles, opponent form` (committed & pushed; `origin/main` is even with it).
-- Uncommitted: the 10 C2b files (Entry 0) plus `components/ui/Section.tsx` and `tests/ui-primitives.test.ts` (Entry 2).
+- Commits: `4118412` C2b (team hero), `34b59c7` C1b (transparent headers), `dfcf31d` CURRENT + handoff file.
+- HEAD is `dfcf31d`; `origin/main` is even with it.
 
 ### Corrections to the previous session's chat
 
@@ -48,11 +46,9 @@ before committing.
 - The body toggle the previous session left hanging works: "Show" → "Hide", `aria-expanded` flips, Last 10 appears.
 - **Caveat:** the embedded browser renders at ~201×125 CSS px, so pixel screenshots are unreliable here. Visual sign-off at 1440/400 is the operator's, in a real browser (prod server left running on `:3000`).
 
-### Next actions
+### Next
 
-1. Operator visual sign-off (translucent crest disc; transparent headers with charcoal side line) at 1440 and 400.
-2. Commit `C2b: …` (the 10 C2b files), then the C1b + docs changes (`Section.tsx`, `ui-primitives.test.ts`, `CURRENT.md`, run doc §2), push.
-3. Next phase: **PY-B** spotlight rankings (deploy).
+- **PY-B** spotlight rankings in Python (NFL/NBA/NHL first, then CFB/soccer/MLB) — a **deploy** phase, per the run order.
 
 ---
 
