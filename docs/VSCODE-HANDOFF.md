@@ -20,6 +20,12 @@
 
 ## Session state — 2026-09-22
 
+**C5-UI is BUILT, not signed off** (`815b94e`) — the receipts card, percentile
+cells on the Specials table, Python's one-line read under each player, and the
+sticky player column. It renders on the real 2026-09-21 MLB receipts. Sign-off
+waits on NFL Sunday 2026-09-27 plus one MLB day graded end to end by PY-A's
+code (the run doc's own rule: build now, sign off then).
+
 **F0-UI is shipped** (`400802d`) — one commit, 17 files. The research flags:
 `/api/slate/flags`, the shared `ResearchFlags` card and chip row on the
 player, team and game pages, the Python spotlights rendered on the Slate
@@ -27,9 +33,8 @@ beside the two TS cards, and N5's weather list. The Specials registry split
 into `SPECIAL_ONLY_RANKINGS` + `SPOTLIGHT_RANKINGS` with `rankingKind()`, and
 the drift guard now covers both kinds.
 
-Phases 1-10 of the run order are done. **Phase 11 (C5-UI) is blocked** until a
-real graded slate exists (next NFL Sunday, 2026-09-27), so under A6 the next
-actionable phase is **12, DJ-GOLF** (tournament -> course backfill, a deploy).
+Phases 1-11 of the run order are built. The next UNBUILT phase is **12,
+DJ-GOLF** (tournament -> course backfill, a deploy).
 
 ### Environment note
 
@@ -54,8 +59,10 @@ actionable phase is **12, DJ-GOLF** (tournament -> course backfill, a deploy).
 
 ### Next
 
-- **C5-UI** (phase 11) — build against the rows that exist; sign off only once
-  the new code has graded one NFL Sunday and one MLB day.
+- **C5-UI sign-off** (phase 11) — built. On 2026-09-27, check that NFL's
+  receipts actually fill: `nfl-longest-reception` for 09-21 produced a leader
+  row and ZERO graded players, because `grade()` skips a row whose team's game
+  has not landed in `player_game_history`. If that repeats it is a Python fix.
 - **DJ-GOLF** (phase 12, deploy) — the next actionable phase.
 - **C4 follow-ups**, both *data* additions to `lib/slate/marketMoves.ts`:
   Movers game-line rows still show text matchups (no team logos —
@@ -461,3 +468,49 @@ Spotlights section leaves `scrollWidth` at 620 either way).
 same "FLAGS TODAY" overline the game page's state row uses (a bare chip under
 a hero reads as a stray control), and a game-subject row dropped its "AZ vs
 COL" sub-line under a name already reading "AZ @ COL".
+
+
+### Entry 13 — C5-UI: receipts as a graded breakdown (commit `815b94e`)
+
+Built against the rows that exist, which the run doc explicitly allows; only
+sign-off waits for a graded slate. Four files.
+
+- **Receipts** (`SlateSpecials.tsx`): the chip row is replaced by C5.4's card —
+  a "{title} · {date}" overline, "2 of 4 who played", a result bar with one
+  segment per ranked player (hatched = did not play), the last-N-slates bars
+  with a tooltip per slate, a table of rank · player (face + both team marks) ·
+  what happened (`outcome.detail`) · result (`ResultMark`), and the footer:
+  separate calls, not a parlay.
+- **The Specials table**: `PercentileCell` per factor (value, percentile, bar)
+  and Python's deterministic `read` under each player's name. The percentile is
+  the reason a row is where it is and was previously only visible by expanding.
+- **The rank moved inside the player cell** in both tables. `DataTable` pins the
+  FIRST column, so a separate "#" column meant the number stayed pinned while
+  the player it ranked scrolled away. Verified at 400 by scrolling the receipts
+  table sideways: the player stays, "What happened" slides under it.
+- `readSpecials` returns `receipts.slates` (per-slate hits/played) and each
+  receipt row's subject/team/opponent ids.
+
+**Two measurements that changed the code.**
+
+1. **A ranking can have a leader and no graded players.** `nfl-longest-reception`
+   for 2026-09-21 has a `__leader__` row (48.0, Laquon Treadwell, `ourRank:
+   null`) and all 11 ranked players ungraded — `grade()` skips a row whose
+   team's game has not landed in `player_game_history`. `latest` now counts the
+   leader row, and the card says so rather than throwing away a real
+   measurement. **Check this on 09-27**: if it repeats, NFL receipts never fill
+   and the fix is in Python, not here.
+2. **A `cachedRoute` serves the SHAPE it cached.** Adding `receipts.slates`
+   crashed the whole Slate — "Cannot read properties of undefined (reading
+   'length')" — because `snapshot_cache` survives deploys and still held the
+   pre-change payload. `tsc` was clean and the page was down. The card now
+   reads its arrays with `?? []` and `tests/slate-specials.test.ts` pins it.
+   **Any array added to a cached payload needs the same treatment.**
+
+**Verified:** typecheck clean; full suite **655/0** (3 new); build clean; prod
+rebuilt and restarted. Rendered in Playwright at 1440 and 400 on the real
+2026-09-21 MLB receipts — "2 of 4 who played", Alonso's `2 HR · 2-4 · 3 RBI`,
+and two did-not-plays shown as neither a hit nor a miss.
+
+**Not done, and deliberately:** the sign-off itself. Per the run doc, don't
+sign C5 off on a slate graded by the old code.

@@ -1,10 +1,11 @@
 # CURRENT — pick up here
 
-**Updated 2026-09-22 after F0-UI. Track C (card redesign) and the
+**Updated 2026-09-22 after C5-UI. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
-answered. Phases 1-10 are done. Phase 11 (C5-UI) is BLOCKED until a real
-graded slate exists (next NFL Sunday, 2026-09-27), so under A6 the next
-actionable phase is 12 (DJ-GOLF, a deploy). Don't stop to ask.**
+answered. Phases 1-11 are BUILT. C5-UI is built but NOT signed
+off: it waits on a real graded slate (NFL Sunday 2026-09-27 plus one MLB day
+graded by PY-A's code). The next unbuilt phase is 12 (DJ-GOLF, a deploy).
+Don't stop to ask.**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
@@ -43,7 +44,7 @@ actionable phase is 12 (DJ-GOLF, a deploy). Don't stop to ask.**
 | 8 | C4 Slate imagery (Movers included) | **done** |
 | 9 | C6 props controls (tabs → filters, Home Runs deleted) | **done** — tabs → status/watchlist, HR deleted, Position, Showing line, filter surfaces on the kit, <640 filters sheet (`5c41440`, `b3f7d5c`, `fc8e69f`) |
 | 10 | F0-UI research-page flags + Slate spotlight cards | **done** — `/api/slate/flags`, `ResearchFlags` (chips on the player page, card on team/game), the Python spotlights on the Slate, N5 weather (`400802d`) |
-| 11 | C5-UI receipts table + new Specials (needs a real graded slate) | — |
+| 11 | C5-UI receipts table + new Specials (needs a real graded slate) | **built, awaiting graded slate** — receipts card, percentile cells, read line, sticky player column (`815b94e`). Sign off after NFL Sunday 2026-09-27 + one MLB day graded by PY-A's code |
 | 12 | DJ-GOLF tournament → course backfill (**deploy**) | — |
 | 13 | DJ-TEN TML-Database ingest, licence check first (**deploy**) | — |
 | 14 | SP-GOLF, SP-TEN | — |
@@ -159,6 +160,18 @@ Update this table and the run doc's §2 after every phase commit, then push.
 - **F0: the flags route caches the whole sport-day and slices in `transform`.**
   One cache entry serves the Slate and every player, team and game page; keying
   per athlete id would mint hundreds.
+- **C5: a `cachedRoute` serves the SHAPE it cached.** `snapshot_cache` survives
+  deploys, so for one TTL after a payload's shape changes the page is handed the
+  OLD shape. Adding `receipts.slates` took the whole Slate down with "Cannot
+  read properties of undefined" — `tsc` says the field is there and the cached
+  bytes disagree. **Read a new array off a cached payload defensively**, and
+  render before believing.
+- **C5: a ranking can have a leader row and NO graded players.** Measured on
+  `nfl-longest-reception` 2026-09-21: `grade()` skips a row whose team's game
+  has not landed in `player_game_history`, so the slate's real leader was
+  written and all 11 ranked players were left ungraded. Watch this on 09-27 —
+  if it repeats, NFL receipts will never fill and it is a Python fix, not a UI
+  one.
 - **Bash heredocs eat backslashes, quotes and `\n`** in this environment.
   Write scripts and regex-bearing tests with the Write/Edit tools.
 - The browser can't load `file://`. Use the `design-mockups` preview.
