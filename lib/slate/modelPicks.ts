@@ -26,6 +26,9 @@ export interface ModelPickRow {
   total: { side: 'over' | 'under'; line: number; price: number | null } | null;
   /** Locked at first pitch; until then the pick can still move. */
   locked: boolean;
+  /** C4: the two team marks, for the game cell. */
+  awayLogoUrl: string | null;
+  homeLogoUrl: string | null;
 }
 
 export interface ModelPicksData {
@@ -39,6 +42,11 @@ function teamName(row: GamePickRow, side: 'home' | 'away' | null): string | null
   if (side === 'home') return row.homeTeamName;
   if (side === 'away') return row.awayTeamName;
   return null;
+}
+
+/** MLB's team mark, from the numeric team id `game_picks` already holds. */
+function mlbTeamLogo(teamId: number | null | undefined): string | null {
+  return teamId != null ? `https://www.mlbstatic.com/team-logos/${teamId}.svg` : null;
 }
 
 /** Pure: the day's rows from `game_picks`, reduced to what may be shown. */
@@ -59,6 +67,8 @@ export function toModelPicks(rows: GamePickRow[], date: string): ModelPickRow[] 
         moneyline: mlTeam ? { team: mlTeam, price: r.mlFinalPrice ?? r.mlInitialPrice } : null,
         total: totalSide && totalLine != null ? { side: totalSide, line: totalLine, price: r.totalFinalPrice ?? r.totalInitialPrice } : null,
         locked: r.mlFinalCapturedAt != null || r.totalFinalCapturedAt != null,
+        awayLogoUrl: mlbTeamLogo(r.awayTeamId),
+        homeLogoUrl: mlbTeamLogo(r.homeTeamId),
       };
     })
     .filter((r) => r.moneyline != null || r.total != null)

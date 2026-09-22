@@ -732,7 +732,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
               <SlateGames data={slateRead.data} loading={slateRead.loading} />
             )}
 
-            <SlateMovers data={moversRead.data} loading={moversRead.loading} />
+            <SlateMovers data={moversRead.data} loading={moversRead.loading} sport={sport} />
 
             {/* Golf has no prop-market cards: its winner prices are cached,
                 not stored per book, so there is no book-by-book spread to

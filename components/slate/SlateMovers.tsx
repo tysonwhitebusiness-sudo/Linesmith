@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Chip, DataTable, EmptyState, SegmentedToggle, Tabs, type Column, SectionBand } from '@/components/ui';
+import { Avatar, Card, Chip, DataTable, EmptyState, SegmentedToggle, Tabs, type Column, SectionBand } from '@/components/ui';
 import { Sparkline } from '@/components/charts';
+import { espnHeadshot, mlbHeadshot } from '@/lib/sports/shared/identity';
 import type { ConsensusMover, MoverKind, MoverWindow } from '@/lib/slate/marketMoves';
 
 /**
@@ -66,7 +67,18 @@ function timeText(iso: string | null): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number): Column<ConsensusMover>[] {
+/** A player headshot from the subject id, same id-space rules the player rail uses. */
+function moverHeadshot(sport: string, subjectId: string | null): string | null {
+  if (!subjectId) return null;
+  if (sport === 'mlb') return mlbHeadshot(subjectId);
+  if (sport === 'nfl') return espnHeadshot('nfl', subjectId);
+  if (sport === 'cfb') return espnHeadshot('college-football', subjectId);
+  if (sport === 'nba') return espnHeadshot('nba', subjectId);
+  if (sport === 'tennis') return espnHeadshot('tennis', subjectId);
+  return null;
+}
+
+function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number, sport: string): Column<ConsensusMover>[] {
   return [
     {
       key: 'subject',
@@ -75,6 +87,9 @@ function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number): Column<
       render: (m) => (
         <span className="flex min-w-0 flex-col">
           <span className="flex items-center gap-1.5">
+            {kind === 'props' && m.subjectId ? (
+              <Avatar label={m.subjectName ?? m.subjectId} src={moverHeadshot(sport, m.subjectId) ?? undefined} size={24} decorative />
+            ) : null}
             <span className="truncate text-ink">{kind === 'props' ? (m.subjectName ?? m.subjectId) : (m.matchup ?? m.gameId)}</span>
             {m.steam ? (
               <Chip size="sm" shape="box" title="At least three books moved the same way within 30 minutes.">
@@ -159,7 +174,7 @@ function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number): Column<
   ];
 }
 
-export function SlateMovers({ data, loading }: { data: SlateMoversData | null; loading: boolean }) {
+export function SlateMovers({ data, loading, sport }: { data: SlateMoversData | null; loading: boolean; sport: string }) {
   const [kind, setKind] = useState<MoverKind>('props');
   const [win, setWin] = useState<MoverWindow>('first');
 
@@ -203,7 +218,7 @@ export function SlateMovers({ data, loading }: { data: SlateMoversData | null; l
         {rows.length > 0 ? (
           <DataTable<ConsensusMover>
             caption={`Movers, ${active === 'props' ? 'props' : 'game lines'}`}
-            columns={columnsFor(active, win, maxMove)}
+            columns={columnsFor(active, win, maxMove, sport)}
             rows={rows}
             rowKey={(m) => `${m.gameId}|${m.subjectId ?? ''}|${m.market}|${m.side}`}
             paging={{ mode: 'more', pageSize: 20 }}

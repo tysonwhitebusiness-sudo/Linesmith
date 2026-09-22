@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Chip, DataTable, type Column, SectionBand } from '@/components/ui';
+import { Avatar, Card, Chip, DataTable, type Column, SectionBand } from '@/components/ui';
 import type { ModelPickRow, ModelPicksData } from '@/lib/slate/modelPicks';
 
 /**
@@ -28,9 +28,15 @@ const COLUMNS: Column<ModelPickRow>[] = [
     label: 'Game',
     sortable: false,
     render: (r) => (
-      <span className="flex flex-col leading-tight">
-        <span className="text-ink">{r.matchup}</span>
-        <span className="text-label text-ink-muted">{time(r.startsAt)}</span>
+      <span className="flex items-center gap-2">
+        <span className="flex shrink-0 -space-x-1">
+          {r.awayLogoUrl ? <Avatar kind="logo" label="" src={r.awayLogoUrl} size={20} decorative /> : null}
+          {r.homeLogoUrl ? <Avatar kind="logo" label="" src={r.homeLogoUrl} size={20} decorative /> : null}
+        </span>
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-ink">{r.matchup}</span>
+          <span className="text-label text-ink-muted">{time(r.startsAt)}</span>
+        </span>
       </span>
     ),
   },

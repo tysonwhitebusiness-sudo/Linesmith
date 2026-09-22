@@ -47,6 +47,18 @@ export interface SpotlightRow {
    */
   why: string;
   href?: string | null;
+  /** C4: the player's headshot, and the team mark (or golf flag) to fall back to. */
+  headshotUrl?: string | null;
+  logoUrl?: string | null;
+}
+
+/** The images the candidate's own meta already carries. */
+function subjectImages(c: PickCandidate): { headshotUrl: string | null; logoUrl: string | null } {
+  const m = (c.subjectMeta ?? {}) as Record<string, unknown>;
+  return {
+    headshotUrl: typeof m.headshotUrl === 'string' ? m.headshotUrl : null,
+    logoUrl: typeof m.teamLogoUrl === 'string' ? m.teamLogoUrl : typeof m.flagUrl === 'string' ? m.flagUrl : null,
+  };
 }
 
 export interface SpotlightColumn {
@@ -200,6 +212,7 @@ export function hitRateLeaders(candidates: PickCandidate[], opts: SpotlightOptio
             ? `Cleared this line in ${r.recent.hits} of the last ${r.recent.total} — above their own ${pct(r.baselineRate)} across every ${one} held.`
             : `Cleared this line in ${r.recent.hits} of the last ${r.recent.total}, against ${pct(r.baselineRate)} across every ${one} held.`,
       href: hrefOf(r.c, sport, league),
+      ...subjectImages(r.c),
     }));
 
   return {
@@ -280,6 +293,7 @@ export function activeStreaks(candidates: PickCandidate[], opts: SpotlightOption
         },
         why: `${isOver ? 'Cleared' : 'Missed'} this line in each of the last ${n} ${noun}.`,
         href: hrefOf(r.c, sport, league),
+        ...subjectImages(r.c),
       };
     });
 

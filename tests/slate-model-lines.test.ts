@@ -44,7 +44,7 @@ const pick = (over: Partial<GamePickRow> = {}): GamePickRow =>
 
 test("the Model section's rows carry no probability, grade, stake or record", () => {
   const [row] = toModelPicks([pick()], '2026-09-21');
-  assert.deepEqual(Object.keys(row).sort(), ['gameId', 'locked', 'matchup', 'moneyline', 'startsAt', 'total']);
+  assert.deepEqual(Object.keys(row).sort(), ['awayLogoUrl', 'gameId', 'homeLogoUrl', 'locked', 'matchup', 'moneyline', 'startsAt', 'total']);
   assert.deepEqual(row.moneyline, { team: 'Baltimore Orioles', price: -110 });
   assert.deepEqual(row.total, { side: 'under', line: 7.5, price: 103 });
   assert.equal(row.locked, false);

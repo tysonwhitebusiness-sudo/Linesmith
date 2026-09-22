@@ -27,6 +27,8 @@ function toColumns(card: SpotlightCard): Column<SpotlightRow>[] {
         <AvatarLabel
           name={r.subjectName}
           sub={[r.market, r.context].filter(Boolean).join(' · ')}
+          src={r.headshotUrl ?? undefined}
+          fallbackSrc={r.logoUrl ?? undefined}
           size={24}
           href={r.href ?? undefined}
         />
