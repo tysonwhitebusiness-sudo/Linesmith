@@ -430,6 +430,10 @@ export interface PickItem {
   image?: ReactNode;
   /** A chip or count at the right edge. */
   badge?: ReactNode;
+  /** C3: the right-edge block — the headline value + unit + the "N mkts" chip. */
+  trailing?: ReactNode;
+  /** C3: the team primary, drawn as a 3px bar on the selected row's left edge. */
+  accent?: string;
   /** A small tag after the label (a position). */
   tag?: ReactNode;
   group?: string;
@@ -462,8 +466,11 @@ export function PickList({
       key={i.key}
       id={i.key}
       textValue={i.label}
-      className="group flex cursor-pointer items-center gap-2 rounded-ctl px-2 py-1.5 text-left outline-hidden transition-colors duration-instant data-focus-visible:ring-2 data-focus-visible:ring-ink data-hovered:bg-card-sunk data-selected:bg-accent-soft"
+      className="group relative flex cursor-pointer items-center gap-2 rounded-ctl px-2 py-1.5 text-left outline-hidden transition-colors duration-instant data-focus-visible:ring-2 data-focus-visible:ring-ink data-hovered:bg-card-sunk data-selected:bg-accent-soft"
     >
+      {i.accent ? (
+        <span aria-hidden className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full opacity-0 transition-opacity duration-instant group-data-selected:opacity-100" style={{ background: i.accent }} />
+      ) : null}
       {i.image ? <span className="flex shrink-0">{i.image}</span> : null}
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
@@ -472,7 +479,11 @@ export function PickList({
         </span>
         {i.sub ? <span className="block truncate text-label text-ink-muted">{i.sub}</span> : null}
       </span>
-      {i.badge != null ? <span className="shrink-0 text-label tabular-nums text-ink-secondary">{i.badge}</span> : null}
+      {i.trailing != null ? (
+        <span className="flex shrink-0 flex-col items-end">{i.trailing}</span>
+      ) : i.badge != null ? (
+        <span className="shrink-0 text-label tabular-nums text-ink-secondary">{i.badge}</span>
+      ) : null}
     </ListBoxItem>
   );
   return (

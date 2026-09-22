@@ -410,12 +410,16 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
     if (!s || s.games === 0) continue;
     if (s.passingYards >= s.rushingYards && s.passingYards >= s.receivingYards && s.passingYards > 0) {
       subject.statusLine = `${s.passingYards} pass yds`;
+      subject.headline = { value: `${s.passingYards}`, unit: 'pass yds' };
     } else if (s.rushingYards >= s.receivingYards && s.rushingYards > 0) {
       subject.statusLine = `${s.rushingYards} rush yds`;
+      subject.headline = { value: `${s.rushingYards}`, unit: 'rush yds' };
     } else if (s.receivingYards > 0) {
       subject.statusLine = `${s.receptions} rec · ${s.receivingYards} rec yds`;
+      subject.headline = { value: `${s.receivingYards}`, unit: 'rec yds' };
     } else if (s.kickingPoints > 0) {
       subject.statusLine = `${s.kickingPoints} kicking pts`;
+      subject.headline = { value: `${s.kickingPoints}`, unit: 'kicking pts' };
     }
   }
 

@@ -6,7 +6,9 @@ import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { PlayerDetail, FilterChip } from './PlayerDetail';
 import { PlayerSkeleton } from './Skeleton';
-import { Chip, Input, PickList, SearchIcon } from './ui';
+import { Chip, Input, PickList, SearchIcon, SegmentedToggle, useUrlState } from './ui';
+import { useTeamColors } from './useTeamColors';
+import { teamColor } from '@/lib/sports/shared/teamColors';
 import { useGolfPlayerStats } from './useGolfPlayerStats';
 import { useSyntheticPlayerCandidates } from './useSyntheticPlayerCandidates';
 import { usePlayerIndex } from './usePlayerIndex';
@@ -63,6 +65,10 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
   const [positionFilter, setPositionFilter] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [market, setMarket] = useState<string | undefined>(undefined);
+  // C3: the rail's controls live in the URL, like every other R-track control.
+  const teamColors = useTeamColors(sport, league ?? null);
+  const [sort, setSort] = useUrlState('sort', 'headline', ['headline', 'name', 'markets']);
+  const [propsOnly, setPropsOnly] = useUrlState('props', '0', ['0', '1']);
 
   /**
    * R10.5 — the sport's own players, so this tab works on a day with no games.
@@ -88,7 +94,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
    * tell where a player came from.
    */
   const allSubjects = useMemo(() => {
-    const slate = (snapshot?.subjects ?? []).map((s) => ({ subjectId: s.subjectId, subjectName: s.subjectName, statusLine: s.statusLine ?? null, meta: (s.meta ?? {}) as Record<string, unknown>, onSlate: true }));
+    const slate = (snapshot?.subjects ?? []).map((s) => ({ subjectId: s.subjectId, subjectName: s.subjectName, statusLine: s.statusLine ?? null, headline: s.headline ?? null, matchup: s.matchup ?? null, meta: (s.meta ?? {}) as Record<string, unknown>, onSlate: true }));
     // The slate keys players by the sport's NAMESPACED id ("espn:basketball:
     // 4278073") and the index by the bare one, so they are matched on the bare
     // id — matching the raw strings listed 461 NBA players twice.
@@ -99,6 +105,8 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
         subjectId: p.athleteId,
         subjectName: p.name,
         statusLine: null,
+        headline: null,
+        matchup: null,
         meta: { position: p.position ?? undefined, headshotUrl: faceFor(sport, league ?? null, p.athleteId) ?? undefined } as Record<string, unknown>,
         onSlate: false,
       }));
@@ -119,18 +127,29 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
     const filtered = allSubjects.filter((s) => {
       if (query && !s.subjectName.toLowerCase().includes(query)) return false;
       if (positionFilter && s.meta?.position !== positionFilter) return false;
+      if (propsOnly === '1' && (candidateCountBySubject.get(s.subjectId) ?? 0) === 0) return false;
       return true;
     });
-    // Players with tracked patterns first — that's what this tab is for — then
-    // the rest of the slate, then everyone else the sport holds.
+    // C3: headline (default, desc), name, or markets. Players with a price
+    // first on the default, so the tab leads with what it is for.
     return [...filtered].sort((a, b) => {
+      if (sort === 'name') return a.subjectName.localeCompare(b.subjectName);
       const ac = candidateCountBySubject.get(a.subjectId) ?? 0;
       const bc = candidateCountBySubject.get(b.subjectId) ?? 0;
-      if (ac !== bc) return bc - ac;
+      if (sort === 'markets') {
+        if (ac !== bc) return bc - ac;
+      } else {
+        const av = a.headline ? Number.parseFloat(a.headline.value) : Number.NaN;
+        const bv = b.headline ? Number.parseFloat(b.headline.value) : Number.NaN;
+        const aHas = Number.isFinite(av);
+        const bHas = Number.isFinite(bv);
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        if (aHas && bHas && av !== bv) return bv - av;
+      }
       if (a.onSlate !== b.onSlate) return a.onSlate ? -1 : 1;
       return a.subjectName.localeCompare(b.subjectName);
     });
-  }, [allSubjects, search, positionFilter, candidateCountBySubject]);
+  }, [allSubjects, search, positionFilter, propsOnly, sort, candidateCountBySubject]);
 
   const activeSubjectId = selectedSubjectId ?? subjects[0]?.subjectId ?? null;
 
@@ -199,6 +218,30 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
             ))}
           </div>
         ) : null}
+        {/* C3: sort + a has-props toggle, both URL-backed. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-2">
+          <SegmentedToggle
+            label="Sort"
+            size="sm"
+            value={sort}
+            onChange={(v) => setSort(v as 'headline' | 'name' | 'markets')}
+            options={[
+              { value: 'headline', label: 'Headline' },
+              { value: 'name', label: 'Name' },
+              { value: 'markets', label: 'Markets' },
+            ]}
+          />
+          <SegmentedToggle
+            label="Props"
+            size="sm"
+            value={propsOnly}
+            onChange={(v) => setPropsOnly(v as '0' | '1')}
+            options={[
+              { value: '0', label: 'All' },
+              { value: '1', label: 'Has props' },
+            ]}
+          />
+        </div>
         {/* U3: the kit PickList (React Aria ListBox). */}
         <PickList
           label="Players"
@@ -212,20 +255,42 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
           items={subjects.map((s) => {
             const count = candidateCountBySubject.get(s.subjectId) ?? 0;
             const meta = (s.meta ?? {}) as Record<string, unknown>;
+            const teamLogoUrl = typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined;
+            const teamAbbr = typeof meta.team === 'string' ? meta.team : null;
+            const teamId = typeof meta.teamId === 'string' || typeof meta.teamId === 'number' ? meta.teamId : null;
+            const color = teamColor(teamColors, { id: teamId, abbr: teamAbbr });
             return {
               key: s.subjectId,
               label: s.subjectName,
-              sub: s.statusLine || undefined,
+              sub: s.matchup ?? undefined,
               tag: typeof meta.position === 'string' ? <Chip tone="neutral" size="sm">{meta.position}</Chip> : undefined,
               image: (
-                <SubjectAvatar
-                  name={s.subjectName}
-                  headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-                  fallbackUrl={typeof (meta.flagUrl ?? meta.teamLogoUrl) === 'string' ? ((meta.flagUrl ?? meta.teamLogoUrl) as string) : undefined}
-                  size={26}
-                />
+                <span className="relative block shrink-0">
+                  <SubjectAvatar
+                    name={s.subjectName}
+                    headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
+                    fallbackUrl={typeof (meta.flagUrl ?? meta.teamLogoUrl) === 'string' ? ((meta.flagUrl ?? meta.teamLogoUrl) as string) : undefined}
+                    size={40}
+                  />
+                  {teamLogoUrl ? (
+                    <span className="absolute -bottom-0.5 -right-0.5 grid size-[18px] place-items-center rounded-full bg-card ring-1 ring-line">
+                      <TeamLogo logoUrl={teamLogoUrl} size={12} />
+                    </span>
+                  ) : null}
+                </span>
               ),
-              badge: count > 0 ? count : undefined,
+              trailing: (
+                <>
+                  {s.headline ? (
+                    <span className="flex items-baseline gap-1">
+                      <span className="text-body-sm font-semibold tabular-nums text-ink">{s.headline.value}</span>
+                      <span className="text-label font-normal text-ink-muted">{s.headline.unit}</span>
+                    </span>
+                  ) : null}
+                  {count > 0 ? <Chip tone="good" size="sm">{count} mkts</Chip> : null}
+                </>
+              ),
+              accent: color?.primary,
             };
           })}
         />

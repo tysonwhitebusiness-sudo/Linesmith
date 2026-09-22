@@ -83,6 +83,23 @@ function subjectStatusLine(position: string | undefined, seasonStats: PlayerSeas
   }
 }
 
+/** C3: the one headline stat by position — the value the rail prints with its unit. */
+function subjectHeadline(position: string | undefined, seasonStats: PlayerSeasonStats | undefined): { value: string; unit: string } | null {
+  if (!seasonStats || seasonStats.games === 0) return null;
+  switch (position) {
+    case 'QB':
+      return { value: `${seasonStats.passingYards}`, unit: 'pass yds' };
+    case 'RB':
+    case 'FB':
+      return { value: `${seasonStats.rushingYards}`, unit: 'rush yds' };
+    case 'WR':
+    case 'TE':
+      return { value: `${seasonStats.receivingYards}`, unit: 'rec yds' };
+    default:
+      return null;
+  }
+}
+
 /**
  * Which of a team's/opponent's real defense-allowed groups a position's own
  * markets should be compared against — same table
@@ -419,6 +436,7 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
               weeklyBoxScores: Object.fromEntries(boxByWeek),
             },
             statusLine: subjectStatusLine(rosterEntry.position, seasonStats),
+            headline: subjectHeadline(rosterEntry.position, seasonStats),
           });
         }
       }

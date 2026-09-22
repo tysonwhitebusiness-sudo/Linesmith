@@ -284,6 +284,7 @@ async function attachFullRosterSubjects(subjectsMap: Map<string, SubjectSummary>
         const saves = matches.reduce((s, m) => s + m.saves, 0);
         const goalsAgainst = matches.reduce((s, m) => s + m.goalsAgainst, 0);
         subject.statusLine = saves > 0 ? `${saves} SV · ${goalsAgainst} GA` : `${goals} G · ${assists} A · ${points} P`;
+        subject.headline = saves > 0 ? { value: `${saves}`, unit: 'SV' } : { value: `${points}`, unit: 'pts' };
       }
     } catch {
       // Real NHL schedule/boxscore hiccup for this one team — its roster
@@ -512,6 +513,8 @@ export async function buildNhlSnapshot(): Promise<SportSnapshot> {
       seasonStats.saves > 0
         ? `${seasonStats.saves} SV · ${seasonStats.goalsAgainst} GA`
         : `${seasonStats.goals} G · ${seasonStats.assists} A · ${seasonStats.points} P`;
+    subject.headline =
+      seasonStats.saves > 0 ? { value: `${seasonStats.saves}`, unit: 'SV' } : { value: `${seasonStats.points}`, unit: 'pts' };
   }
 
   const seasonStatus = await fetchSeasonStatus('hockey', 'nhl');

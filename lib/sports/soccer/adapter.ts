@@ -302,10 +302,12 @@ async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeag
     if (subject && !subject.statusLine) {
       if (seasonStats) {
         subject.statusLine = `${seasonStats.goals} G · ${seasonStats.assists} A`;
+        subject.headline = { value: `${seasonStats.goals}`, unit: 'goals' };
       } else if (matches.length > 0) {
         const goals = matches.reduce((s, m) => s + m.goals, 0);
         const assists = matches.reduce((s, m) => s + m.assists, 0);
         subject.statusLine = `${goals} G · ${assists} A`;
+        subject.headline = { value: `${goals}`, unit: 'goals' };
       }
     }
 

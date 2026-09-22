@@ -107,6 +107,7 @@ async function attachRealHistory(candidates: PickCandidate[], tour: TennisTour, 
       const wins = matches.filter((m) => m.isWinner).length;
       const avgAces = matches.reduce((s, m) => s + m.aces, 0) / matches.length;
       subject.statusLine = `${wins}-${matches.length - wins} · ${avgAces.toFixed(1)} aces/match`;
+      subject.headline = { value: `${wins}-${matches.length - wins}`, unit: 'W-L' };
     }
   });
 }

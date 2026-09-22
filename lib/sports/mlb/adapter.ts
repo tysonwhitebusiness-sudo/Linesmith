@@ -2190,6 +2190,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
           subjectId: String(person.id),
           subjectName: person.fullName,
           statusLine: last ? `Last: ${last.stat?.hits ?? 0}-${last.stat?.atBats ?? 0}` : undefined,
+          headline: last ? { value: `${last.stat?.hits ?? 0}-${last.stat?.atBats ?? 0}`, unit: 'Last' } : null,
           meta: {
             team: side.abbreviation,
             role: 'batter',
@@ -2249,6 +2250,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
             subjectId: String(person.id),
             subjectName: person.fullName,
             statusLine: `${side.abbreviation} starter${person.pitchHand ? ` (${person.pitchHand}HP)` : ''}`,
+            headline: null,
             meta: {
               team: side.abbreviation,
               role: 'pitcher',

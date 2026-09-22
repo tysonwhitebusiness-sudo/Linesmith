@@ -469,6 +469,7 @@ function subjectSummary(golfer: EspnGolfer, now: Date): SubjectSummary {
     subjectId: golfer.id,
     subjectName: golfer.name,
     statusLine,
+    headline: { value: score, unit: 'today' },
     meta: {
       country: golfer.country,
       headshotUrl: golfer.headshotUrl,

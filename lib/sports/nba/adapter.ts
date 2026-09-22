@@ -375,6 +375,7 @@ export async function buildNbaSnapshot(): Promise<SportSnapshot> {
       const rebounds = matches.reduce((s, m) => s + m.rebounds, 0) / matches.length;
       const assists = matches.reduce((s, m) => s + m.assists, 0) / matches.length;
       subject.statusLine = `${points.toFixed(1)} pts · ${rebounds.toFixed(1)} reb · ${assists.toFixed(1)} ast`;
+      subject.headline = { value: points.toFixed(1), unit: 'PPG' };
     }
   } catch {
     // Real sportsdataverse hiccup — Players tab just shows no stat lines for this load.

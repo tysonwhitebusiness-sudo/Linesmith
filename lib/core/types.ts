@@ -284,5 +284,9 @@ export interface SubjectSummary {
   meta?: Record<string, unknown>;
   /** Short status line, e.g. '-4 thru 12' or '2-4, 1 HR'. */
   statusLine?: string;
+  /** C3: the one headline stat the rail shows, structured as a value + its unit. */
+  headline?: { value: string; unit: string } | null;
+  /** C3: the upcoming matchup, e.g. "@ TB · Sun 3:05", or "no game today". */
+  matchup?: string | null;
   liveState?: LiveState;
 }
