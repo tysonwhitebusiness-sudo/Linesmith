@@ -60,7 +60,7 @@ test('ordinals', () => {
   assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 112].map(ordinal), ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '101st', '112th']);
 });
 
-test('C1: every section header is the charcoal band; no page renders its own', () => {
+test('C1b: every section header is the transparent band with a charcoal side line; no page renders its own', () => {
   // Variant A (D-C3). Before C1 the Slate alone had seven hand-rolled h2s.
   const { readdirSync: rd } = require('node:fs') as typeof import('node:fs');
   const files: string[] = [];
@@ -77,8 +77,9 @@ test('C1: every section header is the charcoal band; no page renders its own', (
   assert.deepEqual(hits, []);
   const band = readFileSync('components/ui/Section.tsx', 'utf8');
   assert.match(band, /bg-char/);
-  assert.match(band, /border-t-2/);
-  assert.match(band, /border-t-char-rule/);
+  assert.match(band, /border-b border-line-soft/);
   assert.match(band, /var\(--lb-gutter, 0px\)/);
+  assert.doesNotMatch(band, /bg-char3/);
+  assert.doesNotMatch(band, /text-char-ink/);
   assert.doesNotMatch(band, /bg-good|text-good/);
 });

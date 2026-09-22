@@ -29,12 +29,13 @@ import { cx } from './cx';
  * that was hidden re-measures to its real width on the way back.
  */
 /**
- * C1 (D-C3, variant A): the one section header. A full-bleed charcoal band
- * with a 2px `char-rule` top line; green never marks structure. It bleeds to
- * the page gutter each `<main>` declares as `--lb-gutter`, so it never
- * overflows a page with a narrower gutter (the right-edge bug, SL-25).
- * Research sections render it through `Section`; the Slate's sections use it
- * directly. `tests/ui-primitives` bans a page's own `<h2 className="text-title`.
+ * C1b (2026-09-21, operator): the one section header. A transparent bar with
+ * a 3px charcoal line on the left and a hairline divider beneath; green never
+ * marks structure. It still bleeds to the page gutter each `<main>` declares
+ * as `--lb-gutter`, so it never overflows a page with a narrower gutter (the
+ * right-edge bug, SL-25). Research sections render it through `Section`; the
+ * Slate's sections use it directly. `tests/ui-primitives` bans a page's own
+ * `<h2 className="text-title`.
  */
 export function SectionBand({
   title,
@@ -53,14 +54,15 @@ export function SectionBand({
   return (
     <div
       className={cx(
-        'mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t-2 border-b border-t-char-rule border-b-char3 bg-char px-4 py-3.5 text-char-ink sm:flex-nowrap sm:px-6 sm:py-4',
+        'relative mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line-soft py-2 pl-4 sm:flex-nowrap sm:pl-5',
         className,
       )}
       style={{ marginInline: 'calc(var(--lb-gutter, 0px) * -1)' }}
     >
-      <h2 className="text-title text-char-ink sm:text-heading">{title}</h2>
-      {count != null ? <span className="rounded-full bg-char3 px-2 py-0.5 text-label tabular-nums text-char-ink2">{count}</span> : null}
-      {sub ? <span className="text-body-sm text-char-ink2">{sub}</span> : null}
+      <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] rounded-full bg-char" />
+      <h2 className="text-title text-ink sm:text-heading">{title}</h2>
+      {count != null ? <span className="rounded-full bg-card-sunk px-2 py-0.5 text-label tabular-nums text-ink-secondary">{count}</span> : null}
+      {sub ? <span className="text-body-sm text-ink-muted">{sub}</span> : null}
       {right ? <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap">{right}</div> : null}
     </div>
   );
@@ -76,7 +78,7 @@ export function Section({ id, title, sub, children, className }: { id: string; t
         sub={sub}
         className={collapsed ? 'mb-0' : undefined}
         right={
-          <Button variant="onDark" size="sm" onPress={() => setCollapsed((c) => !c)} aria-expanded={!collapsed} aria-controls={bodyId}>
+          <Button variant="tertiary" size="sm" onPress={() => setCollapsed((c) => !c)} aria-expanded={!collapsed} aria-controls={bodyId}>
             <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={cx('transition-transform', collapsed ? '-rotate-90' : '')}>
               <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
