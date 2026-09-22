@@ -61,15 +61,15 @@ import {
   IconToggleButton,
 } from './FilterBar';
 import { FilterSidebar } from './FilterSidebar';
-import { PeopleIcon, BarsIcon, ShieldIcon, TargetIcon, SlidersIcon, FlameIcon, SidebarIcon, BookIcon, SnowflakeIcon, CheckCircleIcon } from './icons';
+import { PeopleIcon, BarsIcon, ShieldIcon, TargetIcon, SlidersIcon, FlameIcon, SidebarIcon, BookIcon, SnowflakeIcon, CheckCircleIcon, PositionIcon } from './icons';
 import { useGolfLines } from './useGolfLines';
 import { TournamentLinesView } from './TournamentLinesView';
 import { TournamentNotStartedNotice } from './TournamentNotStartedNotice';
 import { TeamLogo, GameMatchupLabel, nflTeamLogoUrl } from './SubjectAvatar';
 import { buildSlate, type SlateEntry, type SlateGame } from '@/lib/odds/matching';
-import { useFilters, applyFilters, filtersActive, activeFilterCount } from './useFilters';
-import { Tabs, SectionBand } from './ui';
-import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
+import { useFilters, applyFilters, filtersActive } from './useFilters';
+import { SegmentedToggle, Toggle, Chip, Button, SectionBand } from './ui';
+import { easternDate } from '@/lib/sports/mlb/statsapi';
 
 /**
  * Phase 2 — GOOD BETS IS GONE, and the ranking replaced it.
@@ -93,14 +93,10 @@ import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
  * toggles instead (Hot Streak / Cold Streak / Consistent, in the filter bar)
  * so they narrow whichever tab you're already on rather than replacing it.
  *
- * "Home Runs" (Home Run model plan, Phase 7) — the standalone home-run
- * model's daily rankings, sorted by its own modelProb. Same underline-tab
- * pattern as every other entry here, not a separate page: one more
- * filter+sort added to `views` below, rendered through the same
- * renderList/ScanTable machinery.
+ * C6: the view tabs are gone — status (All / Upcoming / Live) and Watchlist
+ * are independent controls, and the Home Runs board was deleted outright (HR
+ * props remain a value of the Market filter; the HR *ranking* is a Special).
  */
-const SCAN_VIEWS = ['All', 'Coming up', 'Watchlist', 'Home Runs'] as const;
-type ScanView = (typeof SCAN_VIEWS)[number];
 
 const LAST_SPORT_KEY = 'linesmith:last-sport';
 const DENSE_KEY = 'linesmith:dense';
@@ -174,7 +170,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // Every sport opens on All, which is now the ranked board rather than an
   // unordered dump — Phase 2 made the ranking the table's default sort, so
   // there is no longer a "best" tab to land on instead of the whole slate.
-  const [scanView, setScanView] = useState<ScanView>('All');
   const calibration = useMarketCalibration(true, sport);
   // Phase 2 — the validated prop model. Runs for every sport and is inert for
   // the seven with no fitted model, same as every other hook here (rules of
@@ -260,6 +255,10 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     toggleHotStreak,
     toggleColdStreak,
     toggleConsistentOnly,
+    togglePosition,
+    setPositions,
+    setStatus,
+    toggleWatchlistOnly,
     clearAll,
   } = useFilters();
 
@@ -280,7 +279,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     const market = searchParams.get('market');
     if (!market) return;
     toggleDimension(market);
-    setScanView('All');
+    setStatus('all');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -293,10 +292,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   useEffect(() => {
     setSelectedSubjects(new Set());
     clearAll();
-    // Home Runs is hidden from every sport but MLB (see SCAN_VIEWS.filter
-    // below) — if it was active, switching sports shouldn't land on a tab that
-    // no longer has a button.
-    setScanView((v) => (v === 'Home Runs' && sport !== 'mlb' ? 'All' : v));
   }, [sport, clearAll]);
 
   const candidates = useMemo(() => {
@@ -469,20 +464,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     const watchlist = sortByComingUp(narrowed.filter((c) => slip.watchedIds.has(c.subjectId)));
     // The whole filtered set, ordered by imminence. The table sorts it further.
     const all = sortByComingUp(narrowed);
-    // Home Run model plan, Phase 7 — the standalone model's daily board,
-    // ranked by its own modelProb (whichever source populated it: the fitted
-    // home-run model when active, the plain Beta-Binomial baseline
-    // otherwise — see adapter.ts's Phase 6 wiring). Built from
-    // `filteredBeforePriceGate` like Good Bets: a batter with no posted price
-    // yet still belongs on a rankings board, unlike a market-dependent view.
-    const homeRuns = filteredBeforePriceGate
-      .filter((c) => c.dimension === 'home-runs')
-      .map((c) => ({ candidate: c, prob: (c.subjectMeta as Record<string, unknown> | undefined)?.modelProb }))
-      .filter((r): r is { candidate: PickCandidate; prob: number } => typeof r.prob === 'number')
-      .sort((a, b) => b.prob - a.prob)
-      .map((r) => r.candidate);
-    return { all, comingUp, watchlist, homeRuns };
-  }, [narrowed, filteredBeforePriceGate, slip.watchedIds, filters.oddsMin, filters.oddsMax, filters.showNoOdds, filters.hotStreak, filters.coldStreak, slateProps.rows, effectiveSportsbook]);
+    // C6: "live" — a game whose state is in progress, which the Slate already
+    // reads (liveState.status === 'live'). The Home Runs board was deleted.
+    const live = sortByComingUp(narrowed.filter((c) => c.liveState.status === 'live'));
+    return { all, comingUp, watchlist, live };
+  }, [narrowed, slip.watchedIds]);
 
   // Odds columns in the dense scan view need each subject's game.
   const slate = useMemo(() => {
@@ -526,6 +512,42 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([t, logoUrl]) => ({ value: t, label: t, icon: <TeamLogo logoUrl={logoUrl} size={16} /> }));
   }, [candidates]);
+
+  // C6: position is a new filter (the plan's "Position (new)"), from each
+  // candidate's own meta.position.
+  const positionOptions = useMemo(() => {
+    const positions = new Set<string>();
+    for (const c of candidates) {
+      const p = (c.subjectMeta as Record<string, unknown> | undefined)?.position;
+      if (typeof p === 'string' && p) positions.add(p);
+    }
+    return [...positions].sort().map((p) => ({ value: p, label: p }));
+  }, [candidates]);
+
+  // C6: the board's one list — status narrows to upcoming/live, and the
+  // watchlist toggle ANDs watched ids on top.
+  const displayList = useMemo(() => {
+    const base = filters.status === 'upcoming' ? views.comingUp : filters.status === 'live' ? views.live : views.all;
+    return filters.watchlistOnly ? base.filter((c) => slip.watchedIds.has(c.subjectId)) : base;
+  }, [filters.status, filters.watchlistOnly, views, slip.watchedIds]);
+
+  // C6: the "Showing N of M" line's removable chips — one per active filter.
+  const filterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; clear: () => void }> = [];
+    if (filters.gamePks.size > 0) chips.push({ key: 'games', label: `${filters.gamePks.size} game${filters.gamePks.size === 1 ? '' : 's'}`, clear: () => setGamePks(new Set()) });
+    if (filters.dimensions.size > 0) chips.push({ key: 'markets', label: `${filters.dimensions.size} market${filters.dimensions.size === 1 ? '' : 's'}`, clear: () => filters.dimensions.forEach((d) => toggleDimension(d)) });
+    if (filters.teams.size > 0) chips.push({ key: 'teams', label: `${filters.teams.size} team${filters.teams.size === 1 ? '' : 's'}`, clear: () => filters.teams.forEach((t) => toggleTeam(t)) });
+    if (filters.positions.size > 0) chips.push({ key: 'positions', label: `${filters.positions.size} position${filters.positions.size === 1 ? '' : 's'}`, clear: () => setPositions(new Set()) });
+    if (filters.hitRateMin !== null) chips.push({ key: 'hitrate', label: `Hit rate ≥ ${filters.hitRateMin}%`, clear: () => setHitRateMin(null) });
+    if (filters.oddsMin !== null || filters.oddsMax !== null || !filters.showNoOdds) chips.push({ key: 'odds', label: `Odds ${filters.oddsMin ?? '−∞'} to ${filters.oddsMax ?? '+∞'}`, clear: () => { setOddsRange(null, null); if (!filters.showNoOdds) toggleShowNoOdds(); } });
+    if (filters.hotStreak || filters.coldStreak || filters.consistentOnly) {
+      const parts = [filters.hotStreak ? 'Hot' : null, filters.coldStreak ? 'Cold' : null, filters.consistentOnly ? 'Consistent' : null].filter(Boolean);
+      chips.push({ key: 'streak', label: parts.join(' / '), clear: () => { if (filters.hotStreak) toggleHotStreak(); if (filters.coldStreak) toggleColdStreak(); if (filters.consistentOnly) toggleConsistentOnly(); } });
+    }
+    if (filters.sportsbook) chips.push({ key: 'book', label: filters.sportsbook, clear: () => setSportsbook(null) });
+    if (filters.playerSearch.trim()) chips.push({ key: 'search', label: `"${filters.playerSearch.trim()}"`, clear: () => setPlayerSearch('') });
+    return chips;
+  }, [filters, setGamePks, toggleDimension, toggleTeam, setPositions, setHitRateMin, setOddsRange, toggleShowNoOdds, toggleHotStreak, toggleColdStreak, toggleConsistentOnly, setSportsbook, setPlayerSearch]);
 
   const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;
 
@@ -805,33 +827,24 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
 
                 <div id="slate-props" className="min-w-0 flex-1 scroll-mt-[150px]">
                   <SectionBand title="Props" />
-                  {/* S1: Scan's own tabs, rebuilt on the kit's `Tabs` with real
-                      counts (D3 freezes the TABLE, not the controls around it).
-                      Home Runs is the standalone home-run model's board — an
-                      MLB-only dimension — so the tab is hidden elsewhere rather
-                      than opening onto a permanently empty list. */}
-                  <Tabs
-                    label="Props view"
-                    value={scanView}
-                    onChange={(v) => setScanView(v as ScanView)}
-                    className="mb-1"
-                    items={SCAN_VIEWS.filter((v) => v !== 'Home Runs' || sport === 'mlb').map((v) => ({
-                      value: v,
-                      label: v,
-                      count:
-                        v === 'All'
-                          ? views.all.length
-                          : v === 'Coming up'
-                            ? views.comingUp.length
-                            : v === 'Watchlist'
-                              ? views.watchlist.length
-                              : views.homeRuns.length,
-                    }))}
-                  />
-
-                  {/* Controls row — search, card/list view, overflow menu, sidebar toggle. */}
-                  <div className="mb-3 mt-3 flex items-center gap-2">
+                  {/* C6: the four view tabs are now a status control and a
+                      watchlist toggle; the counts moved to the "Showing" line. */}
+                  <div className="mb-3 mt-3 flex flex-wrap items-center gap-2">
                     <FilterSearchBox value={filters.playerSearch} onChange={setPlayerSearch} />
+                    <SegmentedToggle
+                      label="Props status"
+                      size="sm"
+                      value={filters.status}
+                      onChange={setStatus}
+                      options={[
+                        { value: 'all', label: 'All' },
+                        { value: 'upcoming', label: 'Upcoming' },
+                        { value: 'live', label: 'Live' },
+                      ]}
+                    />
+                    <Toggle isSelected={filters.watchlistOnly} onChange={toggleWatchlistOnly}>
+                      Watchlist
+                    </Toggle>
                     <div className="flex-1" />
                     <DensityToggle dense={dense} onChange={setDense} />
                     <OverflowMenu active={selectedSubjects.size > 0 || filters.sportsbook != null}>
@@ -910,6 +923,20 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                       </FilterDropdown>
 
                       <FilterDropdown
+                        icon={<PositionIcon size={15} />}
+                        label="Position"
+                        badge={filters.positions.size > 0 ? filters.positions.size : undefined}
+                        active={filters.positions.size > 0}
+                      >
+                        <CheckboxList
+                          options={positionOptions}
+                          selected={filters.positions}
+                          onToggle={togglePosition}
+                          onClear={() => setPositions(new Set())}
+                        />
+                      </FilterDropdown>
+
+                      <FilterDropdown
                         icon={<TargetIcon size={15} />}
                         label="Hit rate"
                         badge={filters.hitRateMin != null ? `≥${filters.hitRateMin}%` : undefined}
@@ -972,19 +999,35 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                     </FilterBar>
                   ) : null}
 
-                  {scanView === 'All' ? renderList(views.all, 'No candidates match these filters.') : null}
+                  {/* C6: the four tab counts became one line; active filters
+                      are removable chips with a Clear all. */}
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-label text-ink-muted">
+                    <span>
+                      Showing <span className="font-semibold text-ink tabular-nums">{displayList.length}</span> of{' '}
+                      <span className="tabular-nums">{views.all.length}</span>
+                    </span>
+                    {filterChips.map((c) => (
+                      <Chip key={c.key} size="sm" onClick={c.clear} title={`Remove ${c.label}`}>
+                        {c.label} ×
+                      </Chip>
+                    ))}
+                    {filterChips.length > 0 ? (
+                      <Button variant="tertiary" size="sm" onPress={clearAll}>
+                        Clear all
+                      </Button>
+                    ) : null}
+                  </div>
 
-                  {scanView === 'Coming up'
-                    ? renderList(views.comingUp, 'Nothing is live and imminent right now. Check All for the whole slate.')
-                    : null}
-
-                  {scanView === 'Watchlist'
-                    ? renderList(views.watchlist, 'Star a player on any card to follow them here.')
-                    : null}
-
-                  {scanView === 'Home Runs'
-                    ? renderList(views.homeRuns, 'No home-run projections available for today’s slate yet.', 'modelProb')
-                    : null}
+                  {renderList(
+                    displayList,
+                    filters.watchlistOnly
+                      ? 'Star a player on any card to follow them here.'
+                      : filters.status === 'upcoming'
+                        ? 'Nothing is live and imminent right now. Check All for the whole slate.'
+                        : filters.status === 'live'
+                          ? 'No games are live right now.'
+                          : 'No candidates match these filters.',
+                  )}
                 </div>
               </div>
             )}

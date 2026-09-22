@@ -31,6 +31,12 @@ export interface FilterState {
   consistentOnly: boolean;
   /** Only candidates that clear the Good Bets bar (lib/odds/goodBets.ts). Applied post-candidate — needs live price + calibration trust. */
   goodBetOnly: boolean;
+  /** Player positions to include (empty = all). */
+  positions: Set<string>;
+  /** Props board status: everything, upcoming, or live. A view control, not a filter chip. */
+  status: 'all' | 'upcoming' | 'live';
+  /** Show only watchlisted players. A view control, not a filter chip. */
+  watchlistOnly: boolean;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -48,6 +54,9 @@ export const DEFAULT_FILTERS: FilterState = {
   coldStreak: false,
   consistentOnly: false,
   goodBetOnly: false,
+  positions: new Set(),
+  status: 'all',
+  watchlistOnly: false,
 };
 
 /** True when any filter is non-default. */
@@ -66,7 +75,8 @@ export function filtersActive(f: FilterState): boolean {
     f.hotStreak ||
     f.coldStreak ||
     f.consistentOnly ||
-    f.goodBetOnly
+    f.goodBetOnly ||
+    f.positions.size > 0
   );
 }
 
@@ -85,6 +95,7 @@ export function activeFilterCount(f: FilterState): number {
   if (f.coldStreak) n += 1;
   if (f.consistentOnly) n += 1;
   if (f.goodBetOnly) n += 1;
+  if (f.positions.size > 0) n += 1;
   return n;
 }
 
@@ -170,6 +181,27 @@ export function useFilters() {
     setFilters((prev) => ({ ...prev, goodBetOnly: !prev.goodBetOnly }));
   }, []);
 
+  const togglePosition = useCallback((position: string) => {
+    setFilters((prev) => {
+      const next = new Set(prev.positions);
+      if (next.has(position)) next.delete(position);
+      else next.add(position);
+      return { ...prev, positions: next };
+    });
+  }, []);
+
+  const setPositions = useCallback((positions: Set<string>) => {
+    setFilters((prev) => ({ ...prev, positions }));
+  }, []);
+
+  const setStatus = useCallback((status: FilterState['status']) => {
+    setFilters((prev) => ({ ...prev, status }));
+  }, []);
+
+  const toggleWatchlistOnly = useCallback(() => {
+    setFilters((prev) => ({ ...prev, watchlistOnly: !prev.watchlistOnly }));
+  }, []);
+
   const clearAll = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
   }, []);
@@ -190,6 +222,10 @@ export function useFilters() {
     toggleColdStreak,
     toggleConsistentOnly,
     toggleGoodBetOnly,
+    togglePosition,
+    setPositions,
+    setStatus,
+    toggleWatchlistOnly,
     clearAll,
   };
 }
@@ -219,6 +255,15 @@ export function applyFilters(candidates: PickCandidate[], f: FilterState): PickC
       const meta = c.subjectMeta as Record<string, unknown> | undefined;
       const team = typeof meta?.team === 'string' ? meta.team : undefined;
       return team ? f.teams.has(team) : false;
+    });
+  }
+
+  // Position filter
+  if (f.positions.size > 0) {
+    result = result.filter((c) => {
+      const meta = c.subjectMeta as Record<string, unknown> | undefined;
+      const pos = typeof meta?.position === 'string' ? meta.position : undefined;
+      return pos ? f.positions.has(pos) : false;
     });
   }
 

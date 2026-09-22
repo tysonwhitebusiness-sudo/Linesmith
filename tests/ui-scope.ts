@@ -24,7 +24,6 @@ export const OUT_OF_SCOPE: readonly string[] = [
   'components/FilterSidebar.tsx',
   'components/PlayerFilterDrawer.tsx',
   'components/DateGameStrip.tsx',
-  'components/useFilters.ts',
   'components/AppShell.tsx',
   // U7: the glider toggle's last importer is `FilterBar` (Scan's filter bar,
   // above). It is part of that frozen surface, not an in-scope survivor.
