@@ -48,7 +48,7 @@
   `SubjectAvatar.tsx`, `mlb/adapter.ts`, `mlb/teamResearch.ts`,
   `playerBio.ts` — and a shared `headshotFor(sport, id)` dispatcher now serves
   the Slate market cards (NFL was already fine: ESPN serves square headshots).
-Next phase: **C6** props controls (tabs → filters).
+Next phase: **finish C6** (the props-controls kit rebuild + mobile sheet).
 
 ### Corrections to the previous session's chat
 
@@ -72,9 +72,14 @@ Next phase: **C6** props controls (tabs → filters).
 
 ### Next
 
-- **C6** Props controls (Track C, phase 9, no deploy): tabs → filters, Home
-  Runs board deleted. Read the run doc §3 correction 3 first — `AppShell.tsx`
-  line numbers have moved.
+- **C6 (core done, `5c41440`):** tabs → status/watchlist, Home Runs board
+  deleted, Position filter, "Showing N of M" + chips, and `useFilters.ts`
+  unfreezed. **Remaining for C6:** rebuild the filter surfaces on the kit
+  (`FilterBar`'s dropdowns/checkboxes/odds inputs/search box → kit
+  `Popover`/`Select`/`Checkbox`/`Input`; `FilterSidebar`, `PlayerFilterDrawer`,
+  `DateGameStrip`, and the glider `SegmentedToggle` — then unfreeze them all in
+  `tests/ui-scope.ts`); the <640 "Filters (n)" bottom sheet; and the 390px
+  ≤3-row guard (needs Playwright, which the repo does not have). See Entry 10.
 - **C4 follow-ups (done):** headshots/logos and the footer book-marks are in,
   and the operator's image audit is applied. Still left for later, both *data*
   additions to `lib/slate/marketMoves.ts`: Movers game-line rows still show text
@@ -327,3 +332,41 @@ name, and the team marks belong in the "team vs opponent" line underneath.
 **Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
 clean; prod server rebuilt and restarted on `:3000`. Pushed
 (`f91eede..76d03b6`).
+
+### Entry 10 — C6 props controls, core (commit `5c41440`)
+
+The heart of C6: the four view tabs are gone, and the Home Runs board with
+them.
+
+- `components/useFilters.ts`: `FilterState` gains `positions` (a real filter),
+  `status` (`'all' | 'upcoming' | 'live'`) and `watchlistOnly` (view controls,
+  deliberately NOT filter chips). Setters, `filtersActive`/`activeFilterCount`,
+  and `applyFilters` all updated; `positions` is applied in `applyFilters`.
+- `components/AppShell.tsx`: `SCAN_VIEWS`/`scanView` and the Home Runs reset
+  effect are deleted. `views` now returns `{ all, comingUp, watchlist, live }`
+  (live = `liveState.status === 'live'`); `displayList` = status → base, then
+  watchlist ANDed on top. The `Tabs` strip is replaced by a kit
+  `SegmentedToggle` (All/Upcoming/Live) + a kit `Toggle` (Watchlist) in the
+  controls row. A Position `FilterDropdown` joins the pill row. The four tab
+  counts became one "Showing N of M" line with removable kit `Chip`s and a kit
+  `Button` "Clear all". The four `renderList` branches collapse to one.
+- `components/icons.tsx`: `PositionIcon` (a location pin).
+- `tests/ui-scope.ts`: `useFilters.ts` unfreezed (pure logic, no JSX, so no
+  guard churn).
+
+**Not done — the rest of C6, be clear it is unfinished:**
+1. **Kit rebuild of the filter surfaces** (`FilterBar.tsx`'s `FilterDropdown`/
+   `CheckboxList`/`FilterSelect`/`FilterSearchBox`/`FilterOddsRangeInputs`/
+   `BooleanCheckboxRow`/`DensityToggle`/`OverflowMenu`/`IconToggleButton`,
+   plus `FilterSidebar`, `PlayerFilterDrawer`, `DateGameStrip`, and the glider
+   `SegmentedToggle`). Until those are on the kit, they stay in
+   `OUT_OF_SCOPE` — the U-track guards are ratchets, so unfreezing them before
+   the rebuild turns the suite red.
+2. **The <640 "Filters (n)" bottom sheet** (C6.3). The pill row still scrolls
+   sideways on a phone; the slideout variant is not built.
+3. **The 390px ≤3-row guard** — the plan asks for a Playwright check, but the
+   repo has no Playwright; it cannot be automated in `node --test`.
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0 (incl. the
+unfreezed `useFilters.ts` swept clean); `npm run build` clean; prod server
+rebuilt and restarted on `:3000`. Pushed (`a08c11c..5c41440`).

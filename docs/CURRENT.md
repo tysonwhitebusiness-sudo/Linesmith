@@ -39,7 +39,7 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 6 | PY-B spotlight rankings: NFL, CFB, NHL, soccer, MLB (**deploy**) — NBA deferred (no Python games loader) | **done** |
 | 7 | C3 player search rail | **done** |
 | 8 | C4 Slate imagery (Movers included) | **done** |
-| 9 | C6 props controls (tabs → filters, Home Runs deleted) | — |
+| 9 | C6 props controls (tabs → filters, Home Runs deleted) | **core done** — tabs → status/watchlist, HR deleted, Position, Showing line (`5c41440`). Remaining: kit rebuild of the filter surfaces + mobile sheet + 390px guard |
 | 10 | F0-UI research-page flags + Slate spotlight cards | — |
 | 11 | C5-UI receipts table + new Specials (needs a real graded slate) | — |
 | 12 | DJ-GOLF tournament → course backfill (**deploy**) | — |
