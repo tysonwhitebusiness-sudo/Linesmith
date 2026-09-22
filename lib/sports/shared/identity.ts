@@ -41,7 +41,18 @@ export function espnHeadshot(league: EspnLeague, id: string | number | null | un
 export function mlbHeadshot(id: string | number | null | undefined): string | null {
   return id == null || id === ''
     ? null
-    : `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
+    : `https://img.mlbstatic.com/mlb-photos/image/upload/c_thumb,g_face,w_213,h_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
+}
+
+/** A player face for a sport: the one shared dispatcher the Slate cards use. */
+export function headshotFor(sport: string, id: string | number | null | undefined): string | null {
+  if (id == null || id === '') return null;
+  if (sport === 'mlb') return mlbHeadshot(id);
+  if (sport === 'nfl') return espnHeadshot('nfl', id);
+  if (sport === 'cfb') return espnHeadshot('college-football', id);
+  if (sport === 'nba') return espnHeadshot('nba', id);
+  if (sport === 'tennis') return espnHeadshot('tennis', id);
+  return null;
 }
 
 /** MLB's own crest, keyed by StatsAPI team id. */

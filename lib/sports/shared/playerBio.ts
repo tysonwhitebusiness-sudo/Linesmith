@@ -98,7 +98,7 @@ export function parseMlbPerson(json: J | null, fetchedAt: string): PlayerBio | n
     team: teamId != null
       ? { id: String(teamId), name: teamName, abbr: club?.team?.id === teamId ? str(club.team.abbreviation) : null, logoUrl: `https://www.mlbstatic.com/team-logos/${teamId}.svg` }
       : null,
-    headshotUrl: `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_auto:best/v1/people/${p.id}/headshot/67/current`,
+    headshotUrl: `https://img.mlbstatic.com/mlb-photos/image/upload/c_thumb,g_face,w_213,h_213,q_auto:best/v1/people/${p.id}/headshot/67/current`,
     age: num(p.currentAge),
     facts: facts([
       ['Bats / throws', bats && throws ? `${bats} / ${throws}` : null],

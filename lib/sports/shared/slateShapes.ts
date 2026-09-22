@@ -39,6 +39,8 @@ export interface SlateMarket {
   best?: { price: string; book: string } | null;
   /** How many distinct books are quoting this market. */
   books?: number | null;
+  /** Which books are quoting this market, for the card footer's marks. */
+  booksList?: string[];
 }
 
 export interface SlateLines {

@@ -750,11 +750,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             {/* Golf has no prop-market cards: its winner prices are cached,
                 not stored per book, so there is no book-by-book spread to
                 compare (slate-sheet-cards.md §4.8). */}
-            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} teamLogoBySubject={teamLogoBySubject} />}
+            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} sport={sport} teamLogoBySubject={teamLogoBySubject} />}
 
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
 
-            <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} />
+            <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} teamLogoBySubject={teamLogoBySubject} />
 
             {slateRead.data?.modelPicks ? (
               <SlateModel data={modelRead.data} note={slateRead.data.modelPicks.note} loading={modelRead.loading} />

@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Chip, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { Avatar, Card, Chip, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
 import { BookLogo, bookLabel } from '../BookLogo';
 import { TeamLogo } from '../SubjectAvatar';
 import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
+import { headshotFor } from '@/lib/sports/shared/identity';
 import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
 
 /**
@@ -34,7 +35,7 @@ function marketLabel(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const OUTLIER_COLUMNS = (logoOf: (id: string) => string | undefined): Column<OutlierRow>[] => [
+const OUTLIER_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id: string) => string | undefined): Column<OutlierRow>[] => [
   {
     key: 'subject',
     label: 'Player',
@@ -42,7 +43,14 @@ const OUTLIER_COLUMNS = (logoOf: (id: string) => string | undefined): Column<Out
     render: (r) => (
       <span className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5">
-          {logoOf(r.subjectId) ? <TeamLogo logoUrl={logoOf(r.subjectId)} size={16} /> : null}
+          <span className="relative block shrink-0">
+            <Avatar label={r.subjectName ?? r.subjectId} src={faceOf(r.subjectId) ?? undefined} size={24} decorative />
+            {logoOf(r.subjectId) ? (
+              <span className="absolute -bottom-0.5 -right-0.5 grid size-[14px] place-items-center rounded-full bg-card ring-1 ring-line">
+                <TeamLogo logoUrl={logoOf(r.subjectId)} size={9} />
+              </span>
+            ) : null}
+          </span>
           <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
         </span>
         <span className="truncate text-label text-ink-muted">
@@ -69,7 +77,7 @@ const OUTLIER_COLUMNS = (logoOf: (id: string) => string | undefined): Column<Out
   { key: 'books', label: 'Books', numeric: true },
 ];
 
-const DISAGREEMENT_COLUMNS = (logoOf: (id: string) => string | undefined): Column<DisagreementRow>[] => [
+const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id: string) => string | undefined): Column<DisagreementRow>[] => [
   {
     key: 'subject',
     label: 'Player',
@@ -77,7 +85,14 @@ const DISAGREEMENT_COLUMNS = (logoOf: (id: string) => string | undefined): Colum
     render: (r) => (
       <span className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5">
-          {logoOf(r.subjectId) ? <TeamLogo logoUrl={logoOf(r.subjectId)} size={16} /> : null}
+          <span className="relative block shrink-0">
+            <Avatar label={r.subjectName ?? r.subjectId} src={faceOf(r.subjectId) ?? undefined} size={24} decorative />
+            {logoOf(r.subjectId) ? (
+              <span className="absolute -bottom-0.5 -right-0.5 grid size-[14px] place-items-center rounded-full bg-card ring-1 ring-line">
+                <TeamLogo logoUrl={logoOf(r.subjectId)} size={9} />
+              </span>
+            ) : null}
+          </span>
           <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
         </span>
         <span className="truncate text-label text-ink-muted">{marketLabel(r.market)}</span>
@@ -124,9 +139,10 @@ const DISAGREEMENT_COLUMNS = (logoOf: (id: string) => string | undefined): Colum
   },
 ];
 
-export function SlateMarket({ data, loading, teamLogoBySubject }: { data: SlateMarketData | null; loading: boolean; teamLogoBySubject?: Map<string, string> }) {
+export function SlateMarket({ data, loading, sport, teamLogoBySubject }: { data: SlateMarketData | null; loading: boolean; sport: string; teamLogoBySubject?: Map<string, string> }) {
   const outliers = data?.outliers ?? [];
   const splits = data?.disagreements ?? [];
+  const faceOf = (id: string): string | null => headshotFor(sport, id);
   const logoOf = (id: string): string | undefined => teamLogoBySubject?.get(athleteIdOf(id));
   if (!loading && outliers.length === 0 && splits.length === 0) return null;
 
@@ -143,7 +159,7 @@ export function SlateMarket({ data, loading, teamLogoBySubject }: { data: SlateM
           caption="A price gap between books, not a model edge."
         >
           {outliers.length > 0 ? (
-            <DataTable caption="Price outliers" columns={OUTLIER_COLUMNS(logoOf)} rows={outliers} rowKey={(r, i) => `${r.subjectId}-${r.market}-${r.bookmaker}-${i}`} />
+            <DataTable caption="Price outliers" columns={OUTLIER_COLUMNS(faceOf, logoOf)} rows={outliers} rowKey={(r, i) => `${r.subjectId}-${r.market}-${r.bookmaker}-${i}`} />
           ) : loading ? null : (
             <EmptyState title="No outliers right now" reason="Every line with at least five books quoting it is priced within four points of the rest." />
           )}
@@ -158,7 +174,7 @@ export function SlateMarket({ data, loading, teamLogoBySubject }: { data: SlateM
           caption="Where books disagree on the line itself. A price gap, not a model edge."
         >
           {splits.length > 0 ? (
-            <DataTable caption="Line disagreements" columns={DISAGREEMENT_COLUMNS(logoOf)} rows={splits} rowKey={(r, i) => `${r.subjectId}-${r.market}-${i}`} />
+            <DataTable caption="Line disagreements" columns={DISAGREEMENT_COLUMNS(faceOf, logoOf)} rows={splits} rowKey={(r, i) => `${r.subjectId}-${r.market}-${i}`} />
           ) : loading ? null : (
             <EmptyState title="The books agree" reason="Every market on this slate is hung at one line." />
           )}
