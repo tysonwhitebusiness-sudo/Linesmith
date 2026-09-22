@@ -20,11 +20,17 @@
 
 ## Session state — 2026-09-21
 
-**C4 is shipped** — committed and pushed (Slate imagery: book domains, game-card
-stripe + 36px logos + live treatment, Books-section marks + gap pill +
-AvatarGroup). Next phase: **C6** props controls (tabs → filters).
-
-- Commits: the C4 commit follows C3 (`9a047cc`) and PY-B (`5f9a7df`).
+**C4 is shipped in full** — two commits:
+- First C4 commit (`5d3ca40`): book domains, game-card stripe + 36px logos +
+  live treatment, Books-section marks + gap pill + AvatarGroup.
+- C4 imagery follow-up (`f7bc9fe`): Spotlights headshots/logos
+  (`subjectMeta.headshotUrl`/`teamLogoUrl` → `SpotlightRow`), Model team logos
+  (`mlbTeamLogo` → `ModelPickRow.awayLogoUrl`/`.homeLogoUrl`), Movers player
+  headshots (`moverHeadshot` + `sport` prop through `SlateMovers`), and the
+  GameCard footer book-marks `AvatarGroup` (`SlateMarket.booksList`, populated
+  in `buildSlate.ts` `marketFor`). `tests/slate-model-lines.test.ts` key pin
+  updated for the two new logo keys.
+Next phase: **C6** props controls (tabs → filters).
 
 ### Corrections to the previous session's chat
 
@@ -51,11 +57,11 @@ AvatarGroup). Next phase: **C6** props controls (tabs → filters).
 - **C6** Props controls (Track C, phase 9, no deploy): tabs → filters, Home
   Runs board deleted. Read the run doc §3 correction 3 first — `AppShell.tsx`
   line numbers have moved.
-- **C4 follow-ups (non-blocking):** the plan's headshots/logos for the
-  Spotlights, Model and Movers cards, and the GameCard footer book-marks
-  `AvatarGroup`, need headshot/logo URLs that are not yet on those row shapes
-  (`SpotlightRow`, `ModelPickRow`, `ConsensusMover`, `SlateGameCard.lines`)
-  — a follow-up data pass, not a UI-only change.
+- **C4 follow-ups (done):** headshots/logos and the footer book-marks are in.
+  Still left for later, both *data* additions to `lib/slate/marketMoves.ts`:
+  Movers game-line rows still show text matchups (no team logos — `ConsensusMover`
+  carries no team ids), and the Movers "books moved" cell still shows a count
+  (no per-book marks — no book list on the mover row).
 - **C3 follow-ups:** `matchup` typed but not populated; team/game/injury rail
   filters not wired; `statusLine` kept for other consumers.
 - **NBA spotlights deferred** (run doc A6): needs a Python `'nba'` games loader.
@@ -192,3 +198,35 @@ Spotlights, Model and Movers cards, and the GameCard footer book-marks
 `AvatarGroup` — `SpotlightRow`/`ModelPickRow`/`ConsensusMover` and
 `SlateGameCard.lines` don't carry headshot/logo URLs yet, so these need a data
 pass, not just UI. See "Next".
+
+### Entry 6 — C4 imagery (headshots/logos + footer book-marks) — commit `f7bc9fe`
+
+Closes the four items Entry 5 left open. The user was right that the URLs
+already exist elsewhere — headshots/logos are on almost every page — so this is
+UI wiring against existing sources, not a new data pipeline.
+
+- `lib/slate/spotlights.ts`: `SpotlightRow` gains `headshotUrl?`/`logoUrl?`;
+  a `subjectImages(c)` helper reads `c.subjectMeta.headshotUrl` /
+  `.teamLogoUrl` / `.flagUrl` and the hit-rate + streak row builds spread it in.
+- `components/slate/SlateSpotlights.tsx`: `AvatarLabel` now takes
+  `src={r.headshotUrl ?? undefined}` and `fallbackSrc={r.logoUrl ?? undefined}`.
+- `lib/slate/modelPicks.ts`: `ModelPickRow` gains `awayLogoUrl`/`homeLogoUrl`;
+  `mlbTeamLogo(teamId)` = `https://www.mlbstatic.com/team-logos/${teamId}.svg`,
+  populated from `r.awayTeamId`/`r.homeTeamId` in `toModelPicks`.
+- `components/slate/SlateModel.tsx`: game cell now stacks away+home logos
+  (`-space-x-1`) before the matchup.
+- `components/slate/SlateMovers.tsx`: gains a `sport` prop; a `moverHeadshot()`
+  helper maps the subject id through `mlbHeadshot`/`espnHeadshot`, and the
+  props subject cell renders a 24px `Avatar` headshot (graceful fallback if
+  the id space is off). `AppShell.tsx` passes `sport={sport}` at the mount.
+- `lib/sports/shared/slateShapes.ts` + `lib/sports/shared/buildSlate.ts`:
+  `SlateMarket` gains `booksList?: string[]`, populated in `marketFor` from the
+  sane quotes' book ids.
+- `components/slate/GameCard.tsx`: the footer now renders the game's books as a
+  stacked `BookLogo` mark group (max 6, `Tooltip` names) + "N books", and the
+  link reads "Research →".
+- `tests/slate-model-lines.test.ts`: key pin updated to include the two new
+  logo keys.
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
+clean. Pushed (`faf3e2b..f7bc9fe`).
