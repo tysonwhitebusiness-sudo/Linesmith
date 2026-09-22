@@ -148,6 +148,14 @@ export interface TeamRosterGroupSpec {
 export interface TeamResearchSpec {
   /** The `season.ts` sport key. */
   seasonSport: string;
+  /**
+   * C2b: which league-ranked team stat (a `TeamStatValue.key`) stands behind
+   * the hero's scored- and allowed-per-game tiles, so each carries the rank
+   * the Team stats section already computes for that stat ("5th of 30").
+   * A sport whose stats hold no such key leaves it out, and the tile shows
+   * no rank.
+   */
+  heroRanks?: { scored?: string; allowed?: string };
   /** W-L, W-D-L (soccer) or W-L-OTL (hockey). */
   record: 'WL' | 'WDL' | 'WLOTL';
   unit: { plural: string; short: string };
@@ -177,8 +185,23 @@ export interface TeamResearchData {
     recordShape: string;
     /** "5th in AL Central" — current season only; a past season shows its final record instead. */
     standing: string | null;
-    lastTen: Array<{ result: 'W' | 'L' | 'D' | 'OTL'; tip: string }>;
-    next: { label: string; when: string; opponent: TeamRef; href: string | null } | null;
+    lastTen: Array<{
+      result: 'W' | 'L' | 'D' | 'OTL';
+      tip: string;
+      /** C2b: the form row's opponent and score ("vs TB", "5-3"). */
+      opponent?: string;
+      opponentLogo?: string | null;
+      line?: string;
+    }>;
+    next: {
+      label: string;
+      when: string;
+      opponent: TeamRef;
+      href: string | null;
+      /** C2b: the band's "@ [crest] Rays" line, and whether it is on now. */
+      homeAway?: '@' | 'vs';
+      live?: boolean;
+    } | null;
     tiles: ResearchTile[];
   };
   sections: ResearchSection[];

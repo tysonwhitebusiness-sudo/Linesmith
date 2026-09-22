@@ -180,6 +180,24 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
     { label: 'Streak', value: streak(finals, spec) ?? '—' },
     ...(postFinals.length ? [{ label: 'Postseason', value: formatRecord(postFinals, spec) }] : []),
   ];
+  // C2b: the scored/allowed tiles carry the league rank the Team stats section
+  // computes for the same stat, and print that stat's value so the number and
+  // its rank are one measurement.
+  const pct = (rank: number, of: number) => (of > 1 ? Math.round(100 * (1 - (rank - 1) / (of - 1))) : 50);
+  const ranked = (key: string | undefined) => {
+    const s = key ? (data?.stats ?? []).find((x) => x.key === key) : undefined;
+    if (!s || new Set(s.league).size < 2) return null;
+    const r = leagueRank(s);
+    return { value: formatStat(s.value, s), rank: { rank: r.rank, of: r.of, pool: 'teams', percentile: pct(r.rank, r.of) } };
+  };
+  for (const [label, key] of [
+    [`${spec.unit.plural} / game`, spec.heroRanks?.scored],
+    ['Allowed / game', spec.heroRanks?.allowed],
+  ] as const) {
+    const i = tiles.findIndex((t) => t.label === label);
+    const r = ranked(key);
+    if (i >= 0 && r && finals.length) tiles[i] = { ...tiles[i], value: r.value, rank: r.rank };
+  }
   const hero: TeamResearchData['hero'] = {
     record: finals.length ? formatRecord(finals, spec) : '0-0',
     recordShape: RECORD_SHAPE[spec.record],
@@ -187,6 +205,9 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
     lastTen: allFinals.slice(-10).map((g) => ({
       result: gameResult(g, spec),
       tip: `${scoreText(g, spec)} ${g.home ? 'vs' : '@'} ${g.opponent.abbr} · ${shortDate(g.date)}`,
+      opponent: `${g.home ? 'vs' : '@'} ${g.opponent.abbr ?? g.opponent.name}`,
+      opponentLogo: g.opponent.logoUrl ?? null,
+      line: `${g.us}-${g.them}${g.extra ? ` (${g.extra})` : ''}`,
     })),
     next: upcoming
       ? {
@@ -194,6 +215,8 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
           when: `${startText(upcoming)}${upcoming.venue ? ` · ${upcoming.venue}` : ''}`,
           opponent: upcoming.opponent,
           href: upcoming.href,
+          homeAway: upcoming.home ? 'vs' : '@',
+          live: upcoming.state === 'live',
         }
       : null,
     tiles,

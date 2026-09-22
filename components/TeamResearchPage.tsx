@@ -2,8 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Avatar, cx, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton, Tooltip } from './ui';
-import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
+import { Avatar, Chip, Collapse, cx, DisclosureBar, ErrorState, ResultMark, Section, SectionNav, SegmentedToggle, Skeleton, Tooltip } from './ui';
+import { useTeamColors } from './useTeamColors';
+import { TeamLogo } from './SubjectAvatar';
+import { bandColors, bandGradient, teamColor, type TeamColor } from '@/lib/sports/shared/teamColors';
+import { asOfText, HeroTileGrid, rankLine, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useTeamResearch } from './useTeamResearch';
 import { useTeamHistory } from './useTeamHistory';
 import { useHeadToHead } from './useHeadToHead';
@@ -53,6 +56,8 @@ export interface TeamResearchPageProps {
 
 export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchPageProps) {
   const research = useTeamResearch(sport, teamId);
+  // C2b: the band's colours. Idle (null) for a league with no colour source.
+  const teamColorIndex = useTeamColors(sport);
   const [season, setSeason] = useState<number | null>(null);
   useEffect(() => setSeason(null), [sport, teamId]);
   /**
@@ -132,7 +137,7 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
 
   return (
     <div className="space-y-4">
-      <TeamHero data={data} />
+      <TeamHero data={data} colors={data.team ? teamColor(teamColorIndex, { id: data.team.id, abbr: data.team.abbr ?? null }) : null} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-overline uppercase text-ink-muted">Season</span>
         <SegmentedToggle label="Season" size="sm" value={data.scope.season} onChange={setSeason} options={data.scope.options} />
@@ -168,67 +173,146 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
   );
 }
 
-function TeamHero({ data }: { data: TeamResearchData }) {
+const TEAM_HERO_PEEK_KEY = 'lb.teamHeroPeekSeen';
+
+/**
+ * The team hero — C2b, the same rework as the player hero (C2): the team's
+ * colour band with its crest as the watermark, the crest itself hanging
+ * below the band where the player's headshot does, a chip row, the next game
+ * on the right, and a summary bar over the ranked tiles and the last ten.
+ * All data; no sport is named here.
+ */
+function TeamHero({ data, colors }: { data: TeamResearchData; colors: TeamColor | null }) {
   const { team, hero, scope } = data;
+  const band = bandColors(colors);
+  const [open, setOpen] = useState(false);
+  const [peeking, setPeeking] = useState(false);
+  const bodyId = 'team-hero-body';
+  const firstRanked = hero.tiles.find((t) => t.rank);
   return (
-    <section aria-label={team.name} className="rounded-card-hero border border-line-soft bg-card p-5 shadow-card">
-      <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="flex min-w-0 items-start gap-4">
-          <Avatar kind="logo" label={team.name} src={team.logoUrl ?? undefined} size={88} decorative />
-          <div className="min-w-0">
-            <h1 className="text-heading text-ink">{team.name}</h1>
-            <div className="mt-1 text-body-sm text-ink-secondary">{[hero.standing, team.venue].filter(Boolean).join(' · ')}</div>
-            {hero.lastTen.length ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-overline uppercase text-ink-muted">Last {hero.lastTen.length}</span>
-                <span className="flex flex-wrap gap-1">
-                  {hero.lastTen.map((g, i) => (
-                    <Tooltip key={i} content={g.tip}><span
-                      className={cx(
-                        'grid h-6 min-w-6 place-items-center rounded-ctl px-1 text-label font-semibold',
-                        g.result === 'W' ? 'bg-good/12 text-good-ink' : g.result === 'D' ? 'bg-card-sunk text-ink-secondary' : 'bg-bad/10 text-bad-ink',
-                      )}
-                    >
-                      {g.result}
-                    </span></Tooltip>
-                  ))}
+    <section aria-label={team.name} className="overflow-hidden rounded-card-hero border border-line-soft bg-card shadow-card">
+      <div className="relative flex min-h-[150px] flex-wrap items-end gap-5 overflow-hidden px-6 pb-[18px] pt-5 text-white min-[900px]:flex-nowrap" style={{ background: bandGradient(band) }}>
+        {team.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={team.logoUrl} alt="" aria-hidden className="pointer-events-none absolute -right-[30px] -top-10 size-[260px] object-contain opacity-[.14]" />
+        ) : null}
+        <div className="relative z-[1] min-[900px]:-mb-11">
+          {/* The crest takes the headshot's circular 3px ring (C0.3) on the same
+              translucent disc, so the team colour reads through behind the mark
+              exactly as it does behind the player's photo. */}
+          <span className="hidden min-[900px]:block">
+            <Avatar kind="logo" label={team.name} src={team.logoUrl ?? undefined} size={132} ring decorative className="rounded-full border-transparent" />
+          </span>
+          <span className="min-[900px]:hidden">
+            <Avatar kind="logo" label={team.name} src={team.logoUrl ?? undefined} size={96} ring decorative className="rounded-full border-transparent" />
+          </span>
+        </div>
+        <div className="relative z-[1] min-w-0 flex-1">
+          <h1 className="text-display text-white">{team.name}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {hero.standing ? (
+              band.accent ? (
+                <span className="rounded-full px-[9px] py-[3px] text-label font-semibold" style={{ background: band.accent.bg, color: band.accent.ink }}>
+                  {hero.standing}
                 </span>
-              </div>
+              ) : (
+                <Chip tone="onColor">{hero.standing}</Chip>
+              )
             ) : null}
+            <Chip tone="onColor">
+              {hero.record} {hero.recordShape}
+            </Chip>
           </div>
         </div>
-        <div className="lg:border-l lg:border-line-soft lg:pl-5">
-          <div className="text-overline uppercase text-ink-muted">{scope.label}</div>
-          <div className="mt-0.5 text-title tabular-nums text-ink">
-            {hero.record} <span className="text-label font-normal text-ink-muted">{hero.recordShape}</span>
-          </div>
+        <div className="relative z-[1] w-full text-body-sm min-[900px]:w-auto min-[900px]:text-right">
           {hero.next ? (
-            <div className="mt-3 flex items-center gap-2.5">
-              <Avatar kind="logo" label={hero.next.opponent.name} src={hero.next.opponent.logoUrl ?? undefined} size={32} decorative />
-              <div className="min-w-0">
+            <>
+              <div className="text-overline uppercase text-white/70">{hero.next.live ? 'Live' : 'Next'}</div>
+              <div className="flex items-center gap-2 text-body font-semibold min-[900px]:justify-end">
+                <span>{hero.next.homeAway ?? '@'}</span>
+                {hero.next.opponent.logoUrl ? <TeamLogo logoUrl={hero.next.opponent.logoUrl} size={26} /> : null}
                 {hero.next.href ? (
-                  <Link href={hero.next.href} className="text-body-sm font-semibold text-ink underline-offset-2 hover:underline">
-                    {hero.next.label}
+                  <Link href={hero.next.href} className="underline-offset-2 hover:underline">
+                    {hero.next.opponent.name}
                   </Link>
                 ) : (
-                  <div className="text-body-sm font-semibold text-ink">{hero.next.label}</div>
+                  <span>{hero.next.opponent.name}</span>
                 )}
-                <div className="text-label text-ink-muted">{hero.next.when}</div>
               </div>
-            </div>
+              <div className="text-white/80">{hero.next.when}</div>
+            </>
           ) : (
-            <div className="mt-3 text-label text-ink-muted">No upcoming game on the schedule</div>
+            <div className="text-white/70">No upcoming game on the schedule</div>
           )}
         </div>
       </div>
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line-soft pt-4 sm:grid-cols-4 lg:grid-cols-8">
-        {hero.tiles.map((t) => (
-          <Tooltip key={t.label} content={t.info}><div>
-            <dt className="truncate text-overline uppercase text-ink-muted">{t.label}</dt>
-            <dd className="mt-0.5 text-title tabular-nums text-ink">{t.value}</dd>
-          </div></Tooltip>
-        ))}
+      {/* The bio line's place under the band: what the team page knows that the tiles do not. */}
+      <dl className="flex min-h-3 flex-wrap gap-x-[18px] gap-y-1.5 px-6 py-3 text-body-sm text-ink-secondary min-[900px]:min-h-12 min-[900px]:pl-[176px]">
+        {team.venue ? (
+          <div className="flex gap-1">
+            <dt>Home</dt>
+            <dd className="font-semibold text-ink">{team.venue}</dd>
+          </div>
+        ) : null}
+        {scope.reason ? <div className="text-ink-muted">{scope.reason}</div> : null}
       </dl>
+
+      <DisclosureBar
+        label={<>{scope.label} &amp; form</>}
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        controls={bodyId}
+        nudge={peeking}
+        summary={
+          <>
+            <span>
+              <b className="text-body tabular-nums text-ink">{hero.record}</b> {hero.recordShape}
+            </span>
+            {firstRanked?.rank ? (
+              <span>
+                <b className="text-body tabular-nums text-ink">{firstRanked.value}</b> {firstRanked.label}
+                <span className="ml-1 text-label font-semibold text-good-ink">{rankLine(firstRanked.rank)}</span>
+              </span>
+            ) : null}
+            {hero.lastTen.length ? (
+              <span aria-hidden className="flex gap-[3px]">
+                {hero.lastTen.map((g, i) => (
+                  <i key={i} className={cx('size-2 rounded-[2px]', g.result === 'W' ? 'bg-good' : g.result === 'D' ? 'bg-line' : 'bg-bad')} />
+                ))}
+              </span>
+            ) : null}
+          </>
+        }
+      />
+      <Collapse open={open} id={bodyId} peek={TEAM_HERO_PEEK_KEY} onPeek={setPeeking} className={cx('border-t', open ? 'border-line-soft' : 'border-transparent')}>
+        <div className="grid grid-cols-1 min-[900px]:grid-cols-[minmax(0,1fr)_300px]">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-6 pt-3.5">
+              <span className="text-overline uppercase text-ink-muted">{scope.label}</span>
+            </div>
+            <HeroTileGrid tiles={hero.tiles} />
+          </div>
+          {hero.lastTen.length ? (
+            <div className="border-t border-line-soft px-5 py-4 min-[900px]:border-l min-[900px]:border-t-0">
+              <div className="text-overline uppercase text-ink-muted">Last {hero.lastTen.length}</div>
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {hero.lastTen.map((g, i) => (
+                  <li key={i} className="grid grid-cols-[22px_26px_minmax(0,1fr)_auto] items-center gap-2 text-body-sm">
+                    <Tooltip content={g.tip}>
+                      <span>
+                        <ResultMark result={g.result === 'OTL' ? 'L' : g.result} label={g.tip} />
+                      </span>
+                    </Tooltip>
+                    {g.opponentLogo ? <Avatar kind="logo" label={g.opponent ?? ''} src={g.opponentLogo} size={22} decorative /> : <span />}
+                    <span className="truncate text-ink">{g.opponent}</span>
+                    <span className="tabular-nums text-ink-secondary">{g.result === 'OTL' ? `OTL ${g.line ?? ''}` : g.line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </Collapse>
     </section>
   );
 }

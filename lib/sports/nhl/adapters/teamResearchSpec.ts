@@ -11,6 +11,7 @@ const isGoalie = (e: TeamRosterEntry) => e.position === 'G' || k(e, 'isGoalie') 
 
 export const NHL_TEAM_SPEC: TeamResearchSpec = {
   seasonSport: 'nhl',
+  heroRanks: { scored: 'gfpg', allowed: 'gapg' },
   record: 'WLOTL',
   unit: { plural: 'Goals', short: 'G' },
   diffLabel: 'Goal differential',

@@ -12,6 +12,7 @@ const pct = (e: TeamRosterEntry, made: string, att: string) => (k(e, att) ? (100
 
 export const NBA_TEAM_SPEC: TeamResearchSpec = {
   seasonSport: 'nba',
+  heroRanks: { scored: 'ppg', allowed: 'oppg' },
   record: 'WL',
   unit: { plural: 'Points', short: 'Pts' },
   diffLabel: 'Point differential',

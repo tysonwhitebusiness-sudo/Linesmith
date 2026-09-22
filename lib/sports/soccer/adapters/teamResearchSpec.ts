@@ -16,6 +16,7 @@ const isKeeper = (e: TeamRosterEntry) => e.position === 'G';
 export function soccerTeamSpec(sport: 'soccer_epl' | 'soccer_mls'): TeamResearchSpec {
   return {
     seasonSport: sport,
+    heroRanks: { scored: 'gfpm', allowed: 'gapm' },
     record: 'WDL',
     unit: { plural: 'Goals', short: 'G' },
     diffLabel: 'Goal difference',

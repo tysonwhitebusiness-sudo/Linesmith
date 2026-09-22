@@ -13,6 +13,7 @@ import {
   formatResearchValue,
   type PlayerBio,
   type PlayerResearchData,
+  type ResearchTile,
   type ResearchCard,
   type ResearchColumn,
   type ResearchLogRow,
@@ -91,7 +92,7 @@ export interface PlayerHeroProps {
 
 const HERO_PEEK_KEY = 'lb.heroPeekSeen';
 
-function heroWhen(iso: string | null): string | null {
+export function heroWhen(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -99,10 +100,44 @@ function heroWhen(iso: string | null): string | null {
 }
 
 /** "34th of 142 RB". */
-function rankLine(r: TileRank): string {
+export function rankLine(r: TileRank): string {
   const n = r.rank;
   const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
   return `${n}${suffix} of ${r.of} ${r.pool}`;
+}
+
+/**
+ * The heroes' tiles (C2, C2b): value, the rank line in the heat ink, and a
+ * 3px bar along the bottom as long as the percentile. A tile with no rank is
+ * the number alone. Shared by the player and team heroes.
+ */
+export function HeroTileGrid({ tiles }: { tiles: ResearchTile[] }) {
+  return (
+    <dl className="grid grid-cols-2 gap-2.5 px-6 py-4 min-[900px]:grid-cols-4">
+      {tiles.map((t) => (
+        <div key={t.label} className="relative overflow-hidden rounded-[10px] border border-line-soft bg-card-sunk px-3 py-2.5">
+          <dt className="text-overline uppercase text-ink-muted">
+            {t.info ? (
+              <Tooltip content={t.info}>
+                <span className="underline decoration-dotted underline-offset-2">{t.label}</span>
+              </Tooltip>
+            ) : (
+              t.label
+            )}
+          </dt>
+          <dd className="mt-0.5 text-heading font-bold tabular-nums text-ink">{t.value}</dd>
+          {t.rank ? (
+            <>
+              <dd className="mt-1 text-label font-semibold" style={{ color: heatInk(t.rank.percentile / 100) }}>
+                {rankLine(t.rank)}
+              </dd>
+              <span aria-hidden className="absolute bottom-0 left-0 h-[3px]" style={{ width: `${Math.max(4, t.rank.percentile)}%`, background: heatFill(t.rank.percentile / 100) }} />
+            </>
+          ) : null}
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 /**
@@ -253,30 +288,7 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
                   <span className="text-overline uppercase text-ink-muted">{hero.scopeLabel}</span>
                   {hero.scopeChip ? <Chip>{hero.scopeChip}</Chip> : null}
                 </div>
-                <dl className="grid grid-cols-2 gap-2.5 px-6 py-4 min-[900px]:grid-cols-4">
-                  {tiles.map((t) => (
-                    <div key={t.label} className="relative overflow-hidden rounded-[10px] border border-line-soft bg-card-sunk px-3 py-2.5">
-                      <dt className="text-overline uppercase text-ink-muted">
-                        {t.info ? (
-                          <Tooltip content={t.info}>
-                            <span className="underline decoration-dotted underline-offset-2">{t.label}</span>
-                          </Tooltip>
-                        ) : (
-                          t.label
-                        )}
-                      </dt>
-                      <dd className="mt-0.5 text-heading font-bold tabular-nums text-ink">{t.value}</dd>
-                      {t.rank ? (
-                        <>
-                          <dd className="mt-1 text-label font-semibold" style={{ color: heatInk(t.rank.percentile / 100) }}>
-                            {rankLine(t.rank)}
-                          </dd>
-                          <span aria-hidden className="absolute bottom-0 left-0 h-[3px]" style={{ width: `${Math.max(4, t.rank.percentile)}%`, background: heatFill(t.rank.percentile / 100) }} />
-                        </>
-                      ) : null}
-                    </div>
-                  ))}
-                </dl>
+                <HeroTileGrid tiles={tiles} />
               </div>
               <div className="border-t border-line-soft px-5 py-4 min-[900px]:border-l min-[900px]:border-t-0">
                 <div className="text-overline uppercase text-ink-muted">Last {hero.lastFive.length}</div>

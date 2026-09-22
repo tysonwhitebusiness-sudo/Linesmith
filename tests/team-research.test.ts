@@ -182,3 +182,19 @@ test('a neutral-site game counts in neither the home nor the away record', () =>
   assert.ok(splits && splits.kind === 'table');
   assert.equal(splits.rows.find((r) => r.key === 'neutral')?.values.rec, '0-1');
 });
+
+test('C2b: the hero ranks scored and allowed per game from the Team stats pool, and prints that stat', () => {
+  const stat = (key: string, value: number, league: number[], direction: 'higher' | 'lower') => ({ key, group: 'g', label: key, value, league, direction, decimals: 2 });
+  const stats = [stat('rpg', 5.1, [5.1, 4.2, 4.8, 3.9], 'higher'), stat('rapg', 3.4, [3.4, 4.5, 3.1, 5.0], 'lower')];
+  const gs = [game('2026-06-01', 6, 2, { opponent: { id: '9', name: 'Rays', abbr: 'TB', logoUrl: 'https://x/tb.png' } }), game('2026-06-02', 3, 4)];
+  const data = buildTeamResearch({ payload: payload([season(2026, gs, { stats })], 2026), spec: MLB_TEAM_SPEC, season: 2026, teamHref: href, now: new Date('2026-06-03T00:00:00Z') });
+  const scored = data?.hero.tiles.find((t) => t.label === 'Runs / game');
+  const allowed = data?.hero.tiles.find((t) => t.label === 'Allowed / game');
+  assert.deepEqual(scored?.rank, { rank: 1, of: 4, pool: 'teams', percentile: 100 });
+  assert.equal(scored?.value, '5.10', 'the tile prints the ranked stat, so number and rank are one measurement');
+  assert.equal(allowed?.rank?.rank, 2, 'lower is better for runs allowed');
+  assert.equal(data?.hero.tiles.find((t) => t.label === 'Record')?.rank, undefined);
+  const first = data?.hero.lastTen[0];
+  assert.equal(first?.line, '6-2');
+  assert.equal(first?.opponentLogo, 'https://x/tb.png');
+});

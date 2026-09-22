@@ -53,6 +53,7 @@ export function footballTeamSpec(league: 'nfl' | 'cfb'): TeamResearchSpec {
   ];
   return {
     seasonSport: league,
+    heroRanks: { scored: 'ppg', allowed: 'papg' },
     record: 'WL',
     unit: { plural: 'Points', short: 'Pts' },
     diffLabel: 'Point differential',

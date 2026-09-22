@@ -11,6 +11,7 @@ const ratio = (a: number, b: number) => (b ? a / b : null);
 
 export const MLB_TEAM_SPEC: TeamResearchSpec = {
   seasonSport: 'mlb',
+  heroRanks: { scored: 'rpg', allowed: 'rapg' },
   record: 'WL',
   unit: { plural: 'Runs', short: 'R' },
   diffLabel: 'Run differential',
