@@ -307,3 +307,23 @@ The operator read the rendered cards a second time and reversed three of Entry
 **Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
 clean; prod server rebuilt and restarted on `:3000`. Pushed
 (`da2858c..6fc0eac`).
+
+### Entry 9 — Specials row layout (commit `76d03b6`)
+
+The operator clarified the Specials row: the player FACE belongs beside the
+name, and the team marks belong in the "team vs opponent" line underneath.
+
+- `components/slate/SlateSpecials.tsx`: the subject cell is now the standard
+  `Avatar` headshot (`headshotFor`) beside the name, and the sub-line renders
+  `TeamMark` for both sides — the player's team and the opponent, each a
+  `TeamLogo` + abbreviation with a plain-text fallback when a sport has no
+  logo. `SlateSpecials` takes a `sport` prop; the snapshot `teamLogoBySubject`
+  map is no longer used here.
+- `lib/sports/shared/identity.ts`: `teamLogoFor(sport, teamId, abbr)` — MLB
+  keys on the numeric team id, NFL on the abbreviation; other sports return
+  null so `TeamMark` falls back to text.
+- `components/AppShell.tsx`: passes `sport` to `SlateSpecials`.
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
+clean; prod server rebuilt and restarted on `:3000`. Pushed
+(`f91eede..76d03b6`).
