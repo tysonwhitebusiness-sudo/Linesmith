@@ -4,6 +4,10 @@
 and the sport-specific Spotlights are approved, audited, and every question
 is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 
+> **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
+> running record of the VS Code (Copilot) session's changes and current
+> state, and it points back here for the full plan.
+
 ---
 
 ## Read, in this order
@@ -27,10 +31,11 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 |---|---|---|
 | 1 | C7 delete the live line tracker (the role keys stay six: the tracker was never one) | **done** |
 | 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **done** |
-| 3 | C1 charcoal section bands (Movers included) | **done** |
+| 3 | C1 charcoal section bands (Movers included) — revised by C1b | **done** |
+| 3b | C1b transparent section headers, charcoal side line (replaces the charcoal band) | **done** |
 | 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | **done** |
 | 5 | C2 player hero | **done** |
-| 5b | C2b team hero, same rework as the player hero | **next** |
+| 5b | C2b team hero, same rework as the player hero | **done** |
 | 6 | PY-B spotlight rankings, NFL/NBA/NHL first (**deploy**) | — |
 | 7 | C3 player search rail | — |
 | 8 | C4 Slate imagery (Movers included) | — |
@@ -56,8 +61,9 @@ Update this table and the run doc's §2 after every phase commit, then push.
 - **Electric Turf**: good `#00d26a` / bad `#ff4d4f` / warn `#ffb020`. Text
   always uses the `-ink` shade. It recolours the frozen Scan table
   (approved); Scan's layout and the length pins stay.
-- **Green never marks structure.** Headers are charcoal with a 2px `#6e727a`
-  top line.
+- **Green never marks structure.** Headers are transparent with a 3px
+  charcoal (`#1d1f23`) line on the left and a hairline divider beneath —
+  C1b (2026-09-21) replaces C1's charcoal band with its 2px `#6e727a` top line.
 - **Stats never render as chips or buttons**: a labelled value + percentile.
 - **Specials are forecasts** graded next morning, never leaderboards.
 - **Weather** only from `python-odds-service/src/predict/weather.py`
