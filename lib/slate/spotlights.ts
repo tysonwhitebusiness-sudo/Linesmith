@@ -23,6 +23,10 @@
 import type { PickCandidate } from '../core/types';
 import { readForm } from '../core/pickEngine';
 import { isOk } from '../core/windowedStat';
+import { groupFlags, type ResearchFlag } from './flags';
+import { formatFactor } from './specialsFormat';
+import { headshotFor, teamLogoFor } from '../sports/shared/identity';
+import type { SlateGameCard } from '../sports/shared/slateShapes';
 
 /** One cell on a spotlight row: a number and how it should print. */
 export interface SpotlightValue {
@@ -76,6 +80,12 @@ export interface SpotlightColumn {
 export interface SpotlightCard {
   id: string;
   title: string;
+  /**
+   * What the first column is a column OF. "Player" unless the card's subjects
+   * are not people: MLB's HR parks and N5's weather rank GAMES, and a column
+   * headed "Player" over "AZ @ COL" is simply wrong.
+   */
+  subjectLabel?: string;
   /** What the card is scoped to: "Last 10 games". */
   scope: string;
   columns: SpotlightColumn[];
@@ -319,4 +329,94 @@ export function activeStreaks(candidates: PickCandidate[], opts: SpotlightOption
 /** Both universal spotlights, in the order the spec lists them. */
 export function buildSpotlights(candidates: PickCandidate[], opts: SpotlightOptions): SpotlightCard[] {
   return [hitRateLeaders(candidates, opts), activeStreaks(candidates, opts)];
+}
+
+/* -------------------------------------------------------------------------- */
+/* F0 — the Python spotlights, as the same card                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The sport-specific spotlights (`slate_rankings`, `kind='spotlight'`) drawn
+ * as the SAME `SpotlightCard` the two universal ones use.
+ *
+ * WHY CONVERT RATHER THAN ADD A SECOND CARD TYPE. The two TS cards and the
+ * Python ones are the same thing to a reader — a short ranked list with its
+ * factors and a why — and the section already renders one shape well. A
+ * second renderer would be a second place for the columns, the tooltips and
+ * the empty state to drift.
+ *
+ * The rows arrive ranked from the job, so nothing here re-sorts them.
+ */
+export function flagSpotlightCards(flags: ResearchFlag[], opts: { sport: string; league?: string | null }): SpotlightCard[] {
+  const { sport, league } = opts;
+  return groupFlags(flags).map((g) => {
+    const first = g.flags[0];
+    return {
+      id: g.rankingId,
+      title: g.title,
+      subjectLabel: first.subjectKind === 'game' ? 'Game' : 'Player',
+      scope: g.frozen ? 'Frozen at the first game' : 'Updates until the first game',
+      columns: first.factors.map((f) => ({ key: f.key, label: f.label, info: f.info, numeric: true })),
+      rows: g.flags.map((f) => ({
+        key: `${f.rankingId}:${f.subjectId}`,
+        subjectId: f.subjectId,
+        subjectName: f.subjectName,
+        // The card's title already says what the list is OF, so the line under
+        // the name is the matchup rather than the ranking's name again — and
+        // nothing at all where the NAME is already the matchup ("AZ @ COL").
+        market: '',
+        context: f.subjectKind === 'game' ? null : f.opponent ? `${f.team ?? ''} vs ${f.opponent}`.trim() : f.team,
+        values: Object.fromEntries(
+          f.factors.map((x) => [
+            x.key,
+            { text: formatFactor(x.key, x.value), bar: x.percentile == null ? undefined : x.percentile / 100 },
+          ]),
+        ),
+        why: f.read ?? g.promo,
+        href: flagHref(f, sport, league ?? null),
+        // A game-subject row has no face; its team mark carries the identity.
+        headshotUrl: f.subjectKind === 'player' ? headshotFor(sport, f.subjectId) : null,
+        logoUrl: teamLogoFor(sport, f.teamId, f.team),
+        teamLogoUrl: f.subjectKind === 'player' ? teamLogoFor(sport, f.teamId, f.team) : null,
+      })),
+      caption: `Where each one stands among today's slate on the factors named. A ranking of those factors, not a probability, and not compared to a price.`,
+      empty: 'Nothing qualified on this slate.',
+    };
+  });
+}
+
+/** A flag's page: the player's, or the game's where the ranked subject IS the game. */
+function flagHref(flag: ResearchFlag, sport: string, league: string | null): string | null {
+  const base = sport === 'soccer' || sport === 'tennis' ? (league ? `/${sport}/${league}` : null) : `/${sport}`;
+  if (!base) return null;
+  return flag.subjectKind === 'game' ? `${base}/game/${flag.subjectId}` : `${base}/player/${flag.subjectId}`;
+}
+
+/**
+ * N5 — weather games. A FLAG, NOT A RANKING: the spec is explicit that it is
+ * never ordered, so the rows keep the slate's own order and the card carries
+ * no score. It renders only where a sport's games actually hold a forecast,
+ * so nothing here asks which sport it is.
+ */
+export function weatherSpotlight(cards: SlateGameCard[]): SpotlightCard | null {
+  const flagged = cards.filter((c) => c.weatherFlag);
+  if (flagged.length === 0) return null;
+  return {
+    id: 'weather-games',
+    title: 'Weather games',
+    subjectLabel: 'Game',
+    scope: 'Wind over 15 mph or rain over 50%',
+    columns: [{ key: 'forecast', label: 'Forecast', info: 'The venue forecast at the start, from Open-Meteo. Only shown where the wind is over 15 mph or rain over 50%; every other game holds a forecast too, on its own card.' }],
+    rows: flagged.map((c) => ({
+      key: c.id,
+      subjectId: c.id,
+      subjectName: `${c.away.name} @ ${c.home.name}`,
+      market: '',
+      context: c.venue ?? null,
+      values: { forecast: { text: c.weatherFlag as string } },
+      why: `${c.weatherFlag} at ${c.venue ?? 'the venue'}, ${c.statusText}.`,
+      href: c.href ?? null,
+    })),
+    caption: 'A forecast, not a forecast of anything that happens in the game. It is not ordered: these are the games where the weather is worth knowing.',
+  };
 }

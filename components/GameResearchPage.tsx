@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Avatar, Chip, DataTable, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton, cx, type Column } from './ui';
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useGameResearch } from './useGameResearch';
+import { ResearchFlags } from './ResearchFlags';
 import { useHeadToHead } from './useHeadToHead';
 import { HISTORY_SPORTS } from '@/lib/history/teamHistorySection';
 import { headToHeadSeam, withDeepHeadToHead } from '@/lib/history/headToHeadCards';
@@ -102,6 +103,9 @@ export function GameResearchPage({ sport, gameId, onReadyChange }: GameResearchP
   return (
     <div className="space-y-4">
       <GameHero data={data} />
+      {/* F0 — what the ranking job flagged about this game and the players in
+          it today. Nothing renders once the slate has moved on. */}
+      <ResearchFlags sport={sport} who={{ game: gameId }} title="Flags today" showSubject />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-overline uppercase text-ink-muted">Game state</span>
         {data.states.length > 1 ? (

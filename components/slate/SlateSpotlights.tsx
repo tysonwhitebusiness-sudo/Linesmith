@@ -1,8 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Avatar, Card, DataTable, EmptyState, type Column, SectionBand } from '@/components/ui';
 import { TeamLogo } from '../SubjectAvatar';
 import type { SpotlightCard, SpotlightRow } from '@/lib/slate/spotlights';
+import type { FlagsData, ResearchFlag } from '@/lib/slate/flags';
 
 /**
  * Spotlights (S3) — one `Card` per spotlight in a 2-up grid.
@@ -16,13 +18,18 @@ import type { SpotlightCard, SpotlightRow } from '@/lib/slate/spotlights';
  * `SpotlightCard` — columns, rows, caption, and an empty state that says why —
  * and every sport's cards are built by the same two functions over the same
  * candidate history.
+ *
+ * F0 added a third source of the same card: the PYTHON spotlights
+ * (`slate_rankings`, `kind='spotlight'`), converted by `flagSpotlightCards`,
+ * plus N5's weather list. They arrive here as `SpotlightCard`s like the rest,
+ * so this file did not have to learn what a ranking is.
  */
 
 function toColumns(card: SpotlightCard): Column<SpotlightRow>[] {
   return [
     {
       key: 'subject',
-      label: 'Player',
+      label: card.subjectLabel ?? 'Player',
       sortable: false,
       render: (r) => (
         <span className="inline-flex min-w-0 items-center gap-2">
@@ -51,6 +58,38 @@ function toColumns(card: SpotlightCard): Column<SpotlightRow>[] {
       bar: (r) => r.values[c.key]?.bar ?? null,
     })),
   ];
+}
+
+/**
+ * The whole slate's Python spotlights (F0). The research pages ask the same
+ * route for one subject's; this asks for all of them, which is one cache entry
+ * shared with every page on the site.
+ */
+export function useSlateFlags(sport: string, league: string | null, date: string | null, refreshKey?: string | null) {
+  const [flags, setFlags] = useState<ResearchFlag[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ sport });
+        if (sport === 'soccer' && league) params.set('league', league);
+        if (date) params.set('date', date);
+        const res = await fetch(`/api/slate/flags?${params}`, { cache: 'no-store' });
+        const data = res.ok ? ((await res.json()) as FlagsData) : null;
+        if (!cancelled) setFlags(data?.flags ?? []);
+      } catch {
+        if (!cancelled) setFlags([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sport, league, date, refreshKey]);
+  return { flags, loading };
 }
 
 export function SlateSpotlights({ cards, loading }: { cards: SpotlightCard[]; loading: boolean }) {

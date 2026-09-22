@@ -8,6 +8,7 @@ import { TeamLogo } from './SubjectAvatar';
 import { bandColors, bandGradient, teamColor, type TeamColor } from '@/lib/sports/shared/teamColors';
 import { asOfText, HeroTileGrid, rankLine, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useTeamResearch } from './useTeamResearch';
+import { ResearchFlags } from './ResearchFlags';
 import { useTeamHistory } from './useTeamHistory';
 import { useHeadToHead } from './useHeadToHead';
 import { compareHeadToHeadCard } from '@/lib/history/headToHeadCards';
@@ -138,6 +139,9 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
   return (
     <div className="space-y-4">
       <TeamHero data={data} colors={data.team ? teamColor(teamColorIndex, { id: data.team.id, abbr: data.team.abbr ?? null }) : null} />
+      {/* F0 — this team's players on today's slate, and the game itself where
+          the ranking is about the game (a park, a forecast). */}
+      <ResearchFlags sport={sport} who={{ team: String(teamId) }} title="Flags today" showSubject />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-overline uppercase text-ink-muted">Season</span>
         <SegmentedToggle label="Season" size="sm" value={data.scope.season} onChange={setSeason} options={data.scope.options} />

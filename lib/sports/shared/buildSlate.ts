@@ -300,6 +300,25 @@ export interface BuildSlateInput {
 }
 
 /**
+ * N5 — the forecast, only where it is worth naming.
+ *
+ * SHARED, NOT PER SPORT, and no sport check: it reads `game.weather`, which
+ * `resolveVenueWeather` fills only for an outdoor venue it could place, so a
+ * roofed park, a sport with no forecast held and an indoor arena all produce
+ * nothing without anyone asking which is which. The thresholds are the
+ * gameplan's: wind over 15 mph, rain over 50%.
+ */
+function weatherFlag(game: SlateGame): string | null {
+  const w = game.weather;
+  if (!w) return null;
+  const parts = [
+    w.windMph != null && w.windMph > 15 ? `wind ${Math.round(w.windMph)} mph${w.windDir ? ` ${w.windDir}` : ''}` : null,
+    w.rainPct != null && w.rainPct > 50 ? `rain ${Math.round(w.rainPct)}%` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/**
  * The Games section, for any sport.
  *
  * It never asks which sport it is. Everything sport-shaped arrives through
@@ -335,6 +354,7 @@ export function buildSlateGames({ games, lines, propCounts, spec, date }: BuildS
       lines: anyLine ? lineBlock : null,
       model: spec.model?.(game) ?? null,
       context: spec.context?.(game) ?? [],
+      weatherFlag: weatherFlag(game),
       href: spec.href?.(game) ?? null,
       propCount: props,
     };

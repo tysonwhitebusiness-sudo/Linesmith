@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { code } from './ui-scope';
-import { SPECIAL_RANKINGS, rankingSport } from '../lib/slate/specials';
+import { SPECIAL_ONLY_RANKINGS, SPECIAL_RANKINGS, SPOTLIGHT_RANKINGS, rankingKind, rankingSport } from '../lib/slate/specials';
 
 /**
  * S4's guard — the Specials' words stay the Python job's words.
@@ -28,11 +28,13 @@ function pyFactorGroups(): Map<string, Array<{ key: string; label: string; info:
 
 function pyRankings() {
   const body = PY.slice(PY.indexOf('RANKINGS: tuple[RankingDef, ...] = ('));
-  const out: Array<{ id: string; title: string; promo: string; group: string; notHeld: string | null }> = [];
+  const out: Array<{ id: string; title: string; promo: string; group: string; notHeld: string | null; kind: string }> = [];
   const re = /RankingDef\("([^"]+)",\s*\([^)]*\),\s*"([^"]+)",\s*"([^"]+)",\s*(\w+_FACTORS)([\s\S]*?)\)\s*,\s*(?=RankingDef|\))/g;
   for (const m of body.matchAll(re)) {
     const nh = /not_held="([^"]+)"/.exec(m[5]);
-    out.push({ id: m[1], title: m[2], promo: m[3], group: m[4], notHeld: nh ? nh[1] : null });
+    const k = /kind="(\w+)"/.exec(m[5]);
+    // Python's own default: a RankingDef that does not say is a Special.
+    out.push({ id: m[1], title: m[2], promo: m[3], group: m[4], notHeld: nh ? nh[1] : null, kind: k ? k[1] : 'special' });
   }
   return out;
 }
@@ -86,6 +88,35 @@ test('PY-A: the leader row is never a subject, and `_` factor keys are never val
   assert.match(src, /if \(!k\.startsWith\('_'\)\) values\[k\] = num\(v\)/);
   // The writer stores the leader as rank 0, so `rank <= 5` alone would not exclude it.
   assert.match(readFileSync('python-odds-service/src/db.py', 'utf8'), /'__leader__', 0,/);
+});
+
+/**
+ * F0 — the drift guard now covers BOTH kinds.
+ *
+ * A spotlight and a Special share the table, the writer and the words, and
+ * differ in exactly one thing: a Special is a book promo that gets graded the
+ * next morning, a spotlight is a research flag that never is. Which one an id
+ * is decides where it renders — `readSpecials` selects `kind='special'` and
+ * `readFlags` selects `kind='spotlight'` — so a disagreement here means a
+ * ranking silently renders nowhere, or renders as the wrong thing.
+ */
+test('F0: every ranking is the same KIND in both languages', () => {
+  const py = pyRankings();
+  assert.equal(py.filter((r) => r.kind === 'spotlight').length, 32, 'the Python file declares 32 spotlights');
+  assert.equal(Object.keys(SPOTLIGHT_RANKINGS).length, 32, 'the registry mirrors 32 spotlights');
+  for (const r of py) assert.equal(rankingKind(r.id), r.kind, `${r.id} kind`);
+  // The two halves are disjoint and together they are the whole registry.
+  assert.equal(Object.keys(SPECIAL_ONLY_RANKINGS).length + Object.keys(SPOTLIGHT_RANKINGS).length, Object.keys(SPECIAL_RANKINGS).length);
+});
+
+test('F0: a spotlight is never graded, and a Special always is', () => {
+  const body = PY.slice(PY.indexOf('RANKINGS: tuple[RankingDef, ...] = ('));
+  const re = /RankingDef\("([^"]+)"([\s\S]*?)\)\s*,\s*(?=RankingDef|\))/g;
+  for (const m of body.matchAll(re)) {
+    const graded = /grade_stat="[^"]+"/.test(m[2]);
+    const spotlight = /kind="spotlight"/.test(m[2]);
+    assert.equal(graded, !spotlight, `${m[1]}: grade_stat must be set for a Special and absent for a spotlight`);
+  }
 });
 
 test('PY-A: every Python ranking declares a hit rule and a kind the reader understands', () => {

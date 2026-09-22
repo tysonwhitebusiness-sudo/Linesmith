@@ -28,6 +28,7 @@ import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { compareInk, gradientCardStyle, deltaGradientStyle } from '@/lib/ui/heat';
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
 import { useLiveGame } from './useLiveGame';
+import { ResearchFlags } from './ResearchFlags';
 import { useFootballLiveGame } from './useFootballLiveGame';
 import { useSoccerLiveGame } from './useSoccerLiveGame';
 import { useSoccerUnderstat } from './useSoccerUnderstat';
@@ -1504,6 +1505,10 @@ export function PlayerDetail({
           next={next}
           colors={heroColors}
         />
+        {/* F0 — what the ranking job flagged about this player today, as
+            chips: the ranking's own words, with the rank and the why in the
+            tooltip. They disappear with the slate. */}
+        <ResearchFlags sport={historySport} who={{ subject: researchAthleteId }} variant="chips" />
         <SectionNav items={navItems} top={stickyTop} label="Player sections" />
         {/* C4 sits between the hero and the prop block, and only while a game
             is live (R6.3): inside "Prop analysis" it came between that heading

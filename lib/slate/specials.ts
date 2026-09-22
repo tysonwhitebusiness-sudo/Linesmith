@@ -39,8 +39,11 @@ export interface SpecialRankingDef {
 /**
  * Mirrors `RANKINGS` in `slate_rankings.py`. Keep them identical — the test
  * reads the Python file and compares.
+ *
+ * The SPECIALS (`kind='special'`): a book's promo, ranked and graded the next
+ * morning. The spotlights are the record below.
  */
-export const SPECIAL_RANKINGS: Record<string, SpecialRankingDef> = {
+export const SPECIAL_ONLY_RANKINGS: Record<string, SpecialRankingDef> = {
   'mlb-hr-of-the-day': {
     id: 'mlb-hr-of-the-day',
     title: 'HR of the day',
@@ -136,8 +139,19 @@ export const SPECIAL_RANKINGS: Record<string, SpecialRankingDef> = {
     ],
     notHeld: 'Expected goals, power-play ice time and the confirmed starting goalie are not held.',
   },
+};
 
-  // ---- PY-B spotlights (kind='spotlight', never graded) ----
+/**
+ * The SPOTLIGHTS (PY-B, `kind='spotlight'`): the same table, the same writer
+ * and the same words, but never graded and never a book promo. They are
+ * research flags — what is unusual about a player, a team or a game today —
+ * so the research pages chip them and the Slate lists them beside the two
+ * universal TS cards.
+ *
+ * They live in their own record only so `rankingKind()` can answer which kind
+ * an id is from the registry itself rather than from a comment.
+ */
+export const SPOTLIGHT_RANKINGS: Record<string, SpecialRankingDef> = {
   'nfl-targets-vs-weak-pass-d': {
     id: 'nfl-targets-vs-weak-pass-d',
     title: 'Targets vs weak pass defences',
@@ -308,6 +322,18 @@ export const SPECIAL_RANKINGS: Record<string, SpecialRankingDef> = {
     factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
   },
 };
+
+/**
+ * Every ranking the Python job declares, of either kind. `readSpecials` and
+ * `readFlags` each take their own half; this is what the drift guard compares
+ * against `RANKINGS` in `slate_rankings.py`.
+ */
+export const SPECIAL_RANKINGS: Record<string, SpecialRankingDef> = { ...SPECIAL_ONLY_RANKINGS, ...SPOTLIGHT_RANKINGS };
+
+/** Which kind an id is, from the registry rather than from a comment. */
+export function rankingKind(id: string): 'special' | 'spotlight' {
+  return id in SPOTLIGHT_RANKINGS ? 'spotlight' : 'special';
+}
 
 /** The graded "longest" rankings write the slate's real leader under this id. */
 export const LEADER_ID = '__leader__';

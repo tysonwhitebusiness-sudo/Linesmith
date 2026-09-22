@@ -89,6 +89,14 @@ export interface SlateGameCard {
   model?: SlateModelRow | null;
   /** Park, weather, injuries — each already a finished phrase. */
   context?: string[];
+  /**
+   * N5 — the forecast, but only when it is worth naming: wind over 15 mph or
+   * rain over 50%. A finished phrase, and unset for a roofed park, a sport
+   * that holds no forecast, and every ordinary day. The Spotlights section
+   * lists these; the card itself already prints the full forecast in
+   * `context`.
+   */
+  weatherFlag?: string | null;
   /** The game page. */
   href?: string | null;
   /** How many props this slate holds for this game. Null where none are held. */

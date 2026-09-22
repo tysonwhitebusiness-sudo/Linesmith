@@ -144,6 +144,9 @@ const SLATE = [
   'components/slate/SlateSpecials.tsx',
   'components/slate/SlateSpotlights.tsx',
   'components/slate/SlateYourLines.tsx',
+  'components/ResearchFlags.tsx',
+  'lib/slate/flags.ts',
+  'lib/slate/flagsRead.ts',
   'lib/slate/marketMoves.ts',
   'lib/slate/modelPicks.ts',
   'lib/slate/specials.ts',
@@ -155,6 +158,7 @@ const SLATE = [
   'app/api/slate/market/route.ts',
   'app/api/slate/model/route.ts',
   'app/api/slate/specials/route.ts',
+  'app/api/slate/flags/route.ts',
   ...['mlb', 'nfl', 'nba', 'nhl', 'soccer', 'tennis', 'golf'].map((s) => `lib/sports/${s}/adapters/slateAdapter.ts`),
 ];
 

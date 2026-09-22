@@ -38,13 +38,13 @@ import { PlayerSkeleton, ScanListSkeleton } from './Skeleton';
 import { useSlate } from './slate/useSlate';
 import { SlateGames, SlateSectionNav } from './slate/SlateSections';
 import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
-import { SlateSpotlights } from './slate/SlateSpotlights';
+import { SlateSpotlights, useSlateFlags } from './slate/SlateSpotlights';
 import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
 import { SlateMovers, moversShown, useSlateMovers } from './slate/SlateMovers';
 import { SlateModel, useSlateModel } from './slate/SlateModel';
 import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
 import { toYourLines } from '@/lib/slate/yourLines';
-import { buildSpotlights } from '@/lib/slate/spotlights';
+import { buildSpotlights, flagSpotlightCards, weatherSpotlight } from '@/lib/slate/spotlights';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
 import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
 import {
@@ -188,6 +188,9 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const moversRead = useSlateMovers(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S4 — the Specials, from `slate_rankings` (the table M3 actually wrote).
   const specialsRead = useSlateSpecials(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
+  // F0 — the sport's own spotlights, the `kind='spotlight'` half of the same
+  // table. The research pages read the same route for one subject.
+  const flagsRead = useSlateFlags(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S5 — the Model section, only when the slate's adapter declares one.
   const modelRead = useSlateModel(sport, !!slateRead.data?.modelPicks, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S5 — Your lines. Signed out, nothing is fetched and nothing renders.
@@ -440,10 +443,19 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // holds rather than from `slate_rankings` (which turned out to hold the
   // Specials pilot set, not these). Deriving them here means a spotlight can
   // never disagree with the table underneath it.
-  const spotlights = useMemo(
-    () => buildSpotlights(filteredBeforePriceGate, { sport, league: league ?? null }),
-    [filteredBeforePriceGate, sport, league],
-  );
+  //
+  // F0 adds two more sources of the same card, in the order a reader wants
+  // them: the sport's OWN spotlights first (they are about today), then the
+  // two universal ones, then N5's weather list. A sport with no rankings
+  // written yet contributes nothing and the section is unchanged.
+  const spotlights = useMemo(() => {
+    const weather = weatherSpotlight(slateRead.data?.games?.cards ?? []);
+    return [
+      ...flagSpotlightCards(flagsRead.flags, { sport, league: league ?? null }),
+      ...buildSpotlights(filteredBeforePriceGate, { sport, league: league ?? null }),
+      ...(weather ? [weather] : []),
+    ];
+  }, [flagsRead.flags, filteredBeforePriceGate, slateRead.data, sport, league]);
 
   // S5 — Your lines, joined against the same candidates the board draws.
   const yourLines = useMemo(
