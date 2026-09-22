@@ -1,8 +1,10 @@
 # CURRENT — pick up here
 
-**Rewritten 2026-09-21, before the unattended run. Track C (card redesign)
-and the sport-specific Spotlights are approved, audited, and every question
-is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
+**Updated 2026-09-22 after F0-UI. Track C (card redesign) and the
+sport-specific Spotlights are approved, audited, and every question is
+answered. Phases 1-10 are done. Phase 11 (C5-UI) is BLOCKED until a real
+graded slate exists (next NFL Sunday, 2026-09-27), so under A6 the next
+actionable phase is 12 (DJ-GOLF, a deploy). Don't stop to ask.**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
@@ -40,7 +42,7 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 7 | C3 player search rail | **done** |
 | 8 | C4 Slate imagery (Movers included) | **done** |
 | 9 | C6 props controls (tabs → filters, Home Runs deleted) | **done** — tabs → status/watchlist, HR deleted, Position, Showing line, filter surfaces on the kit, <640 filters sheet (`5c41440`, `b3f7d5c`, `fc8e69f`) |
-| 10 | F0-UI research-page flags + Slate spotlight cards | — |
+| 10 | F0-UI research-page flags + Slate spotlight cards | **done** — `/api/slate/flags`, `ResearchFlags` (chips on the player page, card on team/game), the Python spotlights on the Slate, N5 weather (`400802d`) |
 | 11 | C5-UI receipts table + new Specials (needs a real graded slate) | — |
 | 12 | DJ-GOLF tournament → course backfill (**deploy**) | — |
 | 13 | DJ-TEN TML-Database ingest, licence check first (**deploy**) | — |
@@ -82,7 +84,12 @@ Update this table and the run doc's §2 after every phase commit, then push.
 - **PY-B deferrals (A6):** NBA's spotlights (pace-up, usage bumps, shot-zone
   matchups + its N1/N2/N6/N7/N8) wait on a Python `'nba'` games loader —
   `load_sport_games` has no NBA entry and the season has no games yet. N5
-  (weather) is render-time forecast data, not a table, so it ships with F0-UI.
+  (weather) shipped with F0-UI.
+- **Only MLB has ever written spotlight rows** (measured 2026-09-22: 3
+  rankings, 33 rows). PY-B deployed at 02:26 UTC on 09-22, after Sunday's NFL
+  slate, so NFL/CFB/NHL/soccer rankings appear on their next slate — NFL
+  Thursday 09-24, CFB Saturday 09-26. F0-UI renders whatever exists, so there
+  is nothing to do but look on those days.
 
 ## Findings worth knowing
 
@@ -139,6 +146,19 @@ Update this table and the run doc's §2 after every phase commit, then push.
   the built-in browser pane with `tabs_create` for a fresh tab.
 - **The mockup's stat lines are illustrative.** Don't sign off C5 on
   placeholder data.
+- **F0: a spotlight's SUBJECT is not always a player.** `mlb-hr-parks` ranks
+  GAMES — its `subject_id` IS the `game_id` and its name is "AZ @ COL" — so
+  `ResearchFlag.subjectKind` says which, the card's first column is headed
+  "Game" rather than "Player", and a game row gets no face and no team badge.
+  Anything new reading these rows must not assume an athlete id.
+- **F0: `lib/slate/flags.ts` holds no query on purpose.** Its shapes reach the
+  BROWSER through `spotlights.ts` and `ResearchFlags.tsx`, and `pgClient` pulls
+  `pg` in with them, which breaks the build. The read lives in `flagsRead.ts`
+  — the same split `specialsFormat.ts` already keeps. `tests/slate-flags.test.ts`
+  pins it.
+- **F0: the flags route caches the whole sport-day and slices in `transform`.**
+  One cache entry serves the Slate and every player, team and game page; keying
+  per athlete id would mint hundreds.
 - **Bash heredocs eat backslashes, quotes and `\n`** in this environment.
   Write scripts and regex-bearing tests with the Write/Edit tools.
 - The browser can't load `file://`. Use the `design-mockups` preview.

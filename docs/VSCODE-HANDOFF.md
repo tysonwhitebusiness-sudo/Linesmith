@@ -18,85 +18,49 @@
 
 ---
 
-## Session state — 2026-09-21
+## Session state — 2026-09-22
 
-**C4 is shipped in full** — three commits:
-- First C4 commit (`5d3ca40`): book domains, game-card stripe + 36px logos +
-  live treatment, Books-section marks + gap pill + AvatarGroup.
-- C4 imagery follow-up (`f7bc9fe`): Spotlights headshots/logos
-  (`subjectMeta.headshotUrl`/`teamLogoUrl` → `SpotlightRow`), Model team logos
-  (`mlbTeamLogo` → `ModelPickRow.awayLogoUrl`/`.homeLogoUrl`), Movers player
-  headshots (`moverHeadshot` + `sport` prop through `SlateMovers`), and the
-  GameCard footer book-marks `AvatarGroup` (`SlateMarket.booksList`, populated
-  in `buildSlate.ts` `marketFor`). `tests/slate-model-lines.test.ts` key pin
-  updated for the two new logo keys.
-- C4 image audit (`5b7c997`) — the operator's pass over the rendered cards:
-  team logos on the market-shape cards (from the snapshot's subjects, no player
-  faces there) and as a badge on Spotlight rows; Model logos moved next to each
-  team name (not stacked at the start); Specials made text-only; the GameCard
-  footer book marks and `SlateMarket.booksList` removed; and the MLB headshot
-  unified to `w_213` (identity.ts was still serving `w_80` to the search rail,
-  Movers and game research).
-- C4 image fixes (`6fc0eac`) — the operator read the rendered cards again and
-  reversed three of the audit's calls: the market-shape cards now show a player
-  FACE with the team mark as a badge (not the team mark alone); Specials get a
-  team mark beside the name (not text-only); and the GameCard footer book marks
-  are back. The real sizing bug was found and fixed at the source: MLB's CDN
-  returns a **213×320 portrait** for `w_213`, which `object-cover` centre-crops
-  in the circle and slices the head. Every MLB headshot URL now requests
-  `c_thumb,g_face,w_213,h_213` (a 213×213 face crop) — `identity.ts`,
-  `SubjectAvatar.tsx`, `mlb/adapter.ts`, `mlb/teamResearch.ts`,
-  `playerBio.ts` — and a shared `headshotFor(sport, id)` dispatcher now serves
-  the Slate market cards (NFL was already fine: ESPN serves square headshots).
-Next phase: **F0-UI** (research-page flags + Slate spotlight cards).
+**F0-UI is shipped** (`400802d`) — one commit, 17 files. The research flags:
+`/api/slate/flags`, the shared `ResearchFlags` card and chip row on the
+player, team and game pages, the Python spotlights rendered on the Slate
+beside the two TS cards, and N5's weather list. The Specials registry split
+into `SPECIAL_ONLY_RANKINGS` + `SPOTLIGHT_RANKINGS` with `rankingKind()`, and
+the drift guard now covers both kinds.
 
-### Environment note (2026-09-21)
+Phases 1-10 of the run order are done. **Phase 11 (C5-UI) is blocked** until a
+real graded slate exists (next NFL Sunday, 2026-09-27), so under A6 the next
+actionable phase is **12, DJ-GOLF** (tournament -> course backfill, a deploy).
 
-The local prod server (`next start` on `:3000`) could NOT reach Postgres for the
-whole session — `getaddrinfo ENOTFOUND aws-0-us-west-2.pooler.supabase.com`.
-Every snapshot/slate/calibration fetch failed to DNS-resolve the Supabase
-pooler, which is why the slate rendered "No games scheduled" and every cache
-was served 300–800+ minutes stale. The code is fine; the machine's DNS/network
-path to Supabase is the blocker. Restarting the server will not fix it — check
-the network/VPN before trusting any live-data render.
+### Environment note
 
-### Corrections to the previous session's chat
-
-- The chat said *"Writing the new TeamHero … Created 2 files"* — **not
-  accurate on disk.** `TeamHero` is defined **inline** in
-  `components/TeamResearchPage.tsx` (line ~185), not a new file. The only new
-  shared piece is `HeroTileGrid`, extracted into
-  `components/PlayerResearchSections.tsx` and reused by both heroes.
-- `patch_c2b_data.py` and `patch_tilegrid.py` were disposable scratch scripts;
-  they are gone from the tree (correct — nothing to recover).
-- "The colours route accepts `soccer_epl` directly" was a *verification*, not a
-  change: no API route file is modified. Team colour comes from
-  `useTeamColors(sport)` + `teamColor()` + `bandColors()`, already built in C0.
-
-### Verification done here (2026-09-21)
-
-- `npm run typecheck` clean; full suite **641 pass / 0 fail** (before and after the design edits); `npm run build` clean.
-- Functional DOM checks on MLB (Yankees), NFL (Vikings), NHL (Wild), NBA (Celtics), soccer (Arsenal): band, chips, next game, Home line, ranked tiles with correct per-sport ranks (MLB 9th/1st of 30, NFL 26th of 32, NHL 11th of 32, NBA 19th/1st of 30, soccer 2nd of 20), and last-ten form rows.
-- The body toggle the previous session left hanging works: "Show" → "Hide", `aria-expanded` flips, Last 10 appears.
-- **Caveat:** the embedded browser renders at ~201×125 CSS px, so pixel screenshots are unreliable here. Visual sign-off at 1440/400 is the operator's, in a real browser (prod server left running on `:3000`).
+- The built-in Browser pane cannot render the Suspense pages (player, team,
+  game): a HIDDEN pane never fires `requestAnimationFrame` and React 19's
+  streaming reveal waits on it, so the page sits in `<div hidden id="S:0">`
+  forever. `$RV`/`$RB` are not exposed as globals, so the console workaround in
+  `CURRENT.md` does not work either. **Playwright MCP is available in this
+  session and renders them correctly** — use it for every research-page check.
+- Prod on `:3000` serves `.next`: stop it, `npm run build`, restart
+  `linesmith-prod`. A stale prod server from an earlier session was serving the
+  old bundle at the start of this one.
 
 ### Next
 
-- **F0-UI** (Track S, phase 10, no deploy): `/api/slate/flags`, the shared
-  `ResearchFlags` card and chips on player/team/game pages; the Slate renders
-  the Python spotlights beside the two TS ones. Needs PY-B (done) + C4 (done).
-- **C4 follow-ups (done):** headshots/logos and the footer book-marks are in,
-  and the operator's image audit is applied. Still left for later, both *data*
-  additions to `lib/slate/marketMoves.ts`: Movers game-line rows still show text
-  matchups (no team logos — `ConsensusMover` carries no team ids), and the
-  Movers "books moved" cell still shows a count (no per-book marks — no book
-  list on the mover row).
+- **C5-UI** (phase 11) — build against the rows that exist; sign off only once
+  the new code has graded one NFL Sunday and one MLB day.
+- **DJ-GOLF** (phase 12, deploy) — the next actionable phase.
+- **C4 follow-ups**, both *data* additions to `lib/slate/marketMoves.ts`:
+  Movers game-line rows still show text matchups (no team logos —
+  `ConsensusMover` carries no team ids), and the "books moved" cell still shows
+  a count (no per-book marks — no book list on the mover row).
 - **C3 follow-ups:** `matchup` typed but not populated; team/game/injury rail
   filters not wired; `statusLine` kept for other consumers.
 - **NBA spotlights deferred** (run doc A6): needs a Python `'nba'` games loader.
-- **N5 (weather)** ships with F0-UI.
+- **Watch for the other sports' spotlights**: only MLB has ever written rows.
+  PY-B deployed after Sunday's slate, so NFL's appear Thursday 2026-09-24 and
+  CFB's Saturday 2026-09-26. Nothing to build — F0-UI renders what exists.
 
 ---
+
 
 ## Change log
 
@@ -416,3 +380,75 @@ browser.
 **Verified:** `npm run typecheck` clean; full TS suite 641/0 (all six
 unfreezed files swept clean by the UI guards); `npm run build` clean; prod
 server rebuilt and restarted on `:3000`. Pushed (`16ee731..b3f7d5c..fc8e69f`).
+
+
+### Entry 12 — F0-UI: research flags + the Python spotlights on the Slate (commit `400802d`)
+
+PY-B wrote 32 spotlight rankings into `slate_rankings` in the early hours of
+2026-09-22 and **nothing rendered them**: `readSpecials` hard-filters
+`kind='special'`, and the Slate's Spotlights section derives its two universal
+cards from `PickCandidate`s, not from the table. This is the render half.
+
+**Measured first, and two of the phase's premises were wrong.**
+
+1. **A spotlight's subject is not always a player.** `mlb-hr-parks` ranks
+   GAMES — `subject_id` IS the `game_id`, `subject_name` is "AZ @ COL". A
+   route that assumed an athlete id would have dropped 13 of today's 33 rows
+   on the floor. `ResearchFlag.subjectKind` carries it; the card's first column
+   is headed "Game", the row gets no face and no team badge, and its link goes
+   to the game page.
+2. **Only MLB has ever written spotlight rows** — 3 rankings, 33 rows, all
+   dated 2026-09-22. PY-B deployed at 02:26 UTC, *after* Sunday's NFL slate was
+   built, so NFL/CFB/NHL/soccer rankings simply have not had a slate yet. They
+   appear on their next one (NFL Thursday 09-24). Nothing is broken and nothing
+   is owed; the UI renders whatever exists.
+
+**What shipped**
+
+- `app/api/slate/flags/route.ts` — `cachedRoute`, key
+  `slate:flags:route:{scope}:{date}` (grepped, unused). The build is the WHOLE
+  sport-day's flags and the per-page slice happens in `transform`, so the Slate
+  and every player/team/game page share ONE cache entry instead of minting one
+  per athlete id. `?subject=`, `?team=` or `?game=`, at most one.
+- `lib/slate/flags.ts` — shapes plus `flagScope`/`selectFlags`/`groupFlags`.
+  **It holds no query on purpose**: these shapes reach the browser through
+  `spotlights.ts` and `ResearchFlags.tsx`, and `pgClient` pulls `pg` in with
+  them. The read is `lib/slate/flagsRead.ts` — the same split
+  `specialsFormat.ts` already keeps for the Specials' display half.
+- `components/ResearchFlags.tsx` — one card, one chip row, no sport check.
+  `variant="chips"` on the player page (a box around one line is a box around
+  one line), the card with `showSubject` on the team and game pages, where the
+  subjects are other people. A team's own id matches `team_id` OR
+  `opponent_id`, so the park flag for today's game shows on both teams.
+- The Slate's Spotlights section renders the Python cards beside the two TS
+  ones: `flagSpotlightCards` converts a ranking into the same `SpotlightCard`,
+  so there is one renderer and one empty state, not two. `SpotlightCard`
+  gained `subjectLabel` for the same reason the game rows exist.
+- **N5 weather** — `weatherFlag` on `SlateGameCard`, computed once in the
+  shared `buildSlateGames` from `game.weather` (wind over 15 mph, rain over
+  50%), listed by `weatherSpotlight`. No sport check: `resolveVenueWeather`
+  fills nothing for a roofed park or a sport with no forecast. Unordered, per
+  the spec. Today it flags exactly one game (TOR @ BAL, rain 79%).
+- `SPECIAL_RANKINGS` splits into `SPECIAL_ONLY_RANKINGS` (8) +
+  `SPOTLIGHT_RANKINGS` (32) with `rankingKind()`, so which kind an id is comes
+  from the registry rather than from a comment. The drift guard now asserts the
+  kind matches Python's per ranking, and that a spotlight never declares a
+  `grade_stat` while a Special always does.
+- Guards: `tests/slate-flags.test.ts` (9 tests, incl. the browser/pg split and
+  the N5 thresholds), two new in `slate-specials.test.ts`, and the four new
+  files added to `scan-no-edge`'s Slate list.
+
+**Verified:** `npm run typecheck` clean; full TS suite **652/0** (641 + 11
+new); `npm run build` clean; prod rebuilt and restarted on `:3000`. Rendered in
+**Playwright** at 1440 and 400 on real rows — the Slate's six spotlight cards
+in order (3 Python, 2 TS, weather), the player chip row ("FLAGS TODAY ·
+Pitcher K spots"), the team card (3 flags for TB) and the game card (4 flags
+for AZ @ COL). Two console errors on every page are the pre-existing signed-out
+401s on `/api/picks` and `/api/watchlist`. The 400px page overflow on `/mlb` is
+Scan's frozen table and is unchanged by this phase (measured: hiding the
+Spotlights section leaves `scrollWidth` at 620 either way).
+
+**Two things the render changed after looking at it:** the chip row got the
+same "FLAGS TODAY" overline the game page's state row uses (a bare chip under
+a hero reads as a stray control), and a game-subject row dropped its "AZ vs
+COL" sub-line under a name already reading "AZ @ COL".
