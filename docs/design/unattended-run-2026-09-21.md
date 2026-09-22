@@ -58,7 +58,7 @@ authorised.
 | 6 | **PY-B** Spotlight rankings in Python: NFL, CFB, NHL, soccer, MLB — 32 spotlights incl. the eight N ideas (N1/N2/N3/N6/N7/N8; N4 MLB). NBA deferred: `load_sport_games` has no 'nba' loader and no current games (A6). N5 weather ships with F0-UI. | S | 4 | **yes** | **done** |
 | 7 | **C3** Player search rail | C | 5 | no | **done** |
 | 8 | **C4** Slate imagery: Games, Books, **Movers**, Spotlights, Model | C | 2 | no | **done** |
-| 9 | **C6** Props controls (tabs → filters, Home Runs deleted) | C | 8 | no | **core done** — tabs → status/watchlist, HR deleted, Position, Showing line. Remaining: kit rebuild of the filter surfaces, <640 bottom sheet, 390px guard |
+| 9 | **C6** Props controls (tabs → filters, Home Runs deleted) | C | 8 | no | **done** |
 | 10 | **F0-UI** `/api/slate/flags`, the shared `ResearchFlags` card and chips on player/team/game pages; the Slate renders the Python spotlights beside the two TS ones | S | 6, 8 | no | — |
 | 11 | **C5-UI** Receipts table + the new Specials cards | C | 4 **and a real graded slate** (A6) | no | — |
 | 12 | **DJ-GOLF** Tournament → course backfill | S | — | **yes** | — |

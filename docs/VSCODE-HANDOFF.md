@@ -48,7 +48,7 @@
   `SubjectAvatar.tsx`, `mlb/adapter.ts`, `mlb/teamResearch.ts`,
   `playerBio.ts` — and a shared `headshotFor(sport, id)` dispatcher now serves
   the Slate market cards (NFL was already fine: ESPN serves square headshots).
-Next phase: **finish C6** (the props-controls kit rebuild + mobile sheet).
+Next phase: **F0-UI** (research-page flags + Slate spotlight cards).
 
 ### Corrections to the previous session's chat
 
@@ -72,14 +72,9 @@ Next phase: **finish C6** (the props-controls kit rebuild + mobile sheet).
 
 ### Next
 
-- **C6 (core done, `5c41440`):** tabs → status/watchlist, Home Runs board
-  deleted, Position filter, "Showing N of M" + chips, and `useFilters.ts`
-  unfreezed. **Remaining for C6:** rebuild the filter surfaces on the kit
-  (`FilterBar`'s dropdowns/checkboxes/odds inputs/search box → kit
-  `Popover`/`Select`/`Checkbox`/`Input`; `FilterSidebar`, `PlayerFilterDrawer`,
-  `DateGameStrip`, and the glider `SegmentedToggle` — then unfreeze them all in
-  `tests/ui-scope.ts`); the <640 "Filters (n)" bottom sheet; and the 390px
-  ≤3-row guard (needs Playwright, which the repo does not have). See Entry 10.
+- **F0-UI** (Track S, phase 10, no deploy): `/api/slate/flags`, the shared
+  `ResearchFlags` card and chips on player/team/game pages; the Slate renders
+  the Python spotlights beside the two TS ones. Needs PY-B (done) + C4 (done).
 - **C4 follow-ups (done):** headshots/logos and the footer book-marks are in,
   and the operator's image audit is applied. Still left for later, both *data*
   additions to `lib/slate/marketMoves.ts`: Movers game-line rows still show text
@@ -370,3 +365,44 @@ them.
 **Verified:** `npm run typecheck` clean; full TS suite 641/0 (incl. the
 unfreezed `useFilters.ts` swept clean); `npm run build` clean; prod server
 rebuilt and restarted on `:3000`. Pushed (`a08c11c..5c41440`).
+
+### Entry 11 — C6 finished: filter surfaces on the kit (commits `b3f7d5c`, `fc8e69f`)
+
+The three Entry-10 "remaining" items are done. C6 is closed.
+
+- `components/FilterBar.tsx` rebuilt on the kit: `FilterDropdown` → kit
+  `Popover` (trigger is a kit `Button`/`IconButton`, no more hand-rolled
+  portal); `FilterSelect` → kit `Select`; `FilterSearchBox` → kit `Input`
+  (leading `SearchIcon`); `FilterOddsRangeInputs` → kit `Input`s;
+  `CheckboxList`/`BooleanCheckboxRow` → kit `Checkbox`; `ScanScopeToggle`/
+  `GolfScanModeToggle`/`DensityToggle` → kit `SegmentedToggle`;
+  `OverflowMenu` → kit `Popover`; `IconToggleButton` → kit `IconButton`; new
+  `HitRatePicker` on kit `RadioGroup` (shared by the row and the sidebar).
+  Hand-typed `text-[Npx]`, native `title=` and the native `<select>` are gone.
+- `components/FilterSidebar.tsx`: `AccordionSection` → kit `Button`, hit-rate
+  list → `HitRatePicker`, `FilterSelect` call updated.
+- `components/PlayerFilterDrawer.tsx`: the hand-built scrim is now the kit
+  `SlideoutMenu` (buttons/input/checkboxes/chips all kit).
+- `components/DateGameStrip.tsx`: Today/Tomorrow/All/game chips → kit
+  `Button`s, the date picker → kit `Input type="date"`, collapse/pause →
+  kit `IconButton`s, and `text-good` → `text-good-ink`.
+- `components/SegmentedToggle.tsx` (the glider) **deleted** — its last
+  importer (`FilterBar`) now uses the kit toggle.
+- `components/AppShell.tsx`: the eight filter pills are extracted into a
+  `filterPills(fullWidth)` renderer; <640 shows a "Filters (n)" button that
+  opens a kit `SlideoutMenu` with the pills stacked, a Reset and a "Show N
+  props" apply button. Desktop/tablet keep the inline row.
+- `tests/ui-scope.ts`: `FilterBar`, `FilterSidebar`, `PlayerFilterDrawer`,
+  `DateGameStrip` and `SegmentedToggle` removed from `OUT_OF_SCOPE` (only
+  `ScanTable`/`ScanCard`/`AppShell` stay frozen).
+- `tests/ui-pieces.test.ts`: the glider `TOGGLE_ALLOWED` ratchet emptied.
+
+**The one thing still not automatable:** the plan's 390px ≤3-row check asks
+for Playwright, which the repo does not have. The responsive split is verified
+in the embedded browser (at its narrow width the inline row hides and the
+"Filters (n)" button shows). The operator should still eyeball 390px in a real
+browser.
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0 (all six
+unfreezed files swept clean by the UI guards); `npm run build` clean; prod
+server rebuilt and restarted on `:3000`. Pushed (`16ee731..b3f7d5c..fc8e69f`).
