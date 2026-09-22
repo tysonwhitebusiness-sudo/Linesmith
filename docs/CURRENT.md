@@ -38,7 +38,7 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 5b | C2b team hero, same rework as the player hero | **done** |
 | 6 | PY-B spotlight rankings: NFL, CFB, NHL, soccer, MLB (**deploy**) — NBA deferred (no Python games loader) | **done** |
 | 7 | C3 player search rail | **done** |
-| 8 | C4 Slate imagery (Movers included) | — |
+| 8 | C4 Slate imagery (Movers included) | **done** |
 | 9 | C6 props controls (tabs → filters, Home Runs deleted) | — |
 | 10 | F0-UI research-page flags + Slate spotlight cards | — |
 | 11 | C5-UI receipts table + new Specials (needs a real graded slate) | — |

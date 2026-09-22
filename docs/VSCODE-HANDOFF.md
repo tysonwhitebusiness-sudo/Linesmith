@@ -20,11 +20,11 @@
 
 ## Session state — 2026-09-21
 
-**C3 is shipped** — committed and pushed (structured headline/matchup on the
-rail, sort + has-props filters, URL state). Next phase: **C4** Slate imagery
-(no deploy).
+**C4 is shipped** — committed and pushed (Slate imagery: book domains, game-card
+stripe + 36px logos + live treatment, Books-section marks + gap pill +
+AvatarGroup). Next phase: **C6** props controls (tabs → filters).
 
-- Commits: `5f9a7df` PY-B (32 spotlights, deployed), then the C3 commit.
+- Commits: the C4 commit follows C3 (`9a047cc`) and PY-B (`5f9a7df`).
 
 ### Corrections to the previous session's chat
 
@@ -48,15 +48,16 @@ rail, sort + has-props filters, URL state). Next phase: **C4** Slate imagery
 
 ### Next
 
-- **C4** Slate imagery (Track C, phase 8, no deploy): Game-card stripes, 36px
-  logos, book marks (add `kalshi`/`prophetx`/`hardrockbet`/`betrivers` to
-  `BOOK_DOMAIN`), footer row, live-state treatment.
-- **C3 follow-ups (non-blocking):** `matchup` is only typed, not populated —
-  it needs per-sport game-context plumbing in each adapter (MLB has the game
-  object at the subject site; NFL/others need it wired). `statusLine` is kept
-  (PlayerFilterDrawer, TournamentLinesView and golf leaderboards still read
-  it); delete it once every consumer has moved. The rail's team/game/injury
-  filters from the plan are not yet wired (data isn't in the subject meta).
+- **C6** Props controls (Track C, phase 9, no deploy): tabs → filters, Home
+  Runs board deleted. Read the run doc §3 correction 3 first — `AppShell.tsx`
+  line numbers have moved.
+- **C4 follow-ups (non-blocking):** the plan's headshots/logos for the
+  Spotlights, Model and Movers cards, and the GameCard footer book-marks
+  `AvatarGroup`, need headshot/logo URLs that are not yet on those row shapes
+  (`SpotlightRow`, `ModelPickRow`, `ConsensusMover`, `SlateGameCard.lines`)
+  — a follow-up data pass, not a UI-only change.
+- **C3 follow-ups:** `matchup` typed but not populated; team/game/injury rail
+  filters not wired; `statusLine` kept for other consumers.
 - **NBA spotlights deferred** (run doc A6): needs a Python `'nba'` games loader.
 - **N5 (weather)** ships with F0-UI.
 
@@ -167,3 +168,27 @@ clean; in the browser the Sort/Has-props controls render, the URL round-trips
 (`?sort=name`, `?props=1`), and the has-props filter drops 625 → 60 rows. The
 headline value/unit shows once the cached snapshot refreshes (it is produced by
 the adapters; the stale snapshot cache pre-dates the change).
+
+### Entry 5 — C4 Slate imagery
+
+- `components/BookLogo.tsx`: added `kalshi` → `kalshi.com`, `prophetx` →
+  `prophetx.co`, `hardrockbet` → `hardrock.bet`, `betrivers` → `betrivers.com`
+  to `BOOK_DOMAIN` and `BOOK_LABEL`.
+- `components/slate/GameCard.tsx`: a 5px stripe split into the two teams'
+  primaries (`useTeamColors` + `teamColor`, `var(--line)` fallback), logos
+  24 → 36px, and live games now show a red dot + "LIVE · {statusText}" in
+  `bad-ink` instead of the neutral chip. `GameCard` takes a `sport` prop
+  (`SlateGames` passes `data.sport`).
+- `components/slate/SlateMarket.tsx`: the Book cell is a `BookLogo` mark +
+  proper label (the local title-case `bookLabel` was replaced by `BookLogo`'s),
+  the Gap column is a neutral `warn` `Chip` (no bar, no green/red), and "At the
+  other line" is a max-5 row of `BookLogo` marks with `Tooltip` names + "+N".
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0 (incl. the
+`scan-no-edge` guard); `npm run build` clean.
+
+**Not done (follow-up, data not on the row shapes):** headshots/logos for the
+Spotlights, Model and Movers cards, and the GameCard footer book-marks
+`AvatarGroup` — `SpotlightRow`/`ModelPickRow`/`ConsensusMover` and
+`SlateGameCard.lines` don't carry headshot/logo URLs yet, so these need a data
+pass, not just UI. See "Next".

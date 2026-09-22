@@ -57,7 +57,7 @@ authorised.
 | 5b | **C2b** Team hero: the **same rework as the player hero** (operator, 2026-09-21). `TeamHero` in `components/TeamResearchPage.tsx:171`: team-colour band from `bandColors()`, logo (no headshot) with the same ring and overhang, logo watermark, chip row (conference/division, standing), NEXT game on the right with the opponent logo, ranked tiles with percentile bars (from the team pool `teamResearchSpec` already ranks against), opponent-logo form rows (the existing `hero.lastTen`), and the same collapsible body with the one-time peek (its own `lb.teamHeroPeekSeen` key). One data change: add `rank` to the team hero's tiles, the same shape as C2.1. No `sport ===`. | C | 5 | no | **done** |
 | 6 | **PY-B** Spotlight rankings in Python: NFL, CFB, NHL, soccer, MLB — 32 spotlights incl. the eight N ideas (N1/N2/N3/N6/N7/N8; N4 MLB). NBA deferred: `load_sport_games` has no 'nba' loader and no current games (A6). N5 weather ships with F0-UI. | S | 4 | **yes** | **done** |
 | 7 | **C3** Player search rail | C | 5 | no | **done** |
-| 8 | **C4** Slate imagery: Games, Books, **Movers**, Spotlights, Model | C | 2 | no | — |
+| 8 | **C4** Slate imagery: Games, Books, **Movers**, Spotlights, Model | C | 2 | no | **done** |
 | 9 | **C6** Props controls (tabs → filters, Home Runs deleted) | C | 8 | no | — |
 | 10 | **F0-UI** `/api/slate/flags`, the shared `ResearchFlags` card and chips on player/team/game pages; the Slate renders the Python spotlights beside the two TS ones | S | 6, 8 | no | — |
 | 11 | **C5-UI** Receipts table + the new Specials cards | C | 4 **and a real graded slate** (A6) | no | — |
