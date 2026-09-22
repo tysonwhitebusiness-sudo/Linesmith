@@ -20,12 +20,11 @@
 
 ## Session state — 2026-09-21
 
-**PY-B is shipped** — committed, pushed and deployed (worker live on
-`5f9a7df`, deploy `dep-daoudr5g1s2s738njlcg`). Next phase: **C3** player
-search rail (no deploy).
+**C3 is shipped** — committed and pushed (structured headline/matchup on the
+rail, sort + has-props filters, URL state). Next phase: **C4** Slate imagery
+(no deploy).
 
-- Commits: `5f9a7df` PY-B (32 spotlights), after `4118412` C2b and `34b59c7` C1b.
-- HEAD is `5f9a7df`; `origin/main` is even with it (a docs commit follows).
+- Commits: `5f9a7df` PY-B (32 spotlights, deployed), then the C3 commit.
 
 ### Corrections to the previous session's chat
 
@@ -49,12 +48,17 @@ search rail (no deploy).
 
 ### Next
 
-- **C3** player search rail (Track C, phase 7, no deploy).
-- **NBA spotlights are deferred** (blocker, run doc A6): `load_sport_games` has
-  no `'nba'` entry and the season has no games yet. When an NBA games loader
-  lands, add pace-up, usage bumps (=N3), shot-zone matchups, and NBA's
-  N1/N2/N6/N7/N8 to `slate_rankings.py` + the `SPECIAL_RANKINGS` mirror.
-- **N5 (weather)** is render-time forecast data, not a table — it ships with F0-UI.
+- **C4** Slate imagery (Track C, phase 8, no deploy): Game-card stripes, 36px
+  logos, book marks (add `kalshi`/`prophetx`/`hardrockbet`/`betrivers` to
+  `BOOK_DOMAIN`), footer row, live-state treatment.
+- **C3 follow-ups (non-blocking):** `matchup` is only typed, not populated —
+  it needs per-sport game-context plumbing in each adapter (MLB has the game
+  object at the subject site; NFL/others need it wired). `statusLine` is kept
+  (PlayerFilterDrawer, TournamentLinesView and golf leaderboards still read
+  it); delete it once every consumer has moved. The rail's team/game/injury
+  filters from the plan are not yet wired (data isn't in the subject meta).
+- **NBA spotlights deferred** (run doc A6): needs a Python `'nba'` games loader.
+- **N5 (weather)** ships with F0-UI.
 
 ---
 
@@ -141,3 +145,25 @@ NFL builders and fixed two real bugs (target-share keyed to nflverse codes;
 
 **Deferred (A6):** NBA (no Python games loader) and N5 weather (render-time,
 ships with F0-UI). See "Next" above.
+
+### Entry 4 — C3 player search rail
+
+- `lib/core/types.ts`: `SubjectSummary` gains `headline: { value; unit } | null`
+  and `matchup: string | null` (kept `statusLine` — other consumers still read it).
+- All 8 adapters fill `headline` alongside the existing `statusLine`: NFL
+  (by position: pass/rush/rec yds), CFB (largest of pass/rush/rec/kicking),
+  NBA (PPG), NHL (skater pts / goalie SV), soccer (goals), tennis (W-L), MLB
+  (batter "Last H-AB", pitcher null), golf (today's score).
+- `components/ui/Fields.tsx` `PickList`: new `trailing` (right-edge block) and
+  `accent` (team primary; the selected row gets a 3px bar at its left edge).
+- `components/PlayerDetailPanel.tsx`: the rail now renders the 40px headshot
+  with an 18px team-logo badge, `sub` = matchup, `trailing` = headline value +
+  unit + a good-tint "N mkts" chip, `accent` from `useTeamColors` +
+  `teamColor`. Sort (headline/name/markets) and a "Has props" toggle, both
+  backed by `useUrlState` (`?sort=` / `?props=`).
+
+**Verified:** `npm run typecheck` clean; full TS suite 641/0; `npm run build`
+clean; in the browser the Sort/Has-props controls render, the URL round-trips
+(`?sort=name`, `?props=1`), and the has-props filter drops 625 → 60 rows. The
+headline value/unit shows once the cached snapshot refreshes (it is produced by
+the adapters; the stale snapshot cache pre-dates the change).
