@@ -2421,13 +2421,17 @@ async def freeze_slate_rankings(sport: str, slate_date, ranking_ids: list[str]) 
 
 
 async def ungraded_frozen_rankings(slate_date, top_n: int = 5) -> list[dict]:
-    """The frozen top N for a past slate that has no outcome yet."""
+    """The frozen top N for a past slate that has no outcome yet.
+
+    Specials only: a spotlight is a research flag, not a forecast, so it is
+    never graded (its receipts, if any, are the SPC phase's concern)."""
     pool = await get_pool()
     rows = await pool.fetch(
         """
         SELECT sport, slate_date, ranking_id, subject_id, rank, subject_name, game_id, team_id
           FROM slate_rankings
          WHERE slate_date = $1::date AND frozen_at IS NOT NULL AND outcome IS NULL
+           AND kind = 'special'
            AND rank BETWEEN 1 AND $2 AND subject_id <> '__leader__'
          ORDER BY sport, ranking_id, rank
         """,

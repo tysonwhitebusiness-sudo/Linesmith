@@ -39,7 +39,7 @@ function pyRankings() {
 
 test('every Python ranking is mirrored, with the same title, promo and not-held note', () => {
   const py = pyRankings();
-  assert.equal(py.length, 8, 'the parser found every RankingDef');
+  assert.equal(py.length, 40, 'the parser found every RankingDef (8 specials + 32 spotlights)');
   assert.deepEqual(py.map((r) => r.id).sort(), Object.keys(SPECIAL_RANKINGS).sort());
   for (const r of py) {
     const ts = SPECIAL_RANKINGS[r.id];

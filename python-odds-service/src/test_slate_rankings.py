@@ -68,8 +68,12 @@ ok("every ranking id is unique", len(ids) == len(set(ids)))
 ok("every ranking has factors", all(r.factors for r in sr.RANKINGS))
 ok("every factor explains itself", all(f.info for r in sr.RANKINGS for f in r.factors),
    f"— missing: {[(r.id, f.key) for r in sr.RANKINGS for f in r.factors if not f.info]}")
-ok("every ranking knows how it is graded",
-   all(r.grade_stat in sr._GRADE_SQL or r.grade_stat in sr._GRADE_ELSEWHERE for r in sr.RANKINGS))
+ok("every special knows how it is graded",
+   all(r.grade_stat in sr._GRADE_SQL or r.grade_stat in sr._GRADE_ELSEWHERE
+       for r in sr.RANKINGS if r.kind == "special"))
+ok("a spotlight is never graded",
+   all(r.grade_stat == "" for r in sr.RANKINGS if r.kind == "spotlight"),
+   f"— graded spotlights: {[(r.id, r.grade_stat) for r in sr.RANKINGS if r.kind == 'spotlight' and r.grade_stat]}")
 ok("every ranking has a known hit rule and kind",
    all(r.hit_rule in sr.HIT_RULES and r.kind in sr.KINDS for r in sr.RANKINGS))
 ok("the longest rankings grade against the slate's leader",
@@ -78,8 +82,9 @@ ok("two goals needs two", next(r for r in sr.RANKINGS if r.id == "nhl-two-goals"
 ok("every factor has a read template",
    all(f.key in sr.READS for r in sr.RANKINGS for f in r.factors),
    f"— missing: {[f.key for r in sr.RANKINGS for f in r.factors if f.key not in sr.READS]}")
-ok("every ranking prints a stat line", all(sr.detail_line(r.detail, {}) for r in sr.RANKINGS),
-   f"— empty: {[r.id for r in sr.RANKINGS if not sr.detail_line(r.detail, {})]}")
+ok("every special prints a stat line",
+   all(sr.detail_line(r.detail, {}) for r in sr.RANKINGS if r.kind == "special"),
+   f"— empty: {[r.id for r in sr.RANKINGS if r.kind == 'special' and not sr.detail_line(r.detail, {})]}")
 
 print("hit rules")
 ok("any: one is a hit", sr.is_hit("any", 1.0) and not sr.is_hit("any", 0.0))
@@ -243,10 +248,39 @@ async def builders_on_real_rows() -> None:
             print("   ", c.subject_id, c.team, {k: v for k, v in c.values.items() if not k.startswith("_")})
 
 
+async def spotlight_builders_on_real_rows() -> None:
+    """PY-B: the generic N builders run against real teams, with the games
+    injected the way the NHL/NFL checks do (no live slate needed)."""
+    from types import SimpleNamespace as NS
+    print("spotlight builders on real rows")
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        g = await conn.fetchrow(
+            """SELECT team_id, opponent_id FROM team_game_production
+                WHERE sport = 'nfl' AND season = 2026 AND pos_group = 'all' ORDER BY game_date DESC LIMIT 1""")
+        game = NS(home_team_id=g["team_id"], away_team_id=g["opponent_id"], home_abbr="HOME", away_abbr="AWAY",
+                  game_id="test", roster=[])
+        real = sr._sport_games_today
+
+        async def fake_games(sport, slate):
+            return [game]
+        sr._sport_games_today = fake_games
+        try:
+            m = await sr.build_milestones(conn, date(2026, 9, 27), "nfl")
+            ok("NFL milestones builds without error", isinstance(m, list))
+            rc = await sr.build_role_changes(conn, date(2026, 9, 27), "nfl")
+            ok("NFL role changes builds without error", isinstance(rc, list))
+            rv = await sr.build_revenge(conn, date(2026, 9, 27), "nfl")
+            ok("NFL revenge builds without error", isinstance(rv, list))
+        finally:
+            sr._sport_games_today = real
+
+
 async def db_checks() -> None:
     # One event loop: the pool is bound to the loop that created it.
     await freeze_rules()
     await builders_on_real_rows()
+    await spotlight_builders_on_real_rows()
 
 
 asyncio.run(db_checks())

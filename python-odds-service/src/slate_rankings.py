@@ -77,7 +77,9 @@ class RankingDef:
     promo: str
     factors: tuple[Factor, ...]
     build: Callable[..., Awaitable[list[Candidate]]]
-    grade_stat: str
+    # "" = not graded: a spotlight (kind='spotlight') has no grade_stat, a
+    # Special (kind='special') always sets one.
+    grade_stat: str = ""
     not_held: str = ""
     top_n: int = 10
     # 'any' (value > 0) · 'gte2' (two or more) · 'slate_max' (the slate's
@@ -189,6 +191,31 @@ READS: dict[str, Callable[[float, dict], str | None]] = {
     "toi": lambda v, c: f"plays {v:.1f} minutes a night",
     "opp_ga_pg": lambda v, c: f"faces a team allowing {v:.1f} goals a game",
     "opp_save_pct": lambda v, c: f"faces a team saving {v * 100:.1f}% of shots",
+    # spotlights — the generic N ideas
+    "role_up": lambda v, c: f"is used {v:.2f}× his season rate over the last three",
+    "missed_days": lambda v, c: f"returns after missing {v:.0f} {_pl(v, 'day', 'days')}",
+    "share_of_team": lambda v, c: f"holds {v:.0f}% of the team's production",
+    "games_for_opp": lambda v, c: f"played {v:.0f} games for the opponent",
+    "gap": lambda v, c: f"is {v:.0f} short of a milestone",
+    "short_rest": lambda v, c: f"is on {v:.0f} {_pl(v, 'day', 'days')} of rest",
+    # NFL targets / rush
+    "targets_pg": lambda v, c: f"sees {v:.1f} targets a game",
+    "target_share": lambda v, c: f"draws {v:.0f}% of the team's targets",
+    "opp_pass_allowed": lambda v, c: f"faces a defence allowing {v:.1f} completions a game",
+    "carries_pg": lambda v, c: f"carries {v:.1f} times a game",
+    "yds_per_carry": lambda v, c: f"averages {v:.1f} yards a carry",
+    "opp_rush_allowed": lambda v, c: f"faces a run defence allowing {v:.1f} yards a game",
+    # NHL / soccer shot volume
+    "shots_vs": lambda v, c: f"faces a team allowing {v:.1f} shots a game",
+    "shots_pg": lambda v, c: f"takes {v:.1f} shots a game",
+    "sot_pg": lambda v, c: f"puts {v:.1f} shots on target a game",
+    "opp_shots_allowed": lambda v, c: f"faces a side allowing {v:.1f} shots a game",
+    # MLB
+    "slg_vs_hand": lambda v, c: f"slugs {v:.3f} against {'left' if c.get('_hand') == 'L' else 'right'}-handed pitching",
+    "k_per_9": lambda v, c: f"strikes out {v:.1f} per nine",
+    "opp_k_pct": lambda v, c: f"faces a lineup striking out {v:.1f}% of the time",
+    "hot_ops": lambda v, c: f"is slugging {v:.3f} over his last ten",
+    "opp_gs": lambda v, c: f"faces a starter averaging a {v:.0f} game score",
 }
 
 NO_STANDOUT = "No single factor stands out; the rank comes from the mix."
@@ -931,8 +958,717 @@ async def build_nhl_two_goals(conn, slate: date, games=None) -> list[Candidate]:
 
 
 # ---------------------------------------------------------------------------
+# spotlights — the research flags (kind='spotlight'), never graded
+# ---------------------------------------------------------------------------
+#
+# PY-B (2026-09-21): the sport-specific spotlights and the eight "N" ideas,
+# each a fact about tonight, not a prediction. They share the Specials'
+# writer, freeze and percentile machinery; the only difference is `kind`.
+#
+# A spotlight is a ranking when the idea orders players (N1, N2, N3, N4, N7,
+# N8, and the sport-specific cards); it is a short list when the idea is about
+# a game (N6 rest). N5 (weather) is render-time forecast data, not a table,
+# so it ships with F0-UI, not here. NBA has no Python games loader yet
+# (`load_sport_games` does not cover 'nba'), so its spotlights are deferred to
+# the phase that adds the loader (blocker, run doc A6).
+
+SPOT_SEASONS = {
+    "mlb": (2025, 2026), "nfl": (2025, 2026), "cfb": (2025, 2026),
+    "nhl": (2025, 2026), "soccer_epl": (2025, 2026), "soccer_mls": (2025, 2026),
+}
+
+# N1: the per-sport usage metric a "role change" is measured in.
+_ROLE_METRIC = {
+    "nfl": "COALESCE((stats->>'rushing.rushingAttempts')::numeric, 0) + COALESCE((stats->>'receiving.receptions')::numeric, 0)",
+    "cfb": "COALESCE((stats->>'rushing.rushingAttempts')::numeric, 0) + COALESCE((stats->>'receiving.receptions')::numeric, 0)",
+    "nhl": "COALESCE((stats->>'toiMinutes')::numeric, 0)",
+    "soccer_epl": "COALESCE((stats->>'totalShots')::numeric, 0)",
+    "soccer_mls": "COALESCE((stats->>'totalShots')::numeric, 0)",
+    "mlb": "COALESCE((stats->>'bat_atBats')::numeric, 0) + COALESCE((stats->>'baseOnBalls')::numeric, 0)",
+}
+
+# N8: the round number a milestone measures, per sport.
+_MILESTONES = {
+    "nfl": [("receiving.receivingYards", 1000), ("rushing.rushingYards", 1000)],
+    "cfb": [("rushing.rushingYards", 1000)],
+    "nhl": [("points", 100)],
+    "soccer_epl": [("totalGoals", 20)],
+    "soccer_mls": [("totalGoals", 20)],
+    "mlb": [("bat_homeRuns", 30)],
+}
+
+
+async def _today_players(conn, sport: str, teams: dict) -> dict[str, str]:
+    """{athlete id: team id} for every player on today's teams, most-recent
+    team wins (the same pool `_current_team` builds, with the season window)."""
+    return await _current_team(conn, sport, list(teams), SPOT_SEASONS[sport])
+
+
+async def build_role_changes(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    current = await _today_players(conn, sport, teams)
+    rows = await conn.fetch(
+        f"""SELECT athlete_id, {_ROLE_METRIC[sport]} AS v
+              FROM player_game_history
+             WHERE sport = $1 AND season = ANY($2::int[]) AND athlete_id = ANY($3::text[])
+             ORDER BY athlete_id, game_date DESC""",
+        sport, list(SPOT_SEASONS[sport]), list(current))
+    by_aid: dict[str, list[float]] = {}
+    for r in rows:
+        by_aid.setdefault(str(r["athlete_id"]), []).append(float(r["v"] or 0))
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for aid, tid in current.items():
+        vs = by_aid.get(aid)
+        if not vs or len(vs) < 5:
+            continue
+        season_rate = sum(vs) / len(vs)
+        if season_rate <= 0:
+            continue
+        recent = sum(vs[:3]) / min(3, len(vs[:3]))
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, ""), team=abbr, opponent=opp_abbr,
+            game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={"role_up": round(recent / season_rate, 2)},
+        ))
+    return out
+
+
+async def build_back_in_lineup(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    yday = slate - timedelta(days=1)
+    rows = await conn.fetch(
+        """WITH y AS (
+             SELECT DISTINCT athlete_id, team_id, athlete_name
+               FROM injury_report
+              WHERE sport = $1 AND captured_on = $2 AND athlete_id IS NOT NULL),
+          t AS (
+             SELECT DISTINCT athlete_id FROM injury_report
+              WHERE sport = $1 AND captured_on = $3 AND athlete_id IS NOT NULL)
+        SELECT y.athlete_id, y.team_id, y.athlete_name, count(DISTINCT ir.captured_on)::int AS missed
+          FROM y
+          LEFT JOIN injury_report ir ON ir.sport = $1 AND ir.athlete_id = y.athlete_id
+                 AND ir.captured_on BETWEEN $2::date - 13 AND $2::date
+         WHERE NOT EXISTS (SELECT 1 FROM t WHERE t.athlete_id = y.athlete_id)
+           AND y.team_id = ANY($4::text[])
+         GROUP BY 1, 2, 3""",
+        sport, yday, slate, list(teams))
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for r in rows:
+        tid = str(r["team_id"])
+        if tid not in teams:
+            continue
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        out.append(Candidate(
+            subject_id=str(r["athlete_id"]),
+            subject_name=r["athlete_name"] or names.get(str(r["athlete_id"]), ""),
+            team=abbr, opponent=opp_abbr, game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={"missed_days": int(r["missed"])},
+        ))
+    return out
+
+
+async def build_teammate_out(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    out_teams = {str(r["team_id"]) for r in await conn.fetch(
+        """SELECT DISTINCT team_id FROM injury_report
+            WHERE sport = $1 AND captured_on = $2 AND athlete_id IS NOT NULL AND team_id IS NOT NULL""",
+        sport, slate)}
+    out_teams &= set(teams)
+    if not out_teams:
+        return []
+    current = await _current_team(conn, sport, list(out_teams), SPOT_SEASONS[sport])
+    shares = {str(r["athlete_id"]): r for r in await conn.fetch(
+        """SELECT DISTINCT ON (athlete_id) athlete_id, team_share, games
+             FROM player_season_production
+            WHERE sport = $1 AND season = ANY($2::int[]) AND team_id = ANY($3::text[])
+            ORDER BY athlete_id, season DESC""",
+        sport, list(SPOT_SEASONS[sport]), list(out_teams))}
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for aid, tid in current.items():
+        r = shares.get(aid)
+        if not r or r["team_share"] is None or (r["games"] or 0) < 5:
+            continue
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, ""), team=abbr, opponent=opp_abbr,
+            game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={"share_of_team": round(100 * float(r["team_share"]), 1)},
+        ))
+    return out
+
+
+async def build_revenge(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    current = await _today_players(conn, sport, teams)
+    rows = await conn.fetch(
+        """SELECT athlete_id, team_id, count(*) AS g
+             FROM player_game_history
+            WHERE sport = $1 AND season = ANY($2::int[]) AND athlete_id = ANY($3::text[])
+            GROUP BY 1, 2""",
+        sport, list(SPOT_SEASONS[sport]), list(current))
+    past: dict[str, dict[str, int]] = {}
+    for r in rows:
+        past.setdefault(str(r["athlete_id"]), {})[str(r["team_id"] or "")] = int(r["g"])
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for aid, tid in current.items():
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        g = past.get(aid, {}).get(opp_id, 0)
+        if g < 1:
+            continue
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, ""), team=abbr, opponent=opp_abbr,
+            game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={"games_for_opp": g},
+        ))
+    return out
+
+
+async def build_milestones(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    rows = await conn.fetch(
+        """SELECT DISTINCT ON (athlete_id) athlete_id, team_id, stats, games
+             FROM player_season_production
+            WHERE sport = $1 AND season = ANY($2::int[]) AND team_id = ANY($3::text[])
+            ORDER BY athlete_id, season DESC""",
+        sport, list(SPOT_SEASONS[sport]), list(teams))
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for r in rows:
+        aid = str(r["athlete_id"])
+        tid = str(r["team_id"])
+        if tid not in teams:
+            continue
+        stats = json.loads(r["stats"]) if isinstance(r["stats"], str) else (r["stats"] or {})
+        gp = max(1, int(r["games"] or 0))
+        for key, target in _MILESTONES.get(sport, []):
+            total = float(stats.get(key) or 0)
+            if total <= 0:
+                continue
+            gap = target - total
+            if 0 < gap <= total / gp:  # within one game's worth
+                abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+                out.append(Candidate(
+                    subject_id=aid, subject_name=names.get(aid, ""), team=abbr, opponent=opp_abbr,
+                    game_id=game_id, team_id=tid, opponent_id=opp_id,
+                    values={"gap": round(gap, 1)},
+                ))
+                break
+    return out
+
+
+async def build_rest_travel(conn, slate: date, sport: str) -> list[Candidate]:
+    """N6 — a game whose side plays on short rest. Subject is the game."""
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    last = {str(r["team_id"]): r["game_date"] for r in await conn.fetch(
+        """SELECT DISTINCT ON (team_id) team_id, game_date
+             FROM team_game_production
+            WHERE sport = $1 AND season = ANY($2::int[]) AND team_id = ANY($3::text[])
+            ORDER BY team_id, game_date DESC""",
+        sport, list(SPOT_SEASONS[sport]), list(teams))}
+    threshold = 6 if sport == "nfl" else 1  # NFL short week; NBA/NHL back-to-back
+    out: list[Candidate] = []
+    for g in games:
+        hid, aid = str(g.home_team_id or ""), str(g.away_team_id or "")
+        if hid not in teams or aid not in teams:
+            continue
+        rests = [(slate - last[t]).days for t in (hid, aid) if t in last]
+        if not rests:
+            continue
+        short = min(rests)
+        if short > threshold:
+            continue
+        out.append(Candidate(
+            subject_id=str(g.game_id), subject_name=f"{g.away_abbr} @ {g.home_abbr}",
+            team=g.away_abbr, opponent=g.home_abbr, game_id=str(g.game_id),
+            team_id=aid, opponent_id=hid,
+            values={"short_rest": float(short)},
+        ))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# NFL — targets vs weak pass defences, and rushers vs weak run defences
+# ---------------------------------------------------------------------------
+
+NFL_TARGET_FACTORS = (
+    Factor("targets_pg", "Tgt/G", info="Targets per game, last two seasons (nflverse play-by-play)."),
+    Factor("target_share", "Target share", info="Share of the team's targets in the games the player played."),
+    Factor("opp_pass_allowed", "Opp completions/G", info="Completions the opponent's defence allows per game."),
+)
+
+
+async def build_nfl_targets(conn, slate: date) -> list[Candidate]:
+    import httpx
+
+    import nfl_pbp
+
+    games = await _sport_games_today("nfl", slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    async with httpx.AsyncClient() as client:
+        gsis = await nfl_pbp.espn_to_gsis(client)
+    current = await _current_team(conn, "nfl", list(teams), (2025, 2026))
+    tgt = {r["receiver_id"]: r for r in await conn.fetch(
+        """WITH rg AS (
+               SELECT receiver_id, game_id, team, count(*) AS n
+                 FROM nfl_target_events
+                WHERE season IN (2025, 2026) AND receiver_id IS NOT NULL
+                GROUP BY 1, 2, 3),
+             t AS (
+               SELECT game_id, team, count(*) AS team_n
+                 FROM nfl_target_events WHERE season IN (2025, 2026) GROUP BY 1, 2)
+           SELECT e.receiver_id, count(*) AS targets, count(DISTINCT e.game_id) AS g,
+                  (SELECT sum(rg.n) / NULLIF(sum(t.team_n), 0)
+                     FROM rg JOIN t USING (game_id, team) WHERE rg.receiver_id = e.receiver_id) AS share
+             FROM nfl_target_events e
+            WHERE e.season IN (2025, 2026) AND e.receiver_id = ANY($1::text[])
+            GROUP BY 1""", [gsis[a] for a in current if a in gsis])}
+    allowed = {str(r["team_id"]): r for r in await conn.fetch(
+        """SELECT team_id, payload, games FROM team_target_profile
+            WHERE season = 2026 AND side = 'defense' AND pos_group = 'all'""")}
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for aid, tid in current.items():
+        t = tgt.get(gsis.get(aid, ""))
+        if t is None or t["targets"] < 10 or t["g"] < 3:
+            continue
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        share = round(100 * float(t["share"]), 1) if t["share"] is not None else None
+        opp = allowed.get(opp_id)
+        completions = None
+        if opp:
+            cells = (json.loads(opp["payload"]) if isinstance(opp["payload"], str) else opp["payload"]).get("cells") or {}
+            completions = sum(c[1] for c in cells.values() if isinstance(c, list) and len(c) > 1) / max(1, int(opp["games"]))
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, ""), team=abbr, opponent=opp_abbr,
+            game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={
+                "targets_pg": round(t["targets"] / t["g"], 1),
+                "target_share": share,
+                "opp_pass_allowed": round(completions, 1) if completions is not None else None,
+            },
+        ))
+    return out
+
+
+NFL_RUSH_FACTORS = (
+    Factor("carries_pg", "Carries/G", info="Rushing attempts per game, last two seasons."),
+    Factor("yds_per_carry", "Yds/carry", info="Yards per carry, last two seasons."),
+    Factor("opp_rush_allowed", "Opp rush yds/G", info="Rushing yards the opponent's defence allows to backs per game."),
+)
+
+
+async def build_football_rush(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    pos_group = "RB" if sport == "nfl" else "all"
+    allowed = {str(r["opponent_id"]): float(r["yds"]) for r in await conn.fetch(
+        """SELECT opponent_id, avg(COALESCE((stats->>'rushing.rushingYards')::numeric, 0)) AS yds
+             FROM team_game_production
+            WHERE sport = $1 AND season = 2026 AND pos_group = $2
+            GROUP BY 1""", sport, pos_group)}
+    rows = await conn.fetch(
+        """SELECT athlete_id, team_id, count(*) AS g,
+                  sum(COALESCE((stats->>'rushing.rushingAttempts')::numeric, 0)) AS att,
+                  sum(COALESCE((stats->>'rushing.rushingYards')::numeric, 0)) AS yds
+             FROM player_game_history
+            WHERE sport = $1 AND season IN (2025, 2026) AND team_id = ANY($2::text[])
+            GROUP BY 1, 2""", sport, list(teams))
+    names = _roster_names(games)
+    out: list[Candidate] = []
+    for r in rows:
+        tid = str(r["team_id"])
+        if tid not in teams or r["g"] < 3 or not r["att"]:
+            continue
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        g = int(r["g"])
+        out.append(Candidate(
+            subject_id=str(r["athlete_id"]), subject_name=names.get(str(r["athlete_id"]), ""),
+            team=abbr, opponent=opp_abbr, game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={
+                "carries_pg": round(float(r["att"]) / g, 1),
+                "yds_per_carry": round(float(r["yds"]) / float(r["att"]), 1) if r["att"] else None,
+                "opp_rush_allowed": round(allowed[opp_id], 1) if opp_id in allowed else None,
+            },
+        ))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# NHL — shot volume vs the most shots allowed
+# ---------------------------------------------------------------------------
+
+NHL_SHOT_FACTORS = (
+    Factor("sog_pg", "Shots/G", info="Shots on goal per game, last two seasons."),
+    Factor("toi", "TOI", info="Average time on ice per game, minutes."),
+    Factor("shots_vs", "Opp shots allowed/G", info="Shots the opponent's defence allows per game."),
+)
+
+
+async def build_nhl_shot_volume(conn, slate: date) -> list[Candidate]:
+    games = await _sport_games_today("nhl", slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    current = await _current_team(conn, "nhl", list(teams), NHL_SEASONS)
+    rows = {str(r["athlete_id"]): r for r in await conn.fetch(
+        """SELECT athlete_id, count(*) AS g,
+                  avg(COALESCE((stats->>'sog')::numeric, 0)) AS sog,
+                  avg(COALESCE((stats->>'toiMinutes')::numeric, 0)) AS toi
+             FROM player_game_history
+            WHERE sport = 'nhl' AND season = ANY($1::int[]) AND athlete_id = ANY($2::text[])
+              AND stats ? 'sog'
+            GROUP BY 1""", list(NHL_SEASONS), list(current))}
+    allowed = {str(r["opponent_id"]): float(r["sa"]) for r in await conn.fetch(
+        """SELECT opponent_id, avg(COALESCE((stats->>'shotsAgainst')::numeric, 0)) AS sa
+             FROM team_game_production
+            WHERE sport = 'nhl' AND season = ANY($1::int[]) AND pos_group = 'all'
+            GROUP BY 1""", list(NHL_SEASONS))}
+    out: list[Candidate] = []
+    for aid, tid in current.items():
+        r = rows.get(aid)
+        if r is None or r["g"] < 10:
+            continue
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        out.append(Candidate(
+            subject_id=aid, subject_name="", team=abbr, opponent=opp_abbr,
+            game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={
+                "sog_pg": round(float(r["sog"]), 2) if r["sog"] is not None else None,
+                "toi": round(float(r["toi"]), 1) if r["toi"] is not None else None,
+                "shots_vs": round(allowed[opp_id], 2) if opp_id in allowed else None,
+            },
+        ))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# soccer — shot takers vs weak defences
+# ---------------------------------------------------------------------------
+
+SOCCER_SHOT_FACTORS = (
+    Factor("shots_pg", "Shots/G", info="Shots per appearance, last two seasons."),
+    Factor("sot_pg", "On target/G", info="Shots on target per appearance."),
+    Factor("opp_shots_allowed", "Opp shots allowed/G", info="Shots the opponent concedes per game."),
+)
+
+
+async def build_soccer_shot_takers(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _sport_games_today(sport, slate)
+    if not games:
+        return []
+    teams = _team_sides(games)
+    if not teams:
+        return []
+    allowed = {str(r["opponent_id"]): float(r["s"]) for r in await conn.fetch(
+        """SELECT opponent_id, avg(COALESCE((stats->>'totalShots')::numeric, 0)) AS s
+             FROM team_game_production
+            WHERE sport = $1 AND season = 2026 AND pos_group = 'all'
+            GROUP BY 1""", sport)}
+    names = _roster_names(games)
+    rows = await conn.fetch(
+        """SELECT athlete_id, team_id, count(*) AS apps,
+                  sum(COALESCE((stats->>'totalShots')::numeric, 0)) AS shots,
+                  sum(COALESCE((stats->>'shotsOnTarget')::numeric, 0)) AS sot
+             FROM player_game_history
+            WHERE sport = $1 AND season IN (2025, 2026) AND team_id = ANY($2::text[])
+            GROUP BY 1, 2""", sport, list(teams))
+    out: list[Candidate] = []
+    for r in rows:
+        tid = str(r["team_id"])
+        if tid not in teams or r["apps"] < 5:
+            continue
+        abbr, opp_id, opp_abbr, game_id, _ = teams[tid]
+        apps = int(r["apps"])
+        out.append(Candidate(
+            subject_id=str(r["athlete_id"]), subject_name=names.get(str(r["athlete_id"]), ""),
+            team=abbr, opponent=opp_abbr, game_id=game_id, team_id=tid, opponent_id=opp_id,
+            values={
+                "shots_pg": round(float(r["shots"]) / apps, 2),
+                "sot_pg": round(float(r["sot"]) / apps, 2),
+                "opp_shots_allowed": round(allowed[opp_id], 2) if opp_id in allowed else None,
+            },
+        ))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# MLB — platoon spots, pitcher K spots, HR-friendly parks, hot bat vs cold arm
+# ---------------------------------------------------------------------------
+
+MLB_PLATOON_FACTORS = (
+    Factor("slg_vs_hand", "SLG vs hand", info="Slugging against the starter's throwing hand (Statcast split)."),
+    Factor("park_factor", "Park", info="Park run factor this season: 1.18 = 18% more runs than average."),
+)
+
+
+async def build_mlb_platoon(conn, slate: date) -> list[Candidate]:
+    games = await _mlb_games_today(slate)
+    if not games:
+        return []
+    park = {r["venue_name"]: float(r["factor"]) for r in
+            await conn.fetch("SELECT venue_name, factor FROM park_factors WHERE season = 2026")}
+    splits = {str(r["player_id"]): (json.loads(r["payload"]) if isinstance(r["payload"], str) else r["payload"])
+              for r in await conn.fetch(
+                  "SELECT player_id, payload FROM mlb_statcast_player_season WHERE season = 2026 AND role = 'bat'")}
+    hands = await _starter_hands(games)
+    out: list[Candidate] = []
+    for g in games:
+        for entry in g.roster:
+            if (entry.position or "") == "P" or not entry.subject_id:
+                continue
+            sid = str(entry.subject_id)
+            split = (splits.get(sid) or {}).get("splitsByHand") or {}
+            is_home = entry.team_abbr == g.home_abbr
+            opp_abbr = g.away_abbr if is_home else g.home_abbr
+            opp_pitchers = [r for r in g.roster if (r.position or "") == "P" and r.team_abbr == opp_abbr]
+            starter = opp_pitchers[0] if opp_pitchers else None
+            hand = hands.get(str(starter.subject_id)) if starter else None
+            vs = split.get(hand or "", {}) if hand else {}
+            pa = float(vs.get("pa") or 0)
+            slg = float(vs.get("slg") or 0) if pa >= 50 else None
+            if slg is None and park.get(g.venue or "") is None:
+                continue
+            out.append(Candidate(
+                subject_id=sid, subject_name=entry.subject_name or sid, team=entry.team_abbr,
+                opponent=opp_abbr, game_id=g.game_id,
+                team_id=str(g.home_team_id if is_home else g.away_team_id) if g.home_team_id else None,
+                opponent_id=str(g.away_team_id if is_home else g.home_team_id) if g.home_team_id else None,
+                values={
+                    "slg_vs_hand": round(slg, 3) if slg is not None else None,
+                    "park_factor": park.get(g.venue or ""),
+                    "_hand": hand,
+                },
+            ))
+    return out
+
+
+MLB_PITCHER_K_FACTORS = (
+    Factor("k_per_9", "K/9", info="Strikeouts per nine innings this season."),
+    Factor("opp_k_pct", "Opp K%", info="Share of the opponent's plate appearances ending in a strikeout."),
+)
+
+
+async def build_mlb_k_spots(conn, slate: date) -> list[Candidate]:
+    games = await _mlb_games_today(slate)
+    if not games:
+        return []
+    starter_ids = sorted({str(r.subject_id) for g in games for r in g.roster
+                          if (r.position or "") == "P" and r.subject_id})
+    if not starter_ids:
+        return []
+    pit = {str(r["athlete_id"]): r for r in await conn.fetch(
+        """SELECT athlete_id, sum((stats->>'pit_strikeOuts')::numeric) AS so,
+                  sum((stats->>'pit_inningsPitched')::numeric) AS ip
+             FROM player_game_history
+            WHERE sport = 'mlb' AND season = 2026 AND athlete_id = ANY($1::text[])
+            GROUP BY 1""", starter_ids)}
+    opp_k = {str(r["team_id"]): r for r in await conn.fetch(
+        """SELECT team_id,
+                  sum((stats->>'bat_strikeOuts')::numeric)
+                    / NULLIF(sum((stats->>'bat_plateAppearances')::numeric), 0) AS kpct
+             FROM player_game_history
+            WHERE sport = 'mlb' AND season = 2026 AND stats ? 'bat_plateAppearances'
+            GROUP BY 1""")}
+    out: list[Candidate] = []
+    for g in games:
+        for entry in g.roster:
+            if (entry.position or "") != "P" or not entry.subject_id:
+                continue
+            sid = str(entry.subject_id)
+            p = pit.get(sid)
+            if not p or not p["ip"] or not p["so"]:
+                continue
+            is_home = entry.team_abbr == g.home_abbr
+            opp_id = str(g.away_team_id if is_home else g.home_team_id)
+            k9 = 9 * float(p["so"]) / _ip(p["ip"])
+            out.append(Candidate(
+                subject_id=sid, subject_name=entry.subject_name or sid,
+                team=entry.team_abbr, opponent=g.away_abbr if is_home else g.home_abbr, game_id=g.game_id,
+                team_id=str(g.home_team_id if is_home else g.away_team_id) if g.home_team_id else None,
+                opponent_id=opp_id if g.home_team_id else None,
+                values={
+                    "k_per_9": round(k9, 2),
+                    "opp_k_pct": (round(100 * float(opp_k[opp_id]["kpct"]), 1)
+                                  if opp_id in opp_k and opp_k[opp_id]["kpct"] is not None else None),
+                },
+            ))
+    return out
+
+
+MLB_HR_PARK_FACTORS = (
+    Factor("park_factor", "Park", info="Park run factor this season: 1.18 = 18% more runs than average."),
+    Factor("opp_staff_hr_rate", "Staff HR%", info="Share of games the opposing staff has allowed a home run."),
+    Factor("wind_out", "Wind out", info="Wind blowing out toward center at first pitch, mph."),
+)
+
+
+async def build_mlb_hr_parks(conn, slate: date) -> list[Candidate]:
+    games = await _mlb_games_today(slate)
+    if not games:
+        return []
+    park = {r["venue_name"]: float(r["factor"]) for r in
+            await conn.fetch("SELECT venue_name, factor FROM park_factors WHERE season = 2026")}
+    staff = {str(r["team_id"]): (r["games_with_hr_allowed"] / r["games_faced"]) if r["games_faced"] else None
+             for r in await conn.fetch("SELECT team_id, games_faced, games_with_hr_allowed FROM team_hr_rate_allowed WHERE season = 2026")}
+    weather = await _mlb_weather(slate)
+    out: list[Candidate] = []
+    for g in games:
+        wx = weather.get(str(g.game_id)) or {}
+        # the game as the subject: the matchup, not a player
+        out.append(Candidate(
+            subject_id=str(g.game_id), subject_name=f"{g.away_abbr} @ {g.home_abbr}",
+            team=g.away_abbr, opponent=g.home_abbr, game_id=str(g.game_id),
+            team_id=str(g.away_team_id) if g.home_team_id else None,
+            opponent_id=str(g.home_team_id) if g.home_team_id else None,
+            values={
+                "park_factor": park.get(g.venue or ""),
+                "opp_staff_hr_rate": staff.get(str(g.away_team_id)) if g.home_team_id else None,
+                "wind_out": wx.get("wind_out"),
+                "_wind_label": wx.get("wind_label"),
+            },
+        ))
+    return out
+
+
+MLB_HOT_BAT_FACTORS = (
+    Factor("hot_ops", "Last-10 OPS", info="On-base plus slugging over the batter's last ten games."),
+    Factor("opp_gs", "Opp Game Score", info="The opposing starter's average game score over his last three starts.", higher_better=False),
+)
+
+
+async def build_mlb_hot_bat(conn, slate: date) -> list[Candidate]:
+    games = await _mlb_games_today(slate)
+    if not games:
+        return []
+    ids = sorted({str(r.subject_id) for g in games for r in g.roster
+                  if (r.position or "") != "P" and r.subject_id})
+    if not ids:
+        return []
+    # OBP and SLG are not stored; compute them from the raw components, last 10 games.
+    rows = await conn.fetch(
+        """SELECT athlete_id, game_date,
+                  COALESCE((stats->>'bat_hits')::numeric, 0) AS h,
+                  COALESCE((stats->>'bat_baseOnBalls')::numeric, 0) AS bb,
+                  COALESCE((stats->>'bat_hitByPitch')::numeric, 0) AS hbp,
+                  COALESCE((stats->>'bat_atBats')::numeric, 0) AS ab,
+                  COALESCE((stats->>'bat_totalBases')::numeric, 0) AS tb
+             FROM player_game_history
+            WHERE sport = 'mlb' AND season = 2026 AND athlete_id = ANY($1::text[]) AND stats ? 'bat_atBats'
+            ORDER BY athlete_id, game_date DESC""", ids)
+    last: dict[str, list] = {}
+    for r in rows:
+        last.setdefault(str(r["athlete_id"]), []).append(r)
+    starter_ids = sorted({str(r.subject_id) for g in games for r in g.roster
+                          if (r.position or "") == "P" and r.subject_id})
+    gs = {str(r["pitcher_id"]): float(r["game_score"]) for r in await conn.fetch(
+        """SELECT DISTINCT ON (pitcher_id) pitcher_id, game_score
+             FROM pitcher_game_score_history
+            WHERE season = 2026 AND pitcher_id = ANY($1::int[])
+            ORDER BY pitcher_id, game_date DESC""", [int(s) for s in starter_ids if s.isdigit()])}
+    out: list[Candidate] = []
+    for g in games:
+        for entry in g.roster:
+            if (entry.position or "") == "P" or not entry.subject_id:
+                continue
+            sid = str(entry.subject_id)
+            g10 = last.get(sid, [])[:10]
+            if not g10:
+                continue
+            ab = sum(float(x["ab"]) for x in g10)
+            if ab <= 0:
+                continue
+            h = sum(float(x["h"]) for x in g10)
+            bb = sum(float(x["bb"]) for x in g10)
+            hbp = sum(float(x["hbp"]) for x in g10)
+            tb = sum(float(x["tb"]) for x in g10)
+            denom = ab + bb + hbp
+            obp = (h + bb + hbp) / denom if denom else 0.0
+            slg = tb / ab
+            is_home = entry.team_abbr == g.home_abbr
+            opp_abbr = g.away_abbr if is_home else g.home_abbr
+            opp_pitchers = [r for r in g.roster if (r.position or "") == "P" and r.team_abbr == opp_abbr]
+            starter = opp_pitchers[0] if opp_pitchers else None
+            opp_gs = gs.get(str(starter.subject_id)) if starter else None
+            out.append(Candidate(
+                subject_id=sid, subject_name=entry.subject_name or sid, team=entry.team_abbr,
+                opponent=opp_abbr, game_id=g.game_id,
+                team_id=str(g.home_team_id if is_home else g.away_team_id) if g.home_team_id else None,
+                opponent_id=str(g.away_team_id if is_home else g.home_team_id) if g.home_team_id else None,
+                values={
+                    "hot_ops": round(obp + slg, 3),
+                    "opp_gs": opp_gs,
+                },
+            ))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # the registry
 # ---------------------------------------------------------------------------
+
+ROLE_FACTORS = (
+    Factor("role_up", "Role up", info="Last-three usage over the season rate: touches (football), TOI (hockey), shots (soccer) or plate appearances (baseball)."),
+)
+BACK_FACTORS = (
+    Factor("missed_days", "Missed days", info="Days on the injury report before today's return."),
+)
+SHARE_FACTORS = (
+    Factor("share_of_team", "Team share", info="Share of the team's production, with a teammate ruled out today."),
+)
+REVENGE_FACTORS = (
+    Factor("games_for_opp", "Games for opp", info="Games the player played for the opponent earlier in their career."),
+)
+MILESTONE_FACTORS = (
+    Factor("gap", "To milestone", info="How far short of a round number, within one game's worth.", higher_better=False),
+)
+REST_FACTORS = (
+    Factor("short_rest", "Short rest", info="The shorter side's days of rest in this matchup.", higher_better=False),
+)
 
 RANKINGS: tuple[RankingDef, ...] = (
     RankingDef("mlb-hr-of-the-day", ("mlb",), "HR of the day", "Player to hit a home run",
@@ -961,6 +1697,81 @@ RANKINGS: tuple[RankingDef, ...] = (
                NHL_TWO_GOAL_FACTORS, lambda c, d: build_nhl_two_goals(c, d), grade_stat="goals",
                not_held="Expected goals, power-play ice time and the confirmed starting goalie are not held.",
                hit_rule="gte2", detail="nhl"),
+
+    RankingDef("nfl-targets-vs-weak-pass-d", ("nfl",), "Targets vs weak pass defences",
+               "Receivers against the day's softest secondaries", NFL_TARGET_FACTORS,
+               lambda c, d: build_nfl_targets(c, d), kind="spotlight"),
+    RankingDef("nfl-rushers-vs-weak-run-d", ("nfl",), "Rushers vs the worst run defences",
+               "Backs against the day's softest run defences", NFL_RUSH_FACTORS,
+               lambda c, d: build_football_rush(c, d, "nfl"), kind="spotlight"),
+    RankingDef("nfl-role-changes", ("nfl",), "Role changes", "Used well above their season rate lately",
+               ROLE_FACTORS, lambda c, d: build_role_changes(c, d, "nfl"), kind="spotlight"),
+    RankingDef("nfl-back-in-lineup", ("nfl",), "Back in the lineup", "On yesterday's injury report, not today's",
+               BACK_FACTORS, lambda c, d: build_back_in_lineup(c, d, "nfl"), kind="spotlight"),
+    RankingDef("nfl-teammate-out", ("nfl",), "Teammate out, usage up", "Who absorbs a starter's share",
+               SHARE_FACTORS, lambda c, d: build_teammate_out(c, d, "nfl"), kind="spotlight"),
+    RankingDef("nfl-rest-travel", ("nfl",), "Rest and travel", "Games on a short week",
+               REST_FACTORS, lambda c, d: build_rest_travel(c, d, "nfl"), kind="spotlight"),
+    RankingDef("nfl-revenge", ("nfl",), "Revenge games", "Facing a team they used to play for",
+               REVENGE_FACTORS, lambda c, d: build_revenge(c, d, "nfl"), kind="spotlight"),
+    RankingDef("nfl-milestones", ("nfl",), "Milestone watch", "Within a game of a round number",
+               MILESTONE_FACTORS, lambda c, d: build_milestones(c, d, "nfl"), kind="spotlight"),
+
+    RankingDef("cfb-rushers-vs-weak-run-d", ("cfb",), "Rushers vs the worst run defences",
+               "Backs against the day's softest run defences", NFL_RUSH_FACTORS,
+               lambda c, d: build_football_rush(c, d, "cfb"), kind="spotlight",
+               not_held="CFB holds no position-group split, so the opponent factor is team-wide."),
+    RankingDef("cfb-role-changes", ("cfb",), "Role changes", "Used well above their season rate lately",
+               ROLE_FACTORS, lambda c, d: build_role_changes(c, d, "cfb"), kind="spotlight"),
+    RankingDef("cfb-back-in-lineup", ("cfb",), "Back in the lineup", "On yesterday's injury report, not today's",
+               BACK_FACTORS, lambda c, d: build_back_in_lineup(c, d, "cfb"), kind="spotlight"),
+    RankingDef("cfb-revenge", ("cfb",), "Revenge games", "Facing a team they used to play for",
+               REVENGE_FACTORS, lambda c, d: build_revenge(c, d, "cfb"), kind="spotlight"),
+    RankingDef("cfb-milestones", ("cfb",), "Milestone watch", "Within a game of a round number",
+               MILESTONE_FACTORS, lambda c, d: build_milestones(c, d, "cfb"), kind="spotlight"),
+
+    RankingDef("nhl-shot-volume", ("nhl",), "Shot volume vs the most shots allowed",
+               "Shooters against the day's leakiest defences", NHL_SHOT_FACTORS,
+               lambda c, d: build_nhl_shot_volume(c, d), kind="spotlight"),
+    RankingDef("nhl-role-changes", ("nhl",), "Role changes", "Used well above their season rate lately",
+               ROLE_FACTORS, lambda c, d: build_role_changes(c, d, "nhl"), kind="spotlight"),
+    RankingDef("nhl-back-in-lineup", ("nhl",), "Back in the lineup", "On yesterday's injury report, not today's",
+               BACK_FACTORS, lambda c, d: build_back_in_lineup(c, d, "nhl"), kind="spotlight"),
+    RankingDef("nhl-teammate-out", ("nhl",), "Teammate out, usage up", "Who absorbs a starter's share",
+               SHARE_FACTORS, lambda c, d: build_teammate_out(c, d, "nhl"), kind="spotlight"),
+    RankingDef("nhl-rest-travel", ("nhl",), "Rest and travel", "Back-to-backs",
+               REST_FACTORS, lambda c, d: build_rest_travel(c, d, "nhl"), kind="spotlight"),
+    RankingDef("nhl-revenge", ("nhl",), "Revenge games", "Facing a team they used to play for",
+               REVENGE_FACTORS, lambda c, d: build_revenge(c, d, "nhl"), kind="spotlight"),
+    RankingDef("nhl-milestones", ("nhl",), "Milestone watch", "Within a game of a round number",
+               MILESTONE_FACTORS, lambda c, d: build_milestones(c, d, "nhl"), kind="spotlight"),
+
+    RankingDef("soccer-shot-takers", ("soccer_epl", "soccer_mls"), "Shot takers vs weak defences",
+               "Shooters against the day's leakiest sides", SOCCER_SHOT_FACTORS,
+               lambda c, d, s: build_soccer_shot_takers(c, d, s), kind="spotlight"),
+    RankingDef("soccer-role-changes", ("soccer_epl", "soccer_mls"), "Role changes", "Used well above their season rate lately",
+               ROLE_FACTORS, lambda c, d, s: build_role_changes(c, d, s), kind="spotlight"),
+    RankingDef("soccer-revenge", ("soccer_epl", "soccer_mls"), "Revenge games", "Facing a team they used to play for",
+               REVENGE_FACTORS, lambda c, d, s: build_revenge(c, d, s), kind="spotlight"),
+    RankingDef("soccer-milestones", ("soccer_epl", "soccer_mls"), "Milestone watch", "Within a game of a round number",
+               MILESTONE_FACTORS, lambda c, d, s: build_milestones(c, d, s), kind="spotlight"),
+
+    RankingDef("mlb-platoon-spots", ("mlb",), "Platoon spots", "Batters facing their good side",
+               MLB_PLATOON_FACTORS, lambda c, d: build_mlb_platoon(c, d), kind="spotlight"),
+    RankingDef("mlb-pitcher-k-spots", ("mlb",), "Pitcher K spots", "Starters against strikeout-prone lineups",
+               MLB_PITCHER_K_FACTORS, lambda c, d: build_mlb_k_spots(c, d), kind="spotlight"),
+    RankingDef("mlb-hr-parks", ("mlb",), "HR-friendly parks today", "The day's best home-run environments",
+               MLB_HR_PARK_FACTORS, lambda c, d: build_mlb_hr_parks(c, d), kind="spotlight"),
+    RankingDef("mlb-role-changes", ("mlb",), "Role changes", "Used well above their season rate lately",
+               ROLE_FACTORS, lambda c, d: build_role_changes(c, d, "mlb"), kind="spotlight"),
+    RankingDef("mlb-back-in-lineup", ("mlb",), "Back in the lineup", "On yesterday's injury report, not today's",
+               BACK_FACTORS, lambda c, d: build_back_in_lineup(c, d, "mlb"), kind="spotlight"),
+    RankingDef("mlb-hot-bat-cold-arm", ("mlb",), "Hot bat vs cold arm", "A hot batter against a struggling starter",
+               MLB_HOT_BAT_FACTORS, lambda c, d: build_mlb_hot_bat(c, d), kind="spotlight"),
+    RankingDef("mlb-revenge", ("mlb",), "Revenge games", "Facing a team they used to play for",
+               REVENGE_FACTORS, lambda c, d: build_revenge(c, d, "mlb"), kind="spotlight"),
+    RankingDef("mlb-milestones", ("mlb",), "Milestone watch", "Within a game of a round number",
+               MILESTONE_FACTORS, lambda c, d: build_milestones(c, d, "mlb"), kind="spotlight"),
 )
 
 

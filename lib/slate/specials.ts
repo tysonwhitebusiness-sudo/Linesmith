@@ -136,6 +136,177 @@ export const SPECIAL_RANKINGS: Record<string, SpecialRankingDef> = {
     ],
     notHeld: 'Expected goals, power-play ice time and the confirmed starting goalie are not held.',
   },
+
+  // ---- PY-B spotlights (kind='spotlight', never graded) ----
+  'nfl-targets-vs-weak-pass-d': {
+    id: 'nfl-targets-vs-weak-pass-d',
+    title: 'Targets vs weak pass defences',
+    promo: "Receivers against the day's softest secondaries",
+    factors: [
+      { key: 'targets_pg', label: 'Tgt/G', info: 'Targets per game, last two seasons (nflverse play-by-play).' },
+      { key: 'target_share', label: 'Target share', info: "Share of the team's targets in the games the player played." },
+      { key: 'opp_pass_allowed', label: 'Opp completions/G', info: "Completions the opponent's defence allows per game." },
+    ],
+  },
+  'nfl-rushers-vs-weak-run-d': {
+    id: 'nfl-rushers-vs-weak-run-d',
+    title: 'Rushers vs the worst run defences',
+    promo: "Backs against the day's softest run defences",
+    factors: [
+      { key: 'carries_pg', label: 'Carries/G', info: 'Rushing attempts per game, last two seasons.' },
+      { key: 'yds_per_carry', label: 'Yds/carry', info: 'Yards per carry, last two seasons.' },
+      { key: 'opp_rush_allowed', label: 'Opp rush yds/G', info: "Rushing yards the opponent's defence allows to backs per game." },
+    ],
+  },
+  'nfl-role-changes': {
+    id: 'nfl-role-changes', title: 'Role changes', promo: 'Used well above their season rate lately',
+    factors: [{ key: 'role_up', label: 'Role up', info: 'Last-three usage over the season rate: touches (football), TOI (hockey), shots (soccer) or plate appearances (baseball).' }],
+  },
+  'nfl-back-in-lineup': {
+    id: 'nfl-back-in-lineup', title: 'Back in the lineup', promo: "On yesterday's injury report, not today's",
+    factors: [{ key: 'missed_days', label: 'Missed days', info: "Days on the injury report before today's return." }],
+  },
+  'nfl-teammate-out': {
+    id: 'nfl-teammate-out', title: 'Teammate out, usage up', promo: "Who absorbs a starter's share",
+    factors: [{ key: 'share_of_team', label: 'Team share', info: "Share of the team's production, with a teammate ruled out today." }],
+  },
+  'nfl-rest-travel': {
+    id: 'nfl-rest-travel', title: 'Rest and travel', promo: 'Games on a short week',
+    factors: [{ key: 'short_rest', label: 'Short rest', info: "The shorter side's days of rest in this matchup." }],
+  },
+  'nfl-revenge': {
+    id: 'nfl-revenge', title: 'Revenge games', promo: 'Facing a team they used to play for',
+    factors: [{ key: 'games_for_opp', label: 'Games for opp', info: 'Games the player played for the opponent earlier in their career.' }],
+  },
+  'nfl-milestones': {
+    id: 'nfl-milestones', title: 'Milestone watch', promo: 'Within a game of a round number',
+    factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
+  },
+  'cfb-rushers-vs-weak-run-d': {
+    id: 'cfb-rushers-vs-weak-run-d', title: 'Rushers vs the worst run defences',
+    promo: "Backs against the day's softest run defences",
+    factors: [
+      { key: 'carries_pg', label: 'Carries/G', info: 'Rushing attempts per game, last two seasons.' },
+      { key: 'yds_per_carry', label: 'Yds/carry', info: 'Yards per carry, last two seasons.' },
+      { key: 'opp_rush_allowed', label: 'Opp rush yds/G', info: "Rushing yards the opponent's defence allows to backs per game." },
+    ],
+    notHeld: 'CFB holds no position-group split, so the opponent factor is team-wide.',
+  },
+  'cfb-role-changes': {
+    id: 'cfb-role-changes', title: 'Role changes', promo: 'Used well above their season rate lately',
+    factors: [{ key: 'role_up', label: 'Role up', info: 'Last-three usage over the season rate: touches (football), TOI (hockey), shots (soccer) or plate appearances (baseball).' }],
+  },
+  'cfb-back-in-lineup': {
+    id: 'cfb-back-in-lineup', title: 'Back in the lineup', promo: "On yesterday's injury report, not today's",
+    factors: [{ key: 'missed_days', label: 'Missed days', info: "Days on the injury report before today's return." }],
+  },
+  'cfb-revenge': {
+    id: 'cfb-revenge', title: 'Revenge games', promo: 'Facing a team they used to play for',
+    factors: [{ key: 'games_for_opp', label: 'Games for opp', info: 'Games the player played for the opponent earlier in their career.' }],
+  },
+  'cfb-milestones': {
+    id: 'cfb-milestones', title: 'Milestone watch', promo: 'Within a game of a round number',
+    factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
+  },
+  'nhl-shot-volume': {
+    id: 'nhl-shot-volume', title: 'Shot volume vs the most shots allowed',
+    promo: "Shooters against the day's leakiest defences",
+    factors: [
+      { key: 'sog_pg', label: 'Shots/G', info: 'Shots on goal per game, last two seasons.' },
+      { key: 'toi', label: 'TOI', info: 'Average time on ice per game, minutes.' },
+      { key: 'shots_vs', label: 'Opp shots allowed/G', info: "Shots the opponent's defence allows per game." },
+    ],
+  },
+  'nhl-role-changes': {
+    id: 'nhl-role-changes', title: 'Role changes', promo: 'Used well above their season rate lately',
+    factors: [{ key: 'role_up', label: 'Role up', info: 'Last-three usage over the season rate: touches (football), TOI (hockey), shots (soccer) or plate appearances (baseball).' }],
+  },
+  'nhl-back-in-lineup': {
+    id: 'nhl-back-in-lineup', title: 'Back in the lineup', promo: "On yesterday's injury report, not today's",
+    factors: [{ key: 'missed_days', label: 'Missed days', info: "Days on the injury report before today's return." }],
+  },
+  'nhl-teammate-out': {
+    id: 'nhl-teammate-out', title: 'Teammate out, usage up', promo: "Who absorbs a starter's share",
+    factors: [{ key: 'share_of_team', label: 'Team share', info: "Share of the team's production, with a teammate ruled out today." }],
+  },
+  'nhl-rest-travel': {
+    id: 'nhl-rest-travel', title: 'Rest and travel', promo: 'Back-to-backs',
+    factors: [{ key: 'short_rest', label: 'Short rest', info: "The shorter side's days of rest in this matchup." }],
+  },
+  'nhl-revenge': {
+    id: 'nhl-revenge', title: 'Revenge games', promo: 'Facing a team they used to play for',
+    factors: [{ key: 'games_for_opp', label: 'Games for opp', info: 'Games the player played for the opponent earlier in their career.' }],
+  },
+  'nhl-milestones': {
+    id: 'nhl-milestones', title: 'Milestone watch', promo: 'Within a game of a round number',
+    factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
+  },
+  'soccer-shot-takers': {
+    id: 'soccer-shot-takers', title: 'Shot takers vs weak defences',
+    promo: "Shooters against the day's leakiest sides",
+    factors: [
+      { key: 'shots_pg', label: 'Shots/G', info: 'Shots per appearance, last two seasons.' },
+      { key: 'sot_pg', label: 'On target/G', info: 'Shots on target per appearance.' },
+      { key: 'opp_shots_allowed', label: 'Opp shots allowed/G', info: 'Shots the opponent concedes per game.' },
+    ],
+  },
+  'soccer-role-changes': {
+    id: 'soccer-role-changes', title: 'Role changes', promo: 'Used well above their season rate lately',
+    factors: [{ key: 'role_up', label: 'Role up', info: 'Last-three usage over the season rate: touches (football), TOI (hockey), shots (soccer) or plate appearances (baseball).' }],
+  },
+  'soccer-revenge': {
+    id: 'soccer-revenge', title: 'Revenge games', promo: 'Facing a team they used to play for',
+    factors: [{ key: 'games_for_opp', label: 'Games for opp', info: 'Games the player played for the opponent earlier in their career.' }],
+  },
+  'soccer-milestones': {
+    id: 'soccer-milestones', title: 'Milestone watch', promo: 'Within a game of a round number',
+    factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
+  },
+  'mlb-platoon-spots': {
+    id: 'mlb-platoon-spots', title: 'Platoon spots', promo: 'Batters facing their good side',
+    factors: [
+      { key: 'slg_vs_hand', label: 'SLG vs hand', info: "Slugging against the starter's throwing hand (Statcast split)." },
+      { key: 'park_factor', label: 'Park', info: 'Park run factor this season: 1.18 = 18% more runs than average.' },
+    ],
+  },
+  'mlb-pitcher-k-spots': {
+    id: 'mlb-pitcher-k-spots', title: 'Pitcher K spots', promo: 'Starters against strikeout-prone lineups',
+    factors: [
+      { key: 'k_per_9', label: 'K/9', info: 'Strikeouts per nine innings this season.' },
+      { key: 'opp_k_pct', label: 'Opp K%', info: "Share of the opponent's plate appearances ending in a strikeout." },
+    ],
+  },
+  'mlb-hr-parks': {
+    id: 'mlb-hr-parks', title: 'HR-friendly parks today', promo: "The day's best home-run environments",
+    factors: [
+      { key: 'park_factor', label: 'Park', info: 'Park run factor this season: 1.18 = 18% more runs than average.' },
+      { key: 'opp_staff_hr_rate', label: 'Staff HR%', info: 'Share of games the opposing staff has allowed a home run.' },
+      { key: 'wind_out', label: 'Wind out', info: 'Wind blowing out toward center at first pitch, mph.' },
+    ],
+  },
+  'mlb-role-changes': {
+    id: 'mlb-role-changes', title: 'Role changes', promo: 'Used well above their season rate lately',
+    factors: [{ key: 'role_up', label: 'Role up', info: 'Last-three usage over the season rate: touches (football), TOI (hockey), shots (soccer) or plate appearances (baseball).' }],
+  },
+  'mlb-back-in-lineup': {
+    id: 'mlb-back-in-lineup', title: 'Back in the lineup', promo: "On yesterday's injury report, not today's",
+    factors: [{ key: 'missed_days', label: 'Missed days', info: "Days on the injury report before today's return." }],
+  },
+  'mlb-hot-bat-cold-arm': {
+    id: 'mlb-hot-bat-cold-arm', title: 'Hot bat vs cold arm', promo: 'A hot batter against a struggling starter',
+    factors: [
+      { key: 'hot_ops', label: 'Last-10 OPS', info: "On-base plus slugging over the batter's last ten games." },
+      { key: 'opp_gs', label: 'Opp Game Score', info: "The opposing starter's average game score over his last three starts." },
+    ],
+  },
+  'mlb-revenge': {
+    id: 'mlb-revenge', title: 'Revenge games', promo: 'Facing a team they used to play for',
+    factors: [{ key: 'games_for_opp', label: 'Games for opp', info: 'Games the player played for the opponent earlier in their career.' }],
+  },
+  'mlb-milestones': {
+    id: 'mlb-milestones', title: 'Milestone watch', promo: 'Within a game of a round number',
+    factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
+  },
 };
 
 /** The graded "longest" rankings write the slate's real leader under this id. */
@@ -229,7 +400,7 @@ export async function readSpecials(sport: string, date: string): Promise<Special
     `SELECT ranking_id, slate_date::text AS slate_date, subject_id, rank, score, subject_name, team, opponent, game_id,
             factors, frozen_at, team_id, opponent_id
      FROM slate_rankings
-     WHERE sport = ? AND slate_date = ?::date AND subject_id <> '${LEADER_ID}'
+     WHERE sport = ? AND slate_date = ?::date AND subject_id <> '${LEADER_ID}' AND kind = 'special'
      ORDER BY ranking_id, rank`,
     [sport, date],
   );
