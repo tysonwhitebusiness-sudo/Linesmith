@@ -63,7 +63,30 @@ DJ-GOLF** (tournament -> course backfill, a deploy).
   receipts actually fill: `nfl-longest-reception` for 09-21 produced a leader
   row and ZERO graded players, because `grade()` skips a row whose team's game
   has not landed in `player_game_history`. If that repeats it is a Python fix.
-- **DJ-GOLF** (phase 12, deploy) — the next actionable phase.
+- **DJ-GOLF** (phase 12, deploy) — NEXT. **Measured, not yet built**
+  (`scripts/probe-dj-golf.ts`), and the measurement changes the plan:
+  - The join key is `event_id` (an ESPN event id) and **`golf_tournaments`
+    already has `course_name` and `holes_json`** — it just holds 4 rows. So
+    this is a fetch-and-upsert over events the results table already names,
+    **not a new table and no ownership row needed** (row 19 already says
+    Python owns it).
+  - 235 distinct events, 2022-01-09 to 2026-09-22, 4 with a course.
+  - **The per-event ESPN endpoint works for historical events** —
+    `site.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga&event={id}`
+    returned Sedgefield Country Club for 401811961 (2026) and TPC Craig Ranch
+    for 401703508 (2025), each with par and 18 holes. One GET per event.
+  - It also returns the event's own `date`, so the backfill can fill
+    `start_date`, which is null on all four live-written rows
+    (`golf/playerResearchShapes.ts:13` notes this).
+  - `db.write_golf_tournament` already exists and `ingest_golf_history`
+    already calls it for the LIVE event, so going forward is covered; only
+    history is missing.
+  - Shape to build: `fetch_event_meta(client, event_id)` in
+    `predict/golf_espn.py` (reuse `_parse_course`), a
+    `golf_events_missing_course(limit)` read in `db.py`, a
+    `golf_courses.py` backfill with a CLI, and a `JOB_REGISTRY` entry so it
+    self-heals and `health_check` covers it. Run it locally against the DB
+    first (A1), then deploy.
 - **C4 follow-ups**, both *data* additions to `lib/slate/marketMoves.ts`:
   Movers game-line rows still show text matchups (no team logos —
   `ConsensusMover` carries no team ids), and the "books moved" cell still shows
