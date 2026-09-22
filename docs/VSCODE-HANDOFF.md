@@ -50,6 +50,16 @@
   the Slate market cards (NFL was already fine: ESPN serves square headshots).
 Next phase: **F0-UI** (research-page flags + Slate spotlight cards).
 
+### Environment note (2026-09-21)
+
+The local prod server (`next start` on `:3000`) could NOT reach Postgres for the
+whole session — `getaddrinfo ENOTFOUND aws-0-us-west-2.pooler.supabase.com`.
+Every snapshot/slate/calibration fetch failed to DNS-resolve the Supabase
+pooler, which is why the slate rendered "No games scheduled" and every cache
+was served 300–800+ minutes stale. The code is fine; the machine's DNS/network
+path to Supabase is the blocker. Restarting the server will not fix it — check
+the network/VPN before trusting any live-data render.
+
 ### Corrections to the previous session's chat
 
 - The chat said *"Writing the new TeamHero … Created 2 files"* — **not
