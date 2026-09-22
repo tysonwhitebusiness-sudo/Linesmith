@@ -20,11 +20,12 @@
 
 ## Session state — 2026-09-21
 
-**C2b and C1b are shipped** — committed and pushed (operator signed off
-2026-09-21). Next phase: **PY-B** spotlight rankings (deploy).
+**PY-B is shipped** — committed, pushed and deployed (worker live on
+`5f9a7df`, deploy `dep-daoudr5g1s2s738njlcg`). Next phase: **C3** player
+search rail (no deploy).
 
-- Commits: `4118412` C2b (team hero), `34b59c7` C1b (transparent headers), `dfcf31d` CURRENT + handoff file.
-- HEAD is `dfcf31d`; `origin/main` is even with it.
+- Commits: `5f9a7df` PY-B (32 spotlights), after `4118412` C2b and `34b59c7` C1b.
+- HEAD is `5f9a7df`; `origin/main` is even with it (a docs commit follows).
 
 ### Corrections to the previous session's chat
 
@@ -48,7 +49,12 @@
 
 ### Next
 
-- **PY-B** spotlight rankings in Python (NFL/NBA/NHL first, then CFB/soccer/MLB) — a **deploy** phase, per the run order.
+- **C3** player search rail (Track C, phase 7, no deploy).
+- **NBA spotlights are deferred** (blocker, run doc A6): `load_sport_games` has
+  no `'nba'` entry and the season has no games yet. When an NBA games loader
+  lands, add pace-up, usage bumps (=N3), shot-zone matchups, and NBA's
+  N1/N2/N6/N7/N8 to `slate_rankings.py` + the `SPECIAL_RANKINGS` mirror.
+- **N5 (weather)** is render-time forecast data, not a table — it ships with F0-UI.
 
 ---
 
@@ -106,3 +112,32 @@ unresolved. No files changed.
    button changed `onDark` → `tertiary`. `tests/ui-primitives.test.ts` updated
    (C1 → C1b guard: asserts the side line + divider, no charcoal fill).
    The `onDark` Button variant is now unused (left in place; cleanup is separate).
+
+### Entry 3 — PY-B spotlight rankings (deployed)
+
+Built the Python spotlight rankings (`kind='spotlight'`, never graded) in
+`python-odds-service/src/slate_rankings.py` — 32 new `RankingDef`s across
+NFL, CFB, NHL, soccer (EPL+MLS) and MLB:
+
+- **Sport-specific:** NFL targets vs weak pass D, NFL/CFB rushers vs weak run D,
+  NHL shot volume, soccer shot takers vs weak D, MLB platoon spots, pitcher K
+  spots, HR-friendly parks, hot bat vs cold arm.
+- **N ideas:** N1 role changes (all sports), N2 back in lineup (all), N3
+  teammate out (NFL/NHL), N6 rest & travel (NFL/NHL), N7 revenge (all), N8
+  milestones (all), N4 hot bat (MLB).
+- **Infra:** `grade_stat` defaults to `""`; `ungraded_frozen_rankings` filters
+  `kind='special'` so spotlights are never graded; the registry test updated
+  ("specials graded, spotlights never graded"). The TS mirror
+  (`lib/slate/specials.ts`) gained all 32 defs, `readSpecials` filters
+  `kind='special'`, and the drift test parses all 40 defs (removed the `#`
+  comment lines between `RankingDef`s — the parser's lookahead skips any def
+  that follows a comment).
+
+**Verified:** Python harness green (scoring, registry, freeze, builders on real
+rows incl. new milestone/role/revenge checks); `npm run typecheck` clean; full
+TS suite 641/0; a DB dry-run confirmed real candidates + factor values for the
+NFL builders and fixed two real bugs (target-share keyed to nflverse codes;
+`player_season_production.stats` comes back as a JSON string).
+
+**Deferred (A6):** NBA (no Python games loader) and N5 weather (render-time,
+ships with F0-UI). See "Next" above.

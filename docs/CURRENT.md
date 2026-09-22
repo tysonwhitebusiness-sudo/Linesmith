@@ -36,7 +36,7 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | **done** |
 | 5 | C2 player hero | **done** |
 | 5b | C2b team hero, same rework as the player hero | **done** |
-| 6 | PY-B spotlight rankings, NFL/NBA/NHL first (**deploy**) | — |
+| 6 | PY-B spotlight rankings: NFL, CFB, NHL, soccer, MLB (**deploy**) — NBA deferred (no Python games loader) | **done** |
 | 7 | C3 player search rail | — |
 | 8 | C4 Slate imagery (Movers included) | — |
 | 9 | C6 props controls (tabs → filters, Home Runs deleted) | — |
@@ -55,6 +55,7 @@ Update this table and the run doc's §2 after every phase commit, then push.
 | when | commit | service | what it enables |
 |---|---|---|---|
 | 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |
+| 2026-09-22 02:26 UTC | `5f9a7df` (PY-B) | line-buddy-odds-worker (`dep-daoudr5g1s2s738njlcg`, live) | 32 spotlight rankings (`kind='spotlight'`, never graded) across NFL/CFB/NHL/soccer/MLB: the sport-specific cards and the eight N ideas (N1/N2/N3/N6/N7/N8, N4 MLB). Was on `5e6568d`. |
 
 ## Decisions that bind this run
 
@@ -78,6 +79,10 @@ Update this table and the run doc's §2 after every phase commit, then push.
 - `docs/design/SIGNOFF-QUEUE.md` Q0–Q20: operator sign-off. Q15 and
   `/diagnostics` need a signed-in session.
 - M4 (promotion tests) and M5 (prop baselines, needs approval).
+- **PY-B deferrals (A6):** NBA's spotlights (pace-up, usage bumps, shot-zone
+  matchups + its N1/N2/N6/N7/N8) wait on a Python `'nba'` games loader —
+  `load_sport_games` has no NBA entry and the season has no games yet. N5
+  (weather) is render-time forecast data, not a table, so it ships with F0-UI.
 
 ## Findings worth knowing
 
