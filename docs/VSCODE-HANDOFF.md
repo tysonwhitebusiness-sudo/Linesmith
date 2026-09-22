@@ -33,6 +33,15 @@ actionable phase is **12, DJ-GOLF** (tournament -> course backfill, a deploy).
 
 ### Environment note
 
+- **The Supabase DNS outage has CLEARED.** An earlier session today (`aac1bcb`)
+  recorded that `next start` on `:3000` could not resolve
+  `aws-0-us-west-2.pooler.supabase.com` for a whole session, so the slate said
+  "No games scheduled" and every cache served 300-800+ minutes stale. As of
+  2026-09-22 18:30 UTC the pooler resolves and answers: probe scripts read
+  `slate_rankings` directly, and the Slate rendered 16 real MLB games. Keep the
+  original note's advice — if live data looks stale or empty, check the
+  network path to Supabase before suspecting the code, because restarting the
+  server does not fix it.
 - The built-in Browser pane cannot render the Suspense pages (player, team,
   game): a HIDDEN pane never fires `requestAnimationFrame` and React 19's
   streaming reveal waits on it, so the page sits in `<div hidden id="S:0">`
