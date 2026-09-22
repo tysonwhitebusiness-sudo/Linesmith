@@ -1,6 +1,7 @@
 'use client';
 
-import { AvatarLabel, Card, DataTable, EmptyState, type Column, SectionBand } from '@/components/ui';
+import { Avatar, Card, DataTable, EmptyState, type Column, SectionBand } from '@/components/ui';
+import { TeamLogo } from '../SubjectAvatar';
 import type { SpotlightCard, SpotlightRow } from '@/lib/slate/spotlights';
 
 /**
@@ -24,14 +25,20 @@ function toColumns(card: SpotlightCard): Column<SpotlightRow>[] {
       label: 'Player',
       sortable: false,
       render: (r) => (
-        <AvatarLabel
-          name={r.subjectName}
-          sub={[r.market, r.context].filter(Boolean).join(' · ')}
-          src={r.headshotUrl ?? undefined}
-          fallbackSrc={r.logoUrl ?? undefined}
-          size={24}
-          href={r.href ?? undefined}
-        />
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <span className="relative block shrink-0">
+            <Avatar label={r.subjectName} src={r.headshotUrl ?? undefined} fallbackSrc={r.logoUrl ?? undefined} size={24} href={r.href ?? undefined} decorative />
+            {r.teamLogoUrl ? (
+              <span className="absolute -bottom-0.5 -right-0.5 grid size-[14px] place-items-center rounded-full bg-card ring-1 ring-line">
+                <TeamLogo logoUrl={r.teamLogoUrl} size={9} />
+              </span>
+            ) : null}
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-semibold text-ink text-body-sm">{r.subjectName}</span>
+            <span className="truncate text-label text-ink-muted">{[r.market, r.context].filter(Boolean).join(' · ')}</span>
+          </span>
+        </span>
       ),
     },
     ...card.columns.map<Column<SpotlightRow>>((c) => ({

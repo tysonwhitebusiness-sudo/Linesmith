@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Card, Chip, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
 import { BookLogo, bookLabel } from '../BookLogo';
+import { TeamLogo } from '../SubjectAvatar';
+import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
 import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
 
 /**
@@ -32,14 +34,17 @@ function marketLabel(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const OUTLIER_COLUMNS: Column<OutlierRow>[] = [
+const OUTLIER_COLUMNS = (logoOf: (id: string) => string | undefined): Column<OutlierRow>[] => [
   {
     key: 'subject',
     label: 'Player',
     sortable: false,
     render: (r) => (
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
+        <span className="flex items-center gap-1.5">
+          {logoOf(r.subjectId) ? <TeamLogo logoUrl={logoOf(r.subjectId)} size={16} /> : null}
+          <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
+        </span>
         <span className="truncate text-label text-ink-muted">
           {marketLabel(r.market)} {r.side === 'under' ? 'Under' : 'Over'} {r.line}
         </span>
@@ -64,14 +69,17 @@ const OUTLIER_COLUMNS: Column<OutlierRow>[] = [
   { key: 'books', label: 'Books', numeric: true },
 ];
 
-const DISAGREEMENT_COLUMNS: Column<DisagreementRow>[] = [
+const DISAGREEMENT_COLUMNS = (logoOf: (id: string) => string | undefined): Column<DisagreementRow>[] => [
   {
     key: 'subject',
     label: 'Player',
     sortable: false,
     render: (r) => (
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
+        <span className="flex items-center gap-1.5">
+          {logoOf(r.subjectId) ? <TeamLogo logoUrl={logoOf(r.subjectId)} size={16} /> : null}
+          <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
+        </span>
         <span className="truncate text-label text-ink-muted">{marketLabel(r.market)}</span>
       </span>
     ),
@@ -116,9 +124,10 @@ const DISAGREEMENT_COLUMNS: Column<DisagreementRow>[] = [
   },
 ];
 
-export function SlateMarket({ data, loading }: { data: SlateMarketData | null; loading: boolean }) {
+export function SlateMarket({ data, loading, teamLogoBySubject }: { data: SlateMarketData | null; loading: boolean; teamLogoBySubject?: Map<string, string> }) {
   const outliers = data?.outliers ?? [];
   const splits = data?.disagreements ?? [];
+  const logoOf = (id: string): string | undefined => teamLogoBySubject?.get(athleteIdOf(id));
   if (!loading && outliers.length === 0 && splits.length === 0) return null;
 
   return (
@@ -134,7 +143,7 @@ export function SlateMarket({ data, loading }: { data: SlateMarketData | null; l
           caption="A price gap between books, not a model edge."
         >
           {outliers.length > 0 ? (
-            <DataTable caption="Price outliers" columns={OUTLIER_COLUMNS} rows={outliers} rowKey={(r, i) => `${r.subjectId}-${r.market}-${r.bookmaker}-${i}`} />
+            <DataTable caption="Price outliers" columns={OUTLIER_COLUMNS(logoOf)} rows={outliers} rowKey={(r, i) => `${r.subjectId}-${r.market}-${r.bookmaker}-${i}`} />
           ) : loading ? null : (
             <EmptyState title="No outliers right now" reason="Every line with at least five books quoting it is priced within four points of the rest." />
           )}
@@ -149,7 +158,7 @@ export function SlateMarket({ data, loading }: { data: SlateMarketData | null; l
           caption="Where books disagree on the line itself. A price gap, not a model edge."
         >
           {splits.length > 0 ? (
-            <DataTable caption="Line disagreements" columns={DISAGREEMENT_COLUMNS} rows={splits} rowKey={(r, i) => `${r.subjectId}-${r.market}-${i}`} />
+            <DataTable caption="Line disagreements" columns={DISAGREEMENT_COLUMNS(logoOf)} rows={splits} rowKey={(r, i) => `${r.subjectId}-${r.market}-${i}`} />
           ) : loading ? null : (
             <EmptyState title="The books agree" reason="Every market on this slate is hung at one line." />
           )}

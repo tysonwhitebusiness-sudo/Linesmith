@@ -50,14 +50,18 @@ export interface SpotlightRow {
   /** C4: the player's headshot, and the team mark (or golf flag) to fall back to. */
   headshotUrl?: string | null;
   logoUrl?: string | null;
+  /** C4: the team mark only (golf has none), for the small badge on the row. */
+  teamLogoUrl?: string | null;
 }
 
 /** The images the candidate's own meta already carries. */
-function subjectImages(c: PickCandidate): { headshotUrl: string | null; logoUrl: string | null } {
+function subjectImages(c: PickCandidate): { headshotUrl: string | null; logoUrl: string | null; teamLogoUrl: string | null } {
   const m = (c.subjectMeta ?? {}) as Record<string, unknown>;
+  const teamLogoUrl = typeof m.teamLogoUrl === 'string' ? m.teamLogoUrl : null;
   return {
     headshotUrl: typeof m.headshotUrl === 'string' ? m.headshotUrl : null,
-    logoUrl: typeof m.teamLogoUrl === 'string' ? m.teamLogoUrl : typeof m.flagUrl === 'string' ? m.flagUrl : null,
+    logoUrl: teamLogoUrl ?? (typeof m.flagUrl === 'string' ? m.flagUrl : null),
+    teamLogoUrl,
   };
 }
 

@@ -46,6 +46,7 @@ import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYo
 import { toYourLines } from '@/lib/slate/yourLines';
 import { buildSpotlights } from '@/lib/slate/spotlights';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
+import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
 import {
   DensityToggle,
   GolfScanModeToggle,
@@ -333,6 +334,18 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const games: SlateGame[] = useMemo(() => {
     return ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ??
       []) as SlateGame[];
+  }, [snapshot]);
+
+  // C4: bare athlete id → team logo, straight from the snapshot's own
+  // subjects, so the market-shape cards put a team mark beside a player's name
+  // without a second lookup. Matched on the bare id, like the player rail.
+  const teamLogoBySubject = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of snapshot?.subjects ?? []) {
+      const logo = (s.meta as unknown as Record<string, unknown> | undefined)?.teamLogoUrl;
+      if (typeof logo === 'string' && logo) map.set(athleteIdOf(s.subjectId), logo);
+    }
+    return map;
   }, [snapshot]);
 
   // Base filtering shared by every tab, deliberately stopping short of the
@@ -737,7 +750,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             {/* Golf has no prop-market cards: its winner prices are cached,
                 not stored per book, so there is no book-by-book spread to
                 compare (slate-sheet-cards.md §4.8). */}
-            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} />}
+            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} teamLogoBySubject={teamLogoBySubject} />}
 
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
 

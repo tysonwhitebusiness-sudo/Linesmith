@@ -41,7 +41,7 @@ export function espnHeadshot(league: EspnLeague, id: string | number | null | un
 export function mlbHeadshot(id: string | number | null | undefined): string | null {
   return id == null || id === ''
     ? null
-    : `https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current`;
+    : `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 }
 
 /** MLB's own crest, keyed by StatsAPI team id. */

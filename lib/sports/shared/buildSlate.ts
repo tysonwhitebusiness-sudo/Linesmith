@@ -232,7 +232,6 @@ function marketFor(line: UnifiedGameLine | undefined, market: 'moneyline' | 'spr
     consensus,
     best: best ? { price: formatAmerican(best.price), book: best.book } : null,
     books: books || null,
-    booksList: [...new Set(saneQuotes.map((q) => q.book))],
   };
 }
 

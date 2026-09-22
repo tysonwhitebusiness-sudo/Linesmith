@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AvatarLabel, Card, Chip, DataTable, EmptyState, Tabs, type Column, SectionBand } from '@/components/ui';
+import { Card, Chip, DataTable, EmptyState, Tabs, type Column, SectionBand } from '@/components/ui';
 import type { SpecialRanking, SpecialRow, SpecialsData } from '@/lib/slate/specials';
 import { formatFactor } from '@/lib/slate/specialsFormat';
 
@@ -48,7 +48,12 @@ function columnsFor(ranking: SpecialRanking): Column<SpecialRow>[] {
       key: 'subject',
       label: 'Player',
       sortable: false,
-      render: (r) => <AvatarLabel name={r.subjectName} sub={[r.team, r.opponent ? `vs ${r.opponent}` : null].filter(Boolean).join(' ')} size={24} />,
+      render: (r) => (
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate font-semibold text-ink text-body-sm">{r.subjectName}</span>
+          <span className="truncate text-label text-ink-muted">{[r.team, r.opponent ? `vs ${r.opponent}` : null].filter(Boolean).join(' ')}</span>
+        </span>
+      ),
     },
     ...ranking.def.factors.map<Column<SpecialRow>>((f) => ({
       key: f.key,

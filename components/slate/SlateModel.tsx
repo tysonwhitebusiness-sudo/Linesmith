@@ -27,18 +27,31 @@ const COLUMNS: Column<ModelPickRow>[] = [
     key: 'game',
     label: 'Game',
     sortable: false,
-    render: (r) => (
-      <span className="flex items-center gap-2">
-        <span className="flex shrink-0 -space-x-1">
-          {r.awayLogoUrl ? <Avatar kind="logo" label="" src={r.awayLogoUrl} size={20} decorative /> : null}
-          {r.homeLogoUrl ? <Avatar kind="logo" label="" src={r.homeLogoUrl} size={20} decorative /> : null}
-        </span>
+    render: (r) => {
+      const [away, home] = r.matchup.split(' @ ');
+      return (
         <span className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-ink">{r.matchup}</span>
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            {home ? (
+              <>
+                <span className="flex min-w-0 items-center gap-1">
+                  {r.awayLogoUrl ? <Avatar kind="logo" label={away} src={r.awayLogoUrl} size={16} decorative /> : null}
+                  <span className="truncate text-ink">{away}</span>
+                </span>
+                <span className="shrink-0 text-ink-muted">@</span>
+                <span className="flex min-w-0 items-center gap-1">
+                  {r.homeLogoUrl ? <Avatar kind="logo" label={home} src={r.homeLogoUrl} size={16} decorative /> : null}
+                  <span className="truncate text-ink">{home}</span>
+                </span>
+              </>
+            ) : (
+              <span className="truncate text-ink">{r.matchup}</span>
+            )}
+          </span>
           <span className="text-label text-ink-muted">{time(r.startsAt)}</span>
         </span>
-      </span>
-    ),
+      );
+    },
   },
   {
     key: 'ml',

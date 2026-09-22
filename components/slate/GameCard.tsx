@@ -3,7 +3,6 @@
 import { Avatar, Button, Chip, Tooltip, cx } from '@/components/ui';
 import { useTeamColors } from '../useTeamColors';
 import { teamColor } from '@/lib/sports/shared/teamColors';
-import { BookLogo, bookLabel } from '../BookLogo';
 import type { SlateGameCard, SlateMarket, SlateTeam } from '@/lib/sports/shared/slateShapes';
 
 /**
@@ -76,8 +75,6 @@ export function GameCard({ card, sport }: { card: SlateGameCard; sport: string }
   const colors = useTeamColors(sport, null);
   const awayColor = teamColor(colors, { abbr: card.away.abbr ?? card.away.name })?.primary;
   const homeColor = teamColor(colors, { abbr: card.home.abbr ?? card.home.name })?.primary;
-  // C4: every book quoting any of this game's lines, for the footer's marks.
-  const allBooks = [...new Set([...(card.lines?.spread?.booksList ?? []), ...(card.lines?.total?.booksList ?? []), ...(card.lines?.moneyline?.booksList ?? [])])];
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-card border border-line-soft bg-card shadow-card">
       {/* C4: a 5px stripe split into the two teams' primaries. */}
@@ -148,31 +145,13 @@ export function GameCard({ card, sport }: { card: SlateGameCard; sport: string }
         </div>
       ) : null}
 
-      <footer className="mt-auto flex items-center justify-between gap-2 border-t border-line-soft px-2 py-1.5">
-        {allBooks.length > 0 ? (
-          <span className="flex items-center gap-1.5 px-2">
-            <span className="flex -space-x-1">
-              {allBooks.slice(0, 6).map((b) => (
-                <Tooltip key={b} content={bookLabel(b)}>
-                  <span className="grid size-[18px] place-items-center rounded-full bg-card ring-1 ring-line">
-                    <BookLogo bookId={b} size={12} />
-                  </span>
-                </Tooltip>
-              ))}
-            </span>
-            <span className="text-label tabular-nums text-ink-muted">{allBooks.length} book{allBooks.length === 1 ? '' : 's'}</span>
-          </span>
-        ) : (
-          <span />
-        )}
-        <span className="flex items-center gap-2">
-          {card.propCount ? <span className="text-label tabular-nums text-ink-muted">{card.propCount} props</span> : null}
-          {card.href ? (
-            <Button variant="tertiary" size="sm" href={card.href}>
-              Research →
-            </Button>
-          ) : null}
-        </span>
+      <footer className="mt-auto flex items-center justify-end gap-2 border-t border-line-soft px-3 py-2">
+        {card.propCount ? <span className="text-label tabular-nums text-ink-muted">{card.propCount} props</span> : null}
+        {card.href ? (
+          <Button variant="tertiary" size="sm" href={card.href}>
+            Research →
+          </Button>
+        ) : null}
       </footer>
     </section>
   );
