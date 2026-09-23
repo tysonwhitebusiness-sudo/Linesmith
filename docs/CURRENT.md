@@ -19,8 +19,12 @@ Read it next. In short:
    screenshots in `docs/design/closeout-shots/`, the 390px control-rows check
    written (`scripts/check-controls-390.js`, run via the Playwright MCP), and
    six bugs the sweep found fixed — see Entry 16 in `VSCODE-HANDOFF.md`.
-4. ~~An uncommitted two-system odds-model refactor in the tree~~ — resolved:
-   that session committed it as `af2ef13` and `f4a8373`.
+4. **Odds-model track (separate workstream, own plan):**
+   `docs/design/odds-model-two-system-gameplan-2026-09-22.md`. Phase 0 is
+   committed (`af2ef13`, `f4a8373`) and deployed; see its STATUS block. One
+   step is left and needs the operator: the `--apply` drop of the two dead
+   golf prediction tables, which the sandbox refused. **Phase 1 (no-odds
+   ranking system, every priced market) is next.**
 5. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
    `/diagnostics`.**
 
@@ -74,6 +78,7 @@ Update this table and the run doc's §2 after every phase commit, then push.
 
 | when | commit | service | what it enables |
 |---|---|---|---|
+| 2026-09-23 18:53 UTC | `f4a8373` (odds-model Phase 0) | line-buddy-odds-worker (`dep-daq1vkjncjis7397r6rg`, live) | `golfEloJob` (hourly) and `maintainMlbStatcastAggJob` (6-hourly), both confirmed running live at 21:44 UTC. Nine dead model files deleted. The `corpusFreshness` fix (checks all 6 corpus tables, was 2) lives in the health-check cron, which auto-deploys on push. Its Render deploy has not been checked yet. Was on `4f49150`. |
 | 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |
 | 2026-09-23 16:11 UTC | `4f49150` (C8+SPC) | line-buddy-odds-worker (`live`) | Golfer names from ESPN's per-athlete endpoint (cached a month); read templates for the tennis and golf factors, with no pronouns in any of them. Was on `f6c4cd6`. |
 | 2026-09-23 15:23 UTC | `f6c4cd6` (SP-TEN + SP-GOLF) | line-buddy-odds-worker (`live`) | Four new spotlights: tennis Form (both tours), Serve vs return and Surface record (ATP), golf Course history. `RankingDef.freezes` so a week-long golf slate is not frozen on day one. Was on `7e9e119`. |
