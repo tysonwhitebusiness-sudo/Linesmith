@@ -86,8 +86,9 @@ function toDecimal(american: number): number {
  * Settled games with a real closing two-sided moneyline at the same book.
  *
  * DISTINCT ON takes the last observation per side, which is the same closing
- * definition `get_closing_price` and `userClv.ts` use — three places now agree
- * about what "the close" means, rather than each choosing.
+ * definition `get_closing_price` uses — both places agree about what "the
+ * close" means, rather than each choosing. (User CLV, a third, was deleted
+ * 2026-09-23: it had no page, and model CLV is the measure that matters.)
  */
 export async function loadDevigObservations(): Promise<DevigObservation[]> {
   const rows = await pgAll<{ game_id: string; home_odds: number; away_odds: number; home_score: number; away_score: number }>(
