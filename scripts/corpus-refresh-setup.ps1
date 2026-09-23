@@ -8,8 +8,8 @@
 #
 # WHY IT MATTERS THAT IT RUNS AT ALL.
 # Before 5.S.8 the corpus was a convenience: `prop_odds_history` held
-# everything, and a stale export cost nothing. Now Postgres keeps a 14-day hot
-# window and the corpus is the ONLY copy of anything older. `prune_corpus`
+# everything, and a stale export cost nothing. Now Postgres keeps a 10-day hot
+# window (`prune_corpus.KEEP_RECENT_DAYS`) and the corpus is the ONLY copy of anything older. `prune_corpus`
 # refuses to delete a row it cannot see in the corpus, so a stalled export
 # never LOSES data - it just silently stops reclaiming space while the table
 # grows at ~123 MB/day. Silent is the problem; `health_check.py`'s
@@ -29,7 +29,7 @@ param(
     # thousand rows.
     #
     # Not daily: the window that matters is the RETENTION boundary, not the
-    # clock. A row must reach the corpus before it ages out of the 14-day hot
+    # clock. A row must reach the corpus before it ages out of the 10-day hot
     # window, and six hours leaves that enormous margin while still bounding
     # how much sits in exactly one place.
     [int]$IntervalMinutes = 360,

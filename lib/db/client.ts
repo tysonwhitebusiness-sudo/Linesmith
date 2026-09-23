@@ -799,7 +799,9 @@ export async function readPropOddsForGame(gameId: string): Promise<PropOddsRow[]
  * survives in `prop_odds_history`, which logs every price change, so the price
  * in effect at the start is the last history row at or before it. Current rows
  * last polled before the start are unioned in as well, which covers a key
- * whose only history row has aged past the 14-day prune (`prune_corpus.py`).
+ * whose only history row has aged past the 10-day prune (`prune_corpus.py`).
+ * That window is sized for THIS reader: a game older than it shows no prop
+ * prices here, since `prop_odds` itself drops rows after 7 days.
  *
  * Before the start (or with no parseable start time) this is just
  * `readPropOddsForGame`.

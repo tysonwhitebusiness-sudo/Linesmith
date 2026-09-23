@@ -6,7 +6,8 @@
 
 THIS EXISTS BECAUSE A HOT WINDOW MAKES THE EXPORT LOAD-BEARING. Before 5.S.8,
 `prop_odds_history` held everything, and an export that fell behind cost nothing
-but freshness. Now Postgres keeps 14 days and the corpus is the ONLY copy of
+but freshness. Now Postgres keeps 10 days (`prune_corpus.KEEP_RECENT_DAYS`;
+14 until 2026-09-23) and the corpus is the ONLY copy of
 anything older, so an export that stops is a clock running against permanent
 loss. `prune_corpus` refuses to delete a row it cannot see in the corpus, so
 this fails safe rather than losing data — but it fails *silently*, by quietly
@@ -139,7 +140,7 @@ async def main(tables: list[str], check_only: bool, prune: bool = False) -> int:
             # LAG IS "NOT YET IN THE CORPUS", NOT "FROZEN". The first version of
             # this counted frozen rows and reported 4,389,730 for
             # `prop_odds_history` — every one of which was already exported and
-            # deliberately retained inside the 14-day window. Frozen says a row
+            # deliberately retained inside the hot window. Frozen says a row
             # will never change; it says nothing about whether anyone copied it.
             # The honest measure compares the highest id the corpus holds with
             # the highest Postgres holds.

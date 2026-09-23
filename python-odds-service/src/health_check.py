@@ -1054,7 +1054,7 @@ async def check_corpus_freshness() -> dict:
 
     THIS IS THE ALARM 5.S.8 CREATED THE NEED FOR. Before it, the corpus was a
     convenience: `prop_odds_history` held everything and a stale export cost
-    nothing but freshness. Now Postgres keeps a 14-day hot window and the corpus
+    nothing but freshness. Now Postgres keeps a 10-day hot window and the corpus
     is the ONLY copy of anything older.
 
     The failure mode is NOT data loss — `prune_corpus` refuses to delete a row

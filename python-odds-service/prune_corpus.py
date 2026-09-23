@@ -168,15 +168,25 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
 # wider than the only consumer that needs it.
 KEEP_RECENT_DAYS = {
     "odds_archive": 30,
-    # Phase 5.S.8. This is the SERVING window, not a safety margin: the price
-    # chart, per-key grading and `userClv.closingPropPrice` all read this table
-    # from TypeScript, where there is no DuckDB and so no corpus read. Whatever
-    # is not here cannot be served at all.
+    # Phase 5.S.8. This is the SERVING window, not a safety margin: TypeScript
+    # reads this table and has no DuckDB, so no corpus read. Whatever is not
+    # here cannot be served at all.
     #
-    # 14 days costs ~1,725 MB steady state at the current 465k rows/day and
-    # covers the chart natively to 13.3 days (its 2-hour bucket tier). 7 would
-    # halve it and cap the chart at 6.7 days.
-    "prop_odds_history": 14,
+    # 10 days since 2026-09-23 (was 14). Set by the longest-looking reader,
+    # which is the GAME PAGE: `readPreGamePropOddsForGame` (lib/db/client.ts)
+    # serves a started game's pre-game prop prices from here, because
+    # `prop_odds` drops its rows after 7 days. 10 keeps last week's NFL game
+    # researchable with margin; 7 would have put last Sunday's lines exactly
+    # at the edge. The others need less: Slate movers look back 7 days,
+    # per-key grading runs every 15 minutes on just-finished games, and the
+    # price chart clamps itself to the retained floor (`retainedHours()`).
+    # User CLV needed unlimited lookback from here and was deleted instead
+    # (709d807). Model CLV reads `game_odds_history`, which is not pruned.
+    #
+    # Measured that day: 1.74M of 7.96M rows (~0.52 GB of 2.39 GB) were older
+    # than 10 days. A DELETE does not shrink the file; the freed space is
+    # reused by new rows rather than returned to the disk.
+    "prop_odds_history": 10,
     # R5 (2026-09-14). NOT a serving window: the hourly Statcast ingest
     # re-fetches the last 3 days, so a pitch pruned inside that window comes
     # back under a new id and is exported twice (see corpus_store's
