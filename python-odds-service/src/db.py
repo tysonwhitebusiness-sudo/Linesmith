@@ -4168,6 +4168,53 @@ async def write_golf_tournament(input: GolfTournamentInput) -> None:
     )
 
 
+async def golf_events_missing_course(limit: int) -> list[str]:
+    """Event ids that `golf_tournament_results` knows about and
+    `golf_tournaments` has no course for (DJ-GOLF).
+
+    Newest first, because a course that matters to a reader today is far more
+    likely to be a recent one, and because ESPN is likeliest to still answer
+    for a recent id. A row with a NULL `course_name` counts as missing even
+    though the tournament row exists — the live path writes a row with no
+    course whenever ESPN's leaderboard omits one.
+
+    A NULL `start_date` counts as missing too. The live path cannot fill it
+    (`ingest_golf_history` leaves it None rather than guessing from today,
+    deliberately) but the per-event feed the backfill reads DOES carry the
+    event's own date, so the four live-written rows are worth one request each
+    to complete. An event ESPN will not date is asked again on the next run;
+    the write is idempotent and there are four of them.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT r.event_id
+          FROM golf_tournament_results r
+          LEFT JOIN golf_tournaments t ON t.event_id = r.event_id
+         WHERE t.course_name IS NULL OR t.start_date IS NULL
+         GROUP BY r.event_id
+         ORDER BY max(r.finished_at) DESC NULLS LAST
+         LIMIT $1
+        """,
+        limit,
+    )
+    return [str(r["event_id"]) for r in rows]
+
+
+async def golf_course_coverage() -> tuple[int, int]:
+    """(events with a course, events held) across `golf_tournament_results`."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT count(DISTINCT r.event_id) AS events,
+               count(DISTINCT r.event_id) FILTER (WHERE t.course_name IS NOT NULL) AS with_course
+          FROM golf_tournament_results r
+          LEFT JOIN golf_tournaments t ON t.event_id = r.event_id
+        """
+    )
+    return (int(row["with_course"] or 0), int(row["events"] or 0))
+
+
 @dataclass
 class GolfHoleScoreInput:
     event_id: str

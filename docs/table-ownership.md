@@ -50,6 +50,18 @@
 > | `pitcher_game_score_history` | `writePitcherGameScore` (the "dead path" row 25 names) | row 25 — Python only |
 > | `game_sim_cache` | `writeGameSimCache` (read-only since 2.9) | row 21 — the reader went too |
 >
+> **DJ-GOLF (2026-09-22), the four golf tables.** Grepped, not assumed:
+> `writeGolfTournament`, `writeGolfTournamentResults`, `writeGolfHoleScores`
+> and `writeGolfRoundScores` exist in **zero** TypeScript files, and
+> `historyIngest.ts` is gone — its only surviving trace is a comment in
+> `lib/sports/golf/adapter.ts:398` naming the deleted file. So rows 17-20's ⚠
+> (`golf_hole_scores`, `golf_round_scores`, `golf_tournaments`,
+> `golf_tournament_results`) is stale in all four cases: Python is the only
+> writer. Recorded here rather than patched into the rows, per this file's own
+> rule. No new table: DJ-GOLF's backfill writes `golf_tournaments` through the
+> existing `db.write_golf_tournament`, and `golfCoursesJob` joins the registry
+> beside `golfHistoryJob`.
+>
 > **R12a (2026-09-19), `game_result`:** still Python-owned. New source
 > `mlb_statsapi` (37,960 rows, MLB's official finals 2010-2025) written by
 > `python-odds-service/backfill_mlb_statsapi_results.py` through the new

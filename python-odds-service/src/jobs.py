@@ -857,6 +857,29 @@ async def _golf_history_inner() -> dict:
     }
 
 
+async def job_golf_courses(yield_fn=None) -> dict:
+    """DJ-GOLF — fill the course for golf events that have none.
+
+    A BACKFILL THAT BECOMES A NO-OP. 235 events were held and 4 named a
+    course (measured 2026-09-22), which is what blocked golf's Course history
+    spotlight. It is a scheduled job rather than a one-shot script so that
+    `health_check` watches it and so a live event whose leaderboard omitted a
+    course still gets one later.
+
+    SIX HOURS, not five minutes like `golfHistoryJob`: a finished
+    tournament's course does not change, and once the backlog clears every run
+    is one read and no writes. See `golf_courses.py` for why this needed no
+    new table and no new writer."""
+    return await _run_timed("golfCoursesJob", _golf_courses_inner(yield_fn))
+
+
+async def _golf_courses_inner(yield_fn=None) -> dict:
+    import golf_courses
+
+    async with httpx.AsyncClient() as client:
+        return await golf_courses.backfill_courses(client, golf_courses.BATCH, yield_fn)
+
+
 async def job_grade_mlb_props(yield_fn=None) -> dict:
     """Task 2.7b — MLB prop/moneyline/total grading, ported from
     lib/odds/props/grading.ts where it ran inside TypeScript's snapshot
@@ -1449,6 +1472,10 @@ JOB_REGISTRY = [
     # 5 min so a round's hole scores and its weather are captured while the
     # round is played. Was golfPredictionsJob; see job_golf_history.
     ("golfHistoryJob", job_golf_history, 5 * 60),
+    # DJ-GOLF. Six-hourly and self-limiting: a finished tournament's course
+    # never changes, so once the 235-event backlog clears this reads one row
+    # and writes nothing.
+    ("golfCoursesJob", job_golf_courses, 6 * 60 * 60),
     # Matches mlbOddsLinesCycleJob's own 5min cadence and reasoning — see
     # job_generic_capture's own docstring.
     ("genericCaptureJob", job_generic_capture, 5 * 60),

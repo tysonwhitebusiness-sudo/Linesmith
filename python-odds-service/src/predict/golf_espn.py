@@ -312,3 +312,63 @@ async def get_season_schedule(client: httpx.AsyncClient, year: int) -> list[Sche
 
     await db.write_snapshot(cache_key, json.dumps(_schedule_to_json(events)))
     return events
+
+
+# ---------------------------------------------------------------------------
+# DJ-GOLF — one past event's metadata
+# ---------------------------------------------------------------------------
+
+@dataclass
+class EspnEventMeta:
+    """What `golf_tournaments` needs for ONE event, live or long finished."""
+    event_id: str
+    name: str | None
+    season: int | None
+    start_date: str | None
+    course: EspnCourse | None
+    field_size: int | None
+
+
+async def fetch_event_meta(client: httpx.AsyncClient, event_id: str) -> EspnEventMeta | None:
+    """The course (and name, season, start date, field size) for one event id.
+
+    MEASURED 2026-09-22, because the obvious reading of this module says it is
+    impossible: `fetch_golf_event` reads the leaderboard feed, which serves
+    only the CURRENT tournament, so 231 of the 235 events in
+    `golf_tournament_results` had no course. The SAME endpoint with `&event=`
+    answers for a finished event years back — Sedgefield Country Club for
+    401811961 (2026), TPC Craig Ranch for 401703508 (2025), each with par and
+    all 18 holes.
+
+    It also carries the event's own `date`, which the live path does NOT (see
+    `ingest_golf_history`, which leaves `start_date` None on purpose rather
+    than guessing it from today). So a backfilled row is strictly better
+    described than a live-written one.
+    """
+    res = await _get_json(client, f"{_LEADERBOARD_URL}&event={event_id}")
+    if res is None:
+        return None
+    events = res.get("events") or []
+    # ESPN answers an unknown id with a 200 and today's event rather than an
+    # error, so the id it returns has to be the id we asked for.
+    event = next((e for e in events if str(e.get("id") or "") == str(event_id)), None)
+    if event is None:
+        return None
+    # THE RYDER CUP IS NOT A STROKE-PLAY EVENT and its feed says so: event
+    # 401734110's `competitions` is a list of LISTS (the pairings), where
+    # every other event's is a list of one dict. Reading `.get` off it threw
+    # and took the whole backfill down 46 events in. A team event simply has
+    # no field size to report, which is the honest answer rather than a count
+    # of matches.
+    comps = event.get("competitions") or []
+    first = comps[0] if comps else None
+    competitors = (first.get("competitors") or []) if isinstance(first, dict) else []
+    season = (event.get("season") or {}).get("year")
+    return EspnEventMeta(
+        event_id=str(event_id),
+        name=event.get("name"),
+        season=int(season) if isinstance(season, (int, float, str)) and str(season).isdigit() else None,
+        start_date=event.get("date"),
+        course=_parse_course(event),
+        field_size=len(competitors) or None,
+    )
