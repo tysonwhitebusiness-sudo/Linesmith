@@ -1,12 +1,19 @@
 # CURRENT — pick up here
 
-**Updated 2026-09-23 after DJ-GOLF. Track C (card redesign) and the
+**Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
-answered. Phases 1-12 are BUILT. C5-UI is built but NOT signed
-off: it waits on a real graded slate (NFL Sunday 2026-09-27 plus one MLB day
-graded by PY-A's code). The next unbuilt phase is 13 (DJ-TEN) — **check the
-TML licence first (A4)**; if it does not permit this use, stop, write a queue
-row, and ship SP-TEN with Form only. Don't stop to ask.**
+answered. All sixteen phases of the run order are built and
+deployed. What is left is REVIEW, not build:
+
+1. **C5-UI sign-off** waits on a real graded slate — NFL Sunday **2026-09-27**
+   plus one MLB day graded by PY-A's code. When it comes, check that NFL's
+   receipts actually fill: `nfl-longest-reception` for 09-21 produced a leader
+   row and ZERO graded players.
+2. **`docs/design/SIGNOFF-QUEUE.md` Q26–Q30** are this run's own decisions.
+   **Q26 needs a real answer**: SPC's spec asks for graded spotlights and the
+   build deliberately does the opposite.
+3. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
+   `/diagnostics`.**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
@@ -47,10 +54,10 @@ row, and ship SP-TEN with Form only. Don't stop to ask.**
 | 10 | F0-UI research-page flags + Slate spotlight cards | **done** — `/api/slate/flags`, `ResearchFlags` (chips on the player page, card on team/game), the Python spotlights on the Slate, N5 weather (`400802d`) |
 | 11 | C5-UI receipts table + new Specials (needs a real graded slate) | **built, awaiting graded slate** — receipts card, percentile cells, read line, sticky player column (`815b94e`). Sign off after NFL Sunday 2026-09-27 + one MLB day graded by PY-A's code |
 | 12 | DJ-GOLF tournament → course backfill (**deploy**) | **done** — 235/235 events have a course (was 4), 82 courses, `golfCoursesJob` now a no-op (`f3b6817`) |
-| 13 | DJ-TEN TML-Database ingest, licence check first (**deploy**) | — |
-| 14 | SP-GOLF, SP-TEN | — |
-| 15 | C8 close Track C | — |
-| 16 | SPC close Spotlights | — |
+| 13 | DJ-TEN TML-Database ingest, licence check first (**deploy**) | **done** — ATP only; `tennis_match_stats`, 10,833 rows, busiest 80 players covered (`7e9e119`) |
+| 14 | SP-GOLF, SP-TEN | **done** — 4 of 6: tennis Form (both tours), Serve vs return + Surface record (ATP), golf Course history. Round movers + Scoring by par type not built, Q27 (`f6c4cd6`) |
+| 15 | C8 close Track C | **done** — guards, CLAUDE.md, mockup historical (`4f49150`) |
+| 16 | SPC close Spotlights | **done** — guards + docs; receipts deliberately NOT built, Q26 (`4f49150`) |
 
 Update this table and the run doc's §2 after every phase commit, then push.
 
@@ -59,6 +66,9 @@ Update this table and the run doc's §2 after every phase commit, then push.
 | when | commit | service | what it enables |
 |---|---|---|---|
 | 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |
+| 2026-09-23 16:11 UTC | `4f49150` (C8+SPC) | line-buddy-odds-worker (`live`) | Golfer names from ESPN's per-athlete endpoint (cached a month); read templates for the tennis and golf factors, with no pronouns in any of them. Was on `f6c4cd6`. |
+| 2026-09-23 15:23 UTC | `f6c4cd6` (SP-TEN + SP-GOLF) | line-buddy-odds-worker (`live`) | Four new spotlights: tennis Form (both tours), Serve vs return and Surface record (ATP), golf Course history. `RankingDef.freezes` so a week-long golf slate is not frozen on day one. Was on `7e9e119`. |
+| 2026-09-23 14:48 UTC | `7e9e119` (DJ-TEN) | line-buddy-odds-worker (`live`) | `tennisStatsJob`, daily: TML-Database serve and return numbers into the new `tennis_match_stats` (migration 20260923000000, applied by hand first). ATP only. Was on `f3b6817`. |
 | 2026-09-23 03:04 UTC | `f3b6817` (DJ-GOLF) | line-buddy-odds-worker (`dep-dapk2ik9v7es738t1qng`, live) | `golfCoursesJob`, six-hourly: fills `golf_tournaments.course_name` for events that have none. The 235-event backlog was cleared locally before the deploy, so the job runs as a no-op from here. Was on `5f9a7df`. |
 | 2026-09-22 02:26 UTC | `5f9a7df` (PY-B) | line-buddy-odds-worker (`dep-daoudr5g1s2s738njlcg`, live) | 32 spotlight rankings (`kind='spotlight'`, never graded) across NFL/CFB/NHL/soccer/MLB: the sport-specific cards and the eight N ideas (N1/N2/N3/N6/N7/N8, N4 MLB). Was on `5e6568d`. |
 
@@ -168,6 +178,26 @@ Update this table and the run doc's §2 after every phase commit, then push.
   read properties of undefined" — `tsc` says the field is there and the cached
   bytes disagree. **Read a new array off a cached payload defensively**, and
   render before believing.
+- **A read line never guesses a person's gender.** A live WTA card read "Katie
+  Volynets ... has won 70% of HIS last ten". The `READS` templates in
+  `slate_rankings.py` now take no pronoun at all.
+- **DJ-TEN: Jeff Sackmann's `tennis_atp`/`tennis_wta` repos are GONE** — the
+  canonical open tennis datasets, and what the gameplan names. TML-Database
+  continues the ATP half; nothing continues WTA, so WTA has no serve line and
+  the job says so in its own output rather than implying coverage.
+- **DJ-TEN: match on ESPN's own names, not through `athlete_crosswalk`.** That
+  table holds 401 of 715 ATP players and is missing Auger-Aliassime, Davidovich
+  Fokina and Mpetshi Perricard; going through it capped coverage at 47%.
+- **SP-TEN: nothing held knows what surface is played THIS week.** ESPN's
+  tennis feed carries none, and `game_result`'s comes from an operator-run
+  load that was 25 days stale. The card reads the most recent completed tour
+  week and says "the current swing", which is what it measures.
+- **SP-GOLF: a golf slate is a WEEK, not a day**, so the generic freeze would
+  blank a card for six days of seven. `RankingDef.freezes` is the opt-out, and
+  golf is the only user.
+- **Tennis is GRANULAR in `slate_rankings.sport`** (`tennis_atp`/`tennis_wta`),
+  like soccer. `flagScope` folded it to 'tennis' and every tennis page showed
+  no flags; `rankingSport()` describes the Specials, which tennis has none of.
 - **DJ-GOLF: the Ryder Cup is not a stroke-play event and its feed says so.**
   Event 401734110's `competitions` is a list of LISTS (the pairings) where
   every other golf event's is a list of one dict. `.get` on it threw and killed

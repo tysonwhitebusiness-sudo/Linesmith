@@ -62,10 +62,10 @@ authorised.
 | 10 | **F0-UI** `/api/slate/flags`, the shared `ResearchFlags` card and chips on player/team/game pages; the Slate renders the Python spotlights beside the two TS ones. N5 weather ships here. | S | 6, 8 | no | **done** |
 | 11 | **C5-UI** Receipts table + the new Specials cards | C | 4 **and a real graded slate** (A6) | no | **built, awaiting graded slate** |
 | 12 | **DJ-GOLF** Tournament → course backfill | S | — | **yes** | **done** — 235/235 (100%), deployed `f3b6817` |
-| 13 | **DJ-TEN** TML-Database ingest (licence check first, A4) | S | — | **yes** | — |
-| 14 | **SP-GOLF**, **SP-TEN** (rankings + render) | S | 10, 12, 13 | **yes** | — |
-| 15 | **C8** Close Track C: guards, `/kit`, sweep, `CLAUDE.md`, mockup marked historical | C | 9, 11 | no | — |
-| 16 | **SPC** Close Spotlights: receipts for frozen spotlights, guards, docs | S | 14 | no | — |
+| 13 | **DJ-TEN** TML-Database ingest (licence check first, A4) | S | — | **yes** | **done** — ATP only, `7e9e119` |
+| 14 | **SP-GOLF**, **SP-TEN** (rankings + render) | S | 10, 12, 13 | **yes** | **done** — 4 of 6 built, `f6c4cd6` |
+| 15 | **C8** Close Track C: guards, `/kit`, sweep, `CLAUDE.md`, mockup marked historical | C | 9, 11 | no | **done** — `4f49150` |
+| 16 | **SPC** Close Spotlights: receipts for frozen spotlights, guards, docs | S | 14 | no | **done** — receipts NOT built (Q26), guards + docs are, `4f49150` |
 
 **Commits:** one per phase, named `C{n}: …`, `PY-A: …`, `PY-B: …`,
 `F0: …`, `DJ-GOLF: …`, `SP-TEN: …` and so on. After each one, update the

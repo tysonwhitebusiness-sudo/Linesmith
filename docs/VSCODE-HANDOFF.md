@@ -18,71 +18,53 @@
 
 ---
 
-## Session state — 2026-09-22
+## Session state — 2026-09-23
 
-**DJ-GOLF is done and deployed** (`f3b6817`, live 2026-09-23 03:04 UTC) —
-every one of the 235 golf events now names a course, from four. The next
-unbuilt phase is **13, DJ-TEN**, and its licence check (A4) comes first.
+**THE RUN IS COMPLETE.** All sixteen phases of
+`docs/design/unattended-run-2026-09-21.md` §2 are built, tested and deployed.
+The last four landed in one pass:
 
-**C5-UI is BUILT, not signed off** (`815b94e`) — the receipts card, percentile
-cells on the Specials table, Python's one-line read under each player, and the
-sticky player column. It renders on the real 2026-09-21 MLB receipts. Sign-off
-waits on NFL Sunday 2026-09-27 plus one MLB day graded end to end by PY-A's
-code (the run doc's own rule: build now, sign off then).
+| phase | commit | what |
+|---|---|---|
+| 13 DJ-TEN | `7e9e119` (deployed) | `tennis_match_stats` — TML serve/return, ATP only |
+| 14 SP-TEN + SP-GOLF | `f6c4cd6` (deployed) | four spotlights; two not built (Q27) |
+| 15 C8 | `4f49150` (deployed) | Track C closed: guards, CLAUDE.md, mockup historical |
+| 16 SPC | `4f49150` | Spotlights closed: guards + docs; receipts NOT built (Q26) |
 
-**F0-UI is shipped** (`400802d`) — one commit, 17 files. The research flags:
-`/api/slate/flags`, the shared `ResearchFlags` card and chip row on the
-player, team and game pages, the Python spotlights rendered on the Slate
-beside the two TS cards, and N5's weather list. The Specials registry split
-into `SPECIAL_ONLY_RANKINGS` + `SPOTLIGHT_RANKINGS` with `rankingKind()`, and
-the drift guard now covers both kinds.
+**What is left is review, not build.**
 
-Phases 1-12 of the run order are built. The next UNBUILT phase is **13,
-DJ-TEN** (TML-Database ingest) — **check the licence before writing anything**
-(A4): if it does not permit this use, stop, write a queue row, and ship SP-TEN
-with Form only.
+1. **C5-UI sign-off** — NFL Sunday **2026-09-27** plus one MLB day graded by
+   PY-A's code. Check NFL's receipts actually fill: `nfl-longest-reception`
+   for 09-21 produced a leader row and zero graded players.
+2. **Q26 needs a real answer.** SPC's spec asks for graded spotlights; the
+   build deliberately does the opposite, and the invariant is now pinned in
+   both languages. Reversing it means a grade rule for 36 spotlights.
+3. **Q27–Q30** record the other calls taken without the operator: golf's two
+   unbuilt live cards, WTA having no serve source at all, a 25-day-stale
+   surface feed, and `RankingDef.freezes`.
 
 ### Environment note
 
-- **The Supabase DNS outage has CLEARED.** An earlier session today (`aac1bcb`)
-  recorded that `next start` on `:3000` could not resolve
-  `aws-0-us-west-2.pooler.supabase.com` for a whole session, so the slate said
-  "No games scheduled" and every cache served 300-800+ minutes stale. As of
-  2026-09-22 18:30 UTC the pooler resolves and answers: probe scripts read
-  `slate_rankings` directly, and the Slate rendered 16 real MLB games. Keep the
-  original note's advice — if live data looks stale or empty, check the
-  network path to Supabase before suspecting the code, because restarting the
-  server does not fix it.
-- The built-in Browser pane cannot render the Suspense pages (player, team,
-  game): a HIDDEN pane never fires `requestAnimationFrame` and React 19's
-  streaming reveal waits on it, so the page sits in `<div hidden id="S:0">`
-  forever. `$RV`/`$RB` are not exposed as globals, so the console workaround in
-  `CURRENT.md` does not work either. **Playwright MCP is available in this
-  session and renders them correctly** — use it for every research-page check.
+- The Supabase DNS outage (`aac1bcb`) has cleared and stayed clear.
+- The built-in Browser pane cannot render the Suspense pages — a hidden pane
+  never fires `requestAnimationFrame` and `$RV`/`$RB` are not exposed, so the
+  documented console workaround does not work either. **Use Playwright MCP**,
+  which renders them correctly.
 - Prod on `:3000` serves `.next`: stop it, `npm run build`, restart
-  `linesmith-prod`. A stale prod server from an earlier session was serving the
-  old bundle at the start of this one.
+  `linesmith-prod`.
+- **Bash heredocs eat quotes and backslashes here.** Every multi-line patch in
+  this pass was written to a file with the Write tool and run with `python
+  <file>`; the one heredoc attempt failed immediately.
 
 ### Next
 
-- **C5-UI sign-off** (phase 11) — built. On 2026-09-27, check that NFL's
-  receipts actually fill: `nfl-longest-reception` for 09-21 produced a leader
-  row and ZERO graded players, because `grade()` skips a row whose team's game
-  has not landed in `player_game_history`. If that repeats it is a Python fix.
-- **DJ-GOLF** (phase 12) — **done**, see Entry 14.
-- **C4 follow-ups**, both *data* additions to `lib/slate/marketMoves.ts`:
-  Movers game-line rows still show text matchups (no team logos —
-  `ConsensusMover` carries no team ids), and the "books moved" cell still shows
-  a count (no per-book marks — no book list on the mover row).
-- **C3 follow-ups:** `matchup` typed but not populated; team/game/injury rail
-  filters not wired; `statusLine` kept for other consumers.
-- **NBA spotlights deferred** (run doc A6): needs a Python `'nba'` games loader.
-- **Watch for the other sports' spotlights**: only MLB has ever written rows.
-  PY-B deployed after Sunday's slate, so NFL's appear Thursday 2026-09-24 and
-  CFB's Saturday 2026-09-26. Nothing to build — F0-UI renders what exists.
+- Nothing in the run order. The backlog is `SIGNOFF-QUEUE.md`, M4, M5, and
+  NBA's spotlights (still waiting on a Python `'nba'` games loader).
+- **C4 follow-ups**, both data additions to `lib/slate/marketMoves.ts`: Movers
+  game-line rows still show text matchups, and "books moved" is still a count.
+- **C3 follow-ups:** `matchup` typed but not populated; rail filters not wired.
 
 ---
-
 
 ## Change log
 
@@ -576,3 +558,60 @@ re-derive-don't-edit rule.
 **Verified:** 662/0 (7 new in `tests/golf-courses.test.ts`); typecheck and
 build clean; the backfill run against the real database; the job re-run to
 confirm the no-op; deployed and polled to `live` on the exact commit.
+
+
+### Entry 15 — DJ-TEN, SP-TEN + SP-GOLF, C8 and SPC: the run closes (`7e9e119`, `f6c4cd6`, `4f49150`)
+
+Four phases in one pass, each deployed.
+
+**DJ-TEN (`7e9e119`).** New `tennis_match_stats`: one row per player per match,
+their serve line plus the same match from the other end (their return context).
+Three of the phase's premises were wrong. **Jeff Sackmann's `tennis_atp` and
+`tennis_wta` repos are gone** — the canonical open tennis datasets for a decade
+— so TML-Database is not the fallback, it is the only source, and it is ATP.
+**Surface was already held for both tours** (`game_result`, since 2026-09-02),
+so correction 6 is out of date and Surface record needs no ingest. And the
+obvious identity bridge was the wrong one: folding TML's full names into
+tennis-data's abbreviations and looking them up in `athlete_crosswalk` resolved
+47% of players, because that table holds 401 of 715 and is missing
+Auger-Aliassime, Davidovich Fokina and Mpetshi Perricard. Matching ESPN's own
+full names took it to **80 of the busiest 80**.
+
+**SP-TEN + SP-GOLF (`f6c4cd6`).** Four of six built: tennis Form (both tours),
+Serve vs return and Surface record (ATP), golf Course history — the ranking
+DJ-GOLF existed to unblock, now reading "Patrick Cantlay — has finished as high
+as 2 here, and averages 21 at this course". Two measurements changed the
+design: **nothing held knows what surface is played this week** (ESPN carries
+none; `game_result`'s comes from an operator-run load that was 25 days stale),
+so the card reads the most recent completed tour week and its words say "the
+current swing"; and **a golf slate is a WEEK**, so the generic freeze would
+blank the card for six days of seven — `RankingDef.freezes` is the opt-out.
+Round movers and Scoring by par type are NOT built (Q27): both are live
+in-round cards, the machinery freezes, and the Slate's golf candidates carry no
+round-start position and no per-hole scores.
+
+**C8 + SPC (`4f49150`).** Track C closed with two new guards (a fill colour is
+never text outside the frozen files; a Slate header is always `SectionBand`),
+`CLAUDE.md` updated for the kit's new pieces and D3's revision, and the mockup
+marked HISTORICAL. Spotlights closed with the flags documented in `CLAUDE.md`
+and five queue rows. **SPC's own spec contradicts the build** — it asks for
+graded spotlights — and that is Q26, kept ungraded with the reasoning written
+down rather than quietly resolved either way.
+
+**Three bugs found by rendering, none visible to `tsc`:**
+
+1. **Tennis flags could never be found.** `flagScope` folded `tennis_atp` to
+   `'tennis'`; the writer stores the tour. Every tennis page showed no flags,
+   and the guard asserted the wrong behaviour.
+2. **A read line called a woman "he"** — "Katie Volynets ... has won 70% of HIS
+   last ten". The templates now take no pronoun at all.
+3. **Golf rankings rendered "Unknown player" ten times.** `_name_all` bridges
+   team-sport ids through rosters and a crosswalk and golf has neither. The
+   live field was the obvious fix and the wrong one — this ranking's field is
+   the last COMPLETED event's — so names come from ESPN's per-athlete
+   endpoint, cached a month.
+
+**Verified:** 674/0 across the suite (18 new since the run's start); typecheck
+and build clean; MLB's Slate renders five spotlight cards plus Specials at 1440
+and 400; tennis and golf flags confirmed through `/api/slate/flags`; three
+worker deploys, each polled to `live` on its own commit.
