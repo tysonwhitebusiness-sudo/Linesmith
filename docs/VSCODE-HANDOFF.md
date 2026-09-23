@@ -615,3 +615,43 @@ down rather than quietly resolved either way.
 and build clean; MLB's Slate renders five spotlight cards plus Specials at 1440
 and 400; tennis and golf flags confirmed through `/api/slate/flags`; three
 worker deploys, each polled to `live` on its own commit.
+
+
+### Entry 16 — the closeout: C8 closed properly, WTA serve data, one production fix
+
+`4f49150` closed C8 having done three of its five items. The closeout
+(`docs/design/closeout-2026-09-23.md`) finished it, and the sweep it required
+found six bugs that no test or type check could see.
+
+**Operator answers:** A1 keep spotlights ungraded. A2: Q27 fine; ingest the
+Match Charting Project with visible attribution.
+
+**Found and fixed, by rendering:**
+1. **Production:** `golfHistoryJob` failed every 5 minutes on the Presidents
+   Cup — a team event, the same list-of-lists `competitions` shape DJ-GOLF's
+   backfill hit on the Ryder Cup, but the fix had gone into the per-event path
+   only (`196f11f`, deployed, recovered 19:34 UTC).
+2. The date field took 100% of the header (C6 passed `shrink-0` to a `w-full`
+   kit wrapper): pages scrolled to 1660px at 1440. Then, at 400px, a fixed
+   176px still overflowed; letting it shrink made it 57px; a 144px floor
+   clipped the year. It is now 176px and the row wraps.
+3. NFL faces 404'd (13 a load): a namespaced id reached `headshotFor`.
+4. Golf asked Movers for a sport it answered with a 400; now an empty 200.
+5. A graded hit was announced to screen readers as "Win".
+6. My own closeout doc blamed the 400px overflow on Scan's frozen table
+   without identifying the element. It was the date field.
+
+**WTA serve data** (`7797b72`, deployed): the Charting Project is the second
+source for `tennis_match_stats` — WTA 1,759 rows, ATP 309 rows after TML's
+stalled 2026-01-17, nothing counted twice. Serve vs return covers both tours on
+factors both sources carry. Every tennis card carries a visible CC BY-NC-SA
+credit (`SOURCE_CREDIT`).
+
+**B3:** `scripts/check-controls-390.js` — PASS, 3 rows at 390px, exactly at
+the limit. Runs through the Playwright MCP; the repo has no Playwright package.
+
+**Logged, not fixed** (pre-existing, not breaking): Seattle's and Salt Lake's
+MLS crests 404 (abbreviation-keyed URLs, since S1); ~1/3 of WTA headshots 404
+on ESPN's CDN (documented in `identity.ts`).
+
+**Verified:** 680/0; typecheck and build clean; 22 screenshots.

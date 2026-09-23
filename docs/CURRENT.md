@@ -14,10 +14,11 @@ Read it next. In short:
 2. **`docs/design/SIGNOFF-QUEUE.md` Q26–Q30** are this run's own decisions.
    **Q26 needs a real answer**: SPC's spec asks for graded spotlights and the
    build deliberately does the opposite.
-3. **C8 is not really closed.** Three of its five items were done: `/kit` was
-   never opened at 1440/400, the render sweep covered two sports of ten with
-   no screenshots, and the 390px control-rows guard is still unwritten
-   (Playwright is available now, so it can be). Track B of the closeout.
+3. ~~C8 is not really closed~~ — **closed properly 2026-09-23** (closeout
+   B1-B4): `/kit` checked, all 10 sports swept at 1440 and 400 with 22
+   screenshots in `docs/design/closeout-shots/`, the 390px control-rows check
+   written (`scripts/check-controls-390.js`, run via the Playwright MCP), and
+   six bugs the sweep found fixed — see Entry 16 in `VSCODE-HANDOFF.md`.
 4. ~~An uncommitted two-system odds-model refactor in the tree~~ — resolved:
    that session committed it as `af2ef13` and `f4a8373`.
 5. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and

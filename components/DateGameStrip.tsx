@@ -169,11 +169,12 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
             // off-screen — the page scrolled sideways at 1440 and at 400.
             // Found in the C8 closeout sweep; C6 had shipped it. On a phone a
             // fixed 176px still overflowed by 35px (Today + Tomorrow + two icon
-            // buttons leave ~140px). Letting it shrink made it 57px, which is
-            // unreadable, so it keeps a 144px floor and the ROW WRAPS instead:
-            // on a phone the date drops to its own line. From `sm` up it is a
-            // fixed width on one line.
-            className="min-w-36 flex-1 sm:w-44 sm:flex-none"
+            // buttons leave ~140px). Letting it shrink made it 57px, and a
+            // 144px floor still clipped "mm/dd/yyyy" to "mm/dd/yy" (the icon
+            // and the native picker take ~50px). So it keeps the full 176px
+            // and the ROW WRAPS instead: on a phone the icon buttons drop to
+            // the next line. Checked by reading the screenshot, not a number.
+            className="min-w-44 flex-1 sm:w-44 sm:flex-none"
           />
         </>
       ) : null}

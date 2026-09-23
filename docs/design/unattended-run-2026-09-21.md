@@ -64,7 +64,7 @@ authorised.
 | 12 | **DJ-GOLF** Tournament → course backfill | S | — | **yes** | **done** — 235/235 (100%), deployed `f3b6817` |
 | 13 | **DJ-TEN** TML-Database ingest (licence check first, A4) | S | — | **yes** | **done** — ATP only, `7e9e119` |
 | 14 | **SP-GOLF**, **SP-TEN** (rankings + render) | S | 10, 12, 13 | **yes** | **done** — 4 of 6 built, `f6c4cd6` |
-| 15 | **C8** Close Track C: guards, `/kit`, sweep, `CLAUDE.md`, mockup marked historical | C | 9, 11 | no | **done** — `4f49150` |
+| 15 | **C8** Close Track C: guards, `/kit`, sweep, `CLAUDE.md`, mockup marked historical | C | 9, 11 | no | **done** — `4f49150`, then closed properly in the 2026-09-23 closeout (B1-B4) |
 | 16 | **SPC** Close Spotlights: receipts for frozen spotlights, guards, docs | S | 14 | no | **done** — receipts NOT built (Q26), guards + docs are, `4f49150` |
 
 **Commits:** one per phase, named `C{n}: …`, `PY-A: …`, `PY-B: …`,
