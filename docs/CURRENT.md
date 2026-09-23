@@ -18,9 +18,8 @@ Read it next. In short:
    never opened at 1440/400, the render sweep covered two sports of ten with
    no screenshots, and the 390px control-rows guard is still unwritten
    (Playwright is available now, so it can be). Track B of the closeout.
-4. **An uncommitted two-system odds-model refactor is sitting in the working
-   tree** from another session. Not this run's, untouched by it, and it
-   modifies the same `src/db.py` and `src/jobs.py` — decide its fate first.
+4. ~~An uncommitted two-system odds-model refactor in the tree~~ — resolved:
+   that session committed it as `af2ef13` and `f4a8373`.
 5. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
    `/diagnostics`.**
 
