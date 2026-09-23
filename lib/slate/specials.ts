@@ -321,6 +321,45 @@ export const SPOTLIGHT_RANKINGS: Record<string, SpecialRankingDef> = {
     id: 'mlb-milestones', title: 'Milestone watch', promo: 'Within a game of a round number',
     factors: [{ key: 'gap', label: 'To milestone', info: "How far short of a round number, within one game's worth." }],
   },
+
+  // ---- SP-TEN and SP-GOLF: the two sports that are not team sports ----
+  'tennis-form': {
+    id: 'tennis-form', title: 'Form', promo: 'Who is winning right now',
+    factors: [
+      { key: 'win_rate', label: 'Last 10', info: 'Share of the last ten matches won, from the match log.' },
+      { key: 'sets_rate', label: 'Set win %', info: 'Share of sets won across those matches.' },
+      { key: 'games_rate', label: 'Game win %', info: 'Share of games won across those matches.' },
+    ],
+  },
+  'tennis-serve-return': {
+    id: 'tennis-serve-return', title: 'Serve vs return', promo: 'Who holds, and who breaks',
+    factors: [
+      { key: 'hold_pct', label: 'Hold %', info: 'Share of service games held, last two seasons (TML-Database). A service game is lost exactly when a break point is faced and not saved.' },
+      { key: 'break_pct', label: 'Break %', info: "Share of the opponent's service games broken, over the same matches." },
+      { key: 'ace_rate', label: 'Ace %', info: 'Aces as a share of service points played.' },
+      { key: 'first_win_pct', label: '1st serve won %', info: 'Points won behind a first serve, as a share of first serves in.' },
+    ],
+    notHeld: 'WTA serve data is not held: the only open source for it no longer exists.',
+  },
+  'tennis-surface-record': {
+    id: 'tennis-surface-record', title: 'Surface record', promo: 'Records on the surface of the current swing',
+    factors: [
+      { key: 'surface_win_pct', label: 'On this surface', info: 'Share of matches won on the surface of the current swing, last two seasons (TML-Database).' },
+      { key: 'surface_matches', label: 'Matches', info: 'How many matches that rate is drawn from. A rate needs a sample, so it is a column.' },
+      { key: 'surface_hold_pct', label: 'Hold % here', info: 'Share of service games held on this surface.' },
+    ],
+    notHeld: 'WTA surface records are not held: the match table behind them is ATP-only.',
+  },
+  'golf-course-history': {
+    id: 'golf-course-history', title: 'Course history', promo: 'Who has played this course well before',
+    factors: [
+      { key: 'best_finish', label: 'Best finish', info: 'Best finishing position at this course, across every event held.' },
+      { key: 'avg_finish', label: 'Average finish', info: 'Mean finishing position at this course.' },
+      { key: 'rounds_here', label: 'Events', info: 'How many events at this course are held for this player.' },
+      { key: 'cuts_made_pct', label: 'Cuts made', info: 'Share of those events where the player made the cut.' },
+    ],
+    notHeld: 'Only events this app holds results for are counted, which is 2022 onward.',
+  },
 };
 
 /**

@@ -39,6 +39,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
+import httpx
+
 import db
 import game_context as gc
 
@@ -90,6 +92,18 @@ class RankingDef:
     kind: str = "special"
     # Which stat line `outcome.detail` prints for a graded player.
     detail: str = ""
+    # Whether this ranking stops moving once its sport's slate has started.
+    #
+    # ALMOST ALWAYS TRUE, and for a good reason: a ranking recomputed after
+    # the games would grade itself against what already happened. Golf is the
+    # exception the machinery did not anticipate. A golf "slate" is a WEEK,
+    # not a day, so the tournament's start is in the past on every day of it
+    # but the first; with a day-grained freeze the card would compute once, at
+    # midnight ET on day one, and read as "already frozen" (with nothing
+    # frozen) for the rest of the week. Course history cannot self-grade
+    # anyway - it is a record of finished events at a venue, and no round
+    # played this week changes it.
+    freezes: bool = True
 
 
 HIT_RULES = ("any", "gte2", "slate_max")
@@ -263,12 +277,52 @@ def _et_date(iso: str | None) -> date | None:
 
 
 async def _sport_games_today(sport: str, slate: date) -> list:
-    loaded = await (gc.load_nhl_games() if sport == "nhl" else gc.load_sport_games(sport))
+    if sport == "nhl":
+        loaded = await gc.load_nhl_games()
+    elif sport.startswith("tennis"):
+        # SP-TEN. Tennis was already loadable — one ESPN "event" is a whole
+        # tournament and each match is a competition, so a Game here is one
+        # MATCH and its "roster" is the two players in it.
+        loaded = await gc.load_tennis_games(sport)
+    else:
+        loaded = await gc.load_sport_games(sport)
     games = [g for g in loaded if not g.is_final]
     return [g for g in games if _et_date(g.game_date) == slate]
 
 
+async def _golf_event_start(slate: date) -> datetime | None:
+    """SP-GOLF. Golf has no games and no `load_sport_games` entry: a slate is a
+    TOURNAMENT, and its start is the week's start, not a tee time. The season
+    schedule already carries it, so the freeze lands where it should — a
+    course-history card is pre-tournament research and should stop moving once
+    the field has teed off."""
+    from predict.golf_espn import get_season_schedule
+
+    async with httpx.AsyncClient() as client:
+        events = await get_season_schedule(client, slate.year)
+    starts = []
+    for e in events:
+        start = _to_dt(e.start_date)
+        end = _to_dt(e.end_date) or start
+        if start is None or end is None:
+            continue
+        if start.astimezone(ET).date() <= slate <= end.astimezone(ET).date():
+            starts.append(start)
+    return min(starts) if starts else None
+
+
+def _to_dt(iso: str | None) -> datetime | None:
+    if not iso:
+        return None
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 async def first_start(sport: str, slate: date) -> datetime | None:
+    if sport == "golf":
+        return await _golf_event_start(slate)
     games = await (_mlb_games_today(slate) if sport == "mlb" else _sport_games_today(sport, slate))
     starts = []
     for g in games:
@@ -1670,6 +1724,272 @@ REST_FACTORS = (
     Factor("short_rest", "Short rest", info="The shorter side's days of rest in this matchup.", higher_better=False),
 )
 
+# ---------------------------------------------------------------------------
+# SP-TEN and SP-GOLF - the two sports that are not team sports
+# ---------------------------------------------------------------------------
+#
+# Neither fits the machinery above, and each misses it differently. Tennis has
+# no teams, so `_team_sides` is meaningless and a "game" is one match between
+# the two people being ranked. Golf has no games at all: the slate is a
+# tournament and the field is the pool.
+#
+# WHAT EACH TOUR ACTUALLY HAS, measured 2026-09-23:
+#   * ATP serve lines live in `tennis_match_stats` (DJ-TEN) - 10,833 rows,
+#     and every one of the busiest 80 players is covered.
+#   * WTA HAS NO SERVE DATA AT ALL. Sackmann's repos are gone and TML is
+#     ATP-only, so the two serve-shaped rankings below are ATP-only and say so
+#     through their `sports` tuple, never through a branch in the builder.
+#   * Both tours have Form, which needs only `player_game_history`.
+
+TENNIS_FORM_FACTORS = (
+    Factor("win_rate", "Last 10", info="Share of the last ten matches won, from the match log."),
+    Factor("sets_rate", "Set win %", info="Share of sets won across those matches."),
+    Factor("games_rate", "Game win %", info="Share of games won across those matches."),
+)
+
+TENNIS_SERVE_FACTORS = (
+    Factor("hold_pct", "Hold %", info="Share of service games held, last two seasons (TML-Database). A service game is lost exactly when a break point is faced and not saved."),
+    Factor("break_pct", "Break %", info="Share of the opponent's service games broken, over the same matches."),
+    Factor("ace_rate", "Ace %", info="Aces as a share of service points played."),
+    Factor("first_win_pct", "1st serve won %", info="Points won behind a first serve, as a share of first serves in."),
+)
+
+TENNIS_SURFACE_FACTORS = (
+    Factor("surface_win_pct", "On this surface", info="Share of matches won on the surface of the current swing, last two seasons (TML-Database)."),
+    Factor("surface_matches", "Matches", info="How many matches that rate is drawn from. A rate needs a sample, so it is a column."),
+    Factor("surface_hold_pct", "Hold % here", info="Share of service games held on this surface."),
+)
+
+GOLF_COURSE_FACTORS = (
+    Factor("best_finish", "Best finish", info="Best finishing position at this course, across every event held.", higher_better=False),
+    Factor("avg_finish", "Average finish", info="Mean finishing position at this course.", higher_better=False),
+    Factor("rounds_here", "Events", info="How many events at this course are held for this player."),
+    Factor("cuts_made_pct", "Cuts made", info="Share of those events where the player made the cut."),
+)
+
+
+async def _tennis_players_today(slate: date, sport: str):
+    """({athlete id: (own name, opponent name, match id)}, {id: name}) for
+    today's matches. Tennis ids arrive prefixed (`espn:tennis:2375`) and both
+    the history and the stats table hold the bare id."""
+    games = await _sport_games_today(sport, slate)
+    out: dict[str, tuple[str, str, str]] = {}
+    names: dict[str, str] = {}
+    for g in games:
+        roster = getattr(g, "roster", None) or []
+        if len(roster) != 2:
+            continue
+        for me, them in ((roster[0], roster[1]), (roster[1], roster[0])):
+            aid = str(me.subject_id).split(":")[-1]
+            out[aid] = (me.subject_name or "", them.subject_name or "", str(g.game_id))
+            names[aid] = me.subject_name or ""
+    return out, names
+
+
+async def build_tennis_form(conn, slate: date, sport: str) -> list[Candidate]:
+    """Last ten matches: won, sets won, games won. BOTH tours - this reads the
+    match log, the one thing WTA has as much of as ATP."""
+    today, names = await _tennis_players_today(slate, sport)
+    if not today:
+        return []
+    rows = await conn.fetch(
+        """SELECT athlete_id, stats, game_date FROM player_game_history
+            WHERE sport = $1 AND athlete_id = ANY($2::text[])
+            ORDER BY athlete_id, game_date DESC""",
+        sport, list(today))
+    by_aid: dict[str, list[dict]] = {}
+    for r in rows:
+        stats = r["stats"] if isinstance(r["stats"], dict) else json.loads(r["stats"] or "{}")
+        by_aid.setdefault(str(r["athlete_id"]), []).append(stats)
+
+    out: list[Candidate] = []
+    for aid, (me, them, game_id) in today.items():
+        last = (by_aid.get(aid) or [])[:10]
+        # Ten is the window the card names; under five is not a rate.
+        if len(last) < 5:
+            continue
+        wins = sum(1 for m in last if float(m.get("match_won") or 0) > 0)
+        sets_w = sum(float(m.get("sets_won") or 0) for m in last)
+        sets_l = sum(float(m.get("sets_lost") or 0) for m in last)
+        gms_w = sum(float(m.get("games_won") or 0) for m in last)
+        gms_l = sum(float(m.get("games_lost") or 0) for m in last)
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, me), team=None, opponent=them,
+            game_id=game_id,
+            values={
+                "win_rate": round(100 * wins / len(last), 1),
+                "sets_rate": round(100 * sets_w / (sets_w + sets_l), 1) if (sets_w + sets_l) else None,
+                "games_rate": round(100 * gms_w / (gms_w + gms_l), 1) if (gms_w + gms_l) else None,
+            },
+        ))
+    return out
+
+
+async def _serve_rows(conn, sport: str, ids: list[str], surface: str | None = None):
+    where = "sport = $1 AND athlete_id = ANY($2::text[]) AND season = ANY($3::int[])"
+    args: list = [sport, ids, [2025, 2026]]
+    if surface:
+        where += " AND surface = $4"
+        args.append(surface)
+    return await conn.fetch(
+        f"""SELECT athlete_id,
+                   sum(sv_gms) AS sv_gms, sum(bp_faced) AS bp_faced, sum(bp_saved) AS bp_saved,
+                   sum(opp_sv_gms) AS opp_sv_gms, sum(opp_bp_faced) AS opp_bp_faced,
+                   sum(opp_bp_saved) AS opp_bp_saved,
+                   sum(ace) AS ace, sum(svpt) AS svpt,
+                   sum(first_in) AS first_in, sum(first_won) AS first_won,
+                   count(*) AS matches, count(*) FILTER (WHERE won) AS wins
+              FROM tennis_match_stats WHERE {where} GROUP BY 1""",
+        *args)
+
+
+def _pct(num, den) -> float | None:
+    num, den = float(num or 0), float(den or 0)
+    return round(100 * num / den, 1) if den > 0 else None
+
+
+async def build_tennis_serve_return(conn, slate: date, sport: str) -> list[Candidate]:
+    """Hold, break, ace rate and first-serve points won. ATP only, because
+    that is the only tour a serve line exists for (DJ-TEN)."""
+    today, names = await _tennis_players_today(slate, sport)
+    if not today:
+        return []
+    rows = await _serve_rows(conn, sport, list(today))
+    out: list[Candidate] = []
+    for r in rows:
+        aid = str(r["athlete_id"])
+        if int(r["matches"] or 0) < 5 or aid not in today:
+            continue
+        me, them, game_id = today[aid]
+        # A break point faced and not saved IS a service game lost, because a
+        # converted break point ends the game. So this counts GAMES.
+        held = float(r["sv_gms"] or 0) - (float(r["bp_faced"] or 0) - float(r["bp_saved"] or 0))
+        broke = float(r["opp_bp_faced"] or 0) - float(r["opp_bp_saved"] or 0)
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, me), team=None, opponent=them, game_id=game_id,
+            values={
+                "hold_pct": _pct(held, r["sv_gms"]),
+                "break_pct": _pct(broke, r["opp_sv_gms"]),
+                "ace_rate": _pct(r["ace"], r["svpt"]),
+                "first_win_pct": _pct(r["first_won"], r["first_in"]),
+            },
+        ))
+    return out
+
+
+# How stale the surface evidence may be before the card refuses to draw. A
+# surface swing lasts months, so five weeks of lag still names the right one;
+# beyond that it could be describing the previous swing.
+_SURFACE_MAX_LAG_DAYS = 35
+
+
+async def _current_surface(conn, sport: str, slate: date) -> str | None:
+    """The surface of the most recent completed tour week.
+
+    NOT "this week's", and the difference is the whole comment. ESPN's tennis
+    competition carries no surface at all, so the only held source is
+    `game_result`, which `import_tennis.py` fills from tennis-data.co.uk --
+    and that script is OPERATOR-RUN, not scheduled. Measured 2026-09-23: its
+    newest ATP row is 2026-08-29, twenty-five days behind.
+
+    So this reads the modal surface of the ten days up to the NEWEST ROW rather
+    than up to today, and refuses entirely once that row is more than five
+    weeks old. A tour week is one surface and a swing lasts months, so naming
+    the current swing from three-week-old evidence is sound; naming it from
+    three-month-old evidence would not be."""
+    newest = await conn.fetchval(
+        """SELECT max(game_date)::date FROM game_result
+            WHERE sport = $1 AND surface IS NOT NULL AND game_date <= $2::date""",
+        sport, slate)
+    if newest is None or (slate - newest).days > _SURFACE_MAX_LAG_DAYS:
+        return None
+    row = await conn.fetchrow(
+        """SELECT surface, count(*) AS n FROM game_result
+            WHERE sport = $1 AND surface IS NOT NULL
+              AND game_date >= $2::date - 10 AND game_date <= $2::date
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 1""",
+        sport, newest)
+    return str(row["surface"]) if row else None
+
+
+async def build_tennis_surface(conn, slate: date, sport: str) -> list[Candidate]:
+    today, names = await _tennis_players_today(slate, sport)
+    if not today:
+        return []
+    surface = await _current_surface(conn, sport, slate)
+    if not surface:
+        return []
+    rows = await _serve_rows(conn, sport, list(today), surface)
+    out: list[Candidate] = []
+    for r in rows:
+        aid = str(r["athlete_id"])
+        matches = int(r["matches"] or 0)
+        if matches < 5 or aid not in today:
+            continue
+        me, them, game_id = today[aid]
+        held = float(r["sv_gms"] or 0) - (float(r["bp_faced"] or 0) - float(r["bp_saved"] or 0))
+        out.append(Candidate(
+            subject_id=aid, subject_name=names.get(aid, me), team=None, opponent=them, game_id=game_id,
+            values={
+                "surface_win_pct": _pct(r["wins"], matches),
+                "surface_matches": matches,
+                "surface_hold_pct": _pct(held, r["sv_gms"]),
+            },
+        ))
+    return out
+
+
+async def build_golf_course_history(conn, slate: date) -> list[Candidate]:
+    """Who has played THIS course well before.
+
+    Unblocked by DJ-GOLF, and only by it: `golf_tournaments` named a course
+    for 4 of 235 events until 2026-09-23 and names one for all 235 now, so a
+    golfer's past finishes can finally be grouped by where they were played."""
+    event = await conn.fetchrow(
+        """SELECT event_id, course_name, name FROM golf_tournaments
+            WHERE course_name IS NOT NULL ORDER BY updated_at DESC LIMIT 1""")
+    if not event or not event["course_name"]:
+        return []
+    course, this_event = str(event["course_name"]), str(event["event_id"])
+
+    field = await conn.fetch(
+        "SELECT DISTINCT espn_id FROM golf_tournament_results WHERE event_id = $1", this_event)
+    ids = [str(r["espn_id"]) for r in field if r["espn_id"]]
+    if not ids:
+        return []
+
+    # A position is "1", "T12" or "CUT"; the digits are the finish and a row
+    # with none (a withdrawal) contributes nothing rather than a zero.
+    rows = await conn.fetch(
+        """SELECT r.espn_id,
+                  min(NULLIF(regexp_replace(r.position, '[^0-9]', '', 'g'), '')::int) AS best,
+                  avg(NULLIF(regexp_replace(r.position, '[^0-9]', '', 'g'), '')::int) AS avg_pos,
+                  count(*) AS events,
+                  count(*) FILTER (WHERE r.made_cut) AS cuts
+             FROM golf_tournament_results r
+             JOIN golf_tournaments t ON t.event_id = r.event_id
+            WHERE t.course_name = $1 AND r.event_id <> $2 AND r.espn_id = ANY($3::text[])
+            GROUP BY 1""",
+        course, this_event, ids)
+
+    out: list[Candidate] = []
+    for r in rows:
+        events = int(r["events"] or 0)
+        if events < 2 or r["best"] is None:
+            continue
+        out.append(Candidate(
+            subject_id=str(r["espn_id"]), subject_name="", team=None, opponent=course,
+            game_id=this_event,
+            values={
+                "best_finish": int(r["best"]),
+                "avg_finish": round(float(r["avg_pos"]), 1) if r["avg_pos"] is not None else None,
+                "rounds_here": events,
+                "cuts_made_pct": _pct(r["cuts"], events),
+            },
+        ))
+    return out
+
+
 RANKINGS: tuple[RankingDef, ...] = (
     RankingDef("mlb-hr-of-the-day", ("mlb",), "HR of the day", "Player to hit a home run",
                MLB_HR_FACTORS, build_mlb_hr, grade_stat="bat_homeRuns",
@@ -1772,6 +2092,20 @@ RANKINGS: tuple[RankingDef, ...] = (
                REVENGE_FACTORS, lambda c, d: build_revenge(c, d, "mlb"), kind="spotlight"),
     RankingDef("mlb-milestones", ("mlb",), "Milestone watch", "Within a game of a round number",
                MILESTONE_FACTORS, lambda c, d: build_milestones(c, d, "mlb"), kind="spotlight"),
+
+    RankingDef("tennis-form", ("tennis_atp", "tennis_wta"), "Form", "Who is winning right now",
+               TENNIS_FORM_FACTORS, lambda c, d, s: build_tennis_form(c, d, s), kind="spotlight"),
+    RankingDef("tennis-serve-return", ("tennis_atp",), "Serve vs return", "Who holds, and who breaks",
+               TENNIS_SERVE_FACTORS, lambda c, d: build_tennis_serve_return(c, d, "tennis_atp"), kind="spotlight",
+               not_held="WTA serve data is not held: the only open source for it no longer exists."),
+    RankingDef("tennis-surface-record", ("tennis_atp",), "Surface record", "Records on the surface of the current swing",
+               TENNIS_SURFACE_FACTORS, lambda c, d: build_tennis_surface(c, d, "tennis_atp"), kind="spotlight",
+               not_held="WTA surface records are not held: the match table behind them is ATP-only."),
+
+    RankingDef("golf-course-history", ("golf",), "Course history", "Who has played this course well before",
+               GOLF_COURSE_FACTORS, lambda c, d: build_golf_course_history(c, d), kind="spotlight",
+               freezes=False,
+               not_held="Only events this app holds results for are counted, which is 2022 onward."),
 )
 
 
@@ -1803,7 +2137,7 @@ async def run(slate: date | None = None, grade_for: date | None = None) -> dict:
                 if start is None:
                     per_ranking[key] = "no games today"
                     continue
-                if now >= start:
+                if now >= start and rdef.freezes:
                     n = await db.freeze_slate_rankings(sport, slate, [rdef.id])
                     frozen += n
                     per_ranking[key] = f"frozen ({n} rows)" if n else "already frozen"
