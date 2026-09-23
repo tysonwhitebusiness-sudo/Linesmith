@@ -35,6 +35,23 @@ test('a team event does not crash the backfill', () => {
   assert.match(ESPN, /ryder cup/i);
 });
 
+test('the LIVE fetch skips a team event too, not just the backfill', () => {
+  /**
+   * The Ryder Cup fix above went into `fetch_event_meta` only. On 2026-09-23
+   * the Presidents Cup became ESPN's current leaderboard event and the LIVE
+   * path, `fetch_golf_event`, hit the same list-of-lists shape: the worker's
+   * `golfHistoryJob` failed every five minutes in production until this.
+   * Both of the live function's reads of `competitions[0]` now go through
+   * `is_team_event`, so a team week reads as "no stroke-play event".
+   */
+  assert.match(ESPN, /def is_team_event\(event: dict\) -> bool:/);
+  assert.match(ESPN, /events = \[e for e in \(events or \[\]\) if not is_team_event\(e\)\]/);
+  assert.match(ESPN, /if not is_team_event\(e\)\]\s*\n\s*first = /);
+  assert.match(ESPN, /presidents cup/i);
+  // And the job stops blaming the feed for a team week.
+  assert.match(JOBS, /no stroke-play event on ESPN's leaderboard/);
+});
+
 test('an unknown id is not mistaken for today’s tournament', () => {
   // ESPN answers an unknown `&event=` with a 200 and the CURRENT event, so a
   // dead id would otherwise write today's course onto a 2022 tournament.

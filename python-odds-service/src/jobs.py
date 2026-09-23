@@ -871,7 +871,9 @@ async def _golf_history_inner() -> dict:
     async with httpx.AsyncClient() as client:
         event = await fetch_golf_event(client)
         if event is None:
-            return {"event": None, "reason": "ESPN golf feed unavailable"}
+            # Not always an outage: a Ryder or Presidents Cup week has no
+            # stroke-play event on the leaderboard at all (`is_team_event`).
+            return {"event": None, "reason": "no stroke-play event on ESPN's leaderboard (feed down, or a team event week)"}
 
         wind_mph = temp_f = precip_prob = None
         coords = venue_coords(event.course.name if event.course else None)

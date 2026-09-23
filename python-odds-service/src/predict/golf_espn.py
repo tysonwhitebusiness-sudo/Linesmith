@@ -98,8 +98,28 @@ class EspnGolfEvent:
     warnings: list[str] = field(default_factory=list)
 
 
+def is_team_event(event: dict) -> bool:
+    """True for a team match-play event: the Ryder Cup, the Presidents Cup.
+
+    Their `competitions` is a list of LISTS (the pairings); every stroke-play
+    event's is a list of one dict. Nothing downstream of this module can use a
+    team event: there is no stroke leaderboard, no finishing position and no
+    per-hole stroke line to ingest.
+
+    Measured twice, and the second one was live. DJ-GOLF's backfill died on the
+    2025 Ryder Cup 46 events in; the fix went into `fetch_event_meta` only.
+    On 2026-09-23 the PRESIDENTS CUP became the leaderboard's current event and
+    `golfHistoryJob` began failing every five minutes on the same shape.
+    """
+    comps = event.get("competitions") or []
+    return bool(comps) and not isinstance(comps[0], dict)
+
+
 def _pick_event(events: list) -> dict | None:
-    """One in progress beats an upcoming one beats a finished one."""
+    """One in progress beats an upcoming one beats a finished one. A team
+    event is skipped - see `is_team_event` - so a Ryder or Presidents Cup week
+    reads as "no stroke-play event" rather than as a crash."""
+    events = [e for e in (events or []) if not is_team_event(e)]
     if not events:
         return None
 
@@ -131,8 +151,9 @@ def _index_scoreboard_holes(scoreboard: dict) -> dict[str, dict[int, list[EspnRo
     """Per-hole scores live on the scoreboard feed, keyed by athlete id,
     then by round period."""
     out: dict[str, dict[int, list[EspnRoundHole]]] = {}
-    events = scoreboard.get("events") or []
-    competitors = (((events[0] if events else {}).get("competitions") or [{}])[0]).get("competitors") or []
+    events = [e for e in (scoreboard.get("events") or []) if not is_team_event(e)]
+    first = ((events[0] if events else {}).get("competitions") or [{}])[0]
+    competitors = (first.get("competitors") or []) if isinstance(first, dict) else []
 
     for competitor in competitors:
         cid = str(competitor.get("id") or "")
