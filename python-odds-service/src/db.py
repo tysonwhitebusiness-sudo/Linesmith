@@ -4168,6 +4168,110 @@ async def write_golf_tournament(input: GolfTournamentInput) -> None:
     )
 
 
+@dataclass
+class TennisMatchStatInput:
+    """One player's side of one tennis match (DJ-TEN). `opp_*` is the same
+    match from the other end, which is that player's return context."""
+    sport: str
+    athlete_id: str
+    tourney_id: str
+    match_num: int
+    match_date: object
+    season: int
+    won: bool
+    source: str
+    opponent_id: str | None = None
+    tourney_name: str | None = None
+    surface: str | None = None
+    indoor: bool | None = None
+    tourney_level: str | None = None
+    round: str | None = None
+    best_of: int | None = None
+    minutes: int | None = None
+    ace: int | None = None
+    df: int | None = None
+    svpt: int | None = None
+    first_in: int | None = None
+    first_won: int | None = None
+    second_won: int | None = None
+    sv_gms: int | None = None
+    bp_saved: int | None = None
+    bp_faced: int | None = None
+    opp_ace: int | None = None
+    opp_df: int | None = None
+    opp_svpt: int | None = None
+    opp_first_in: int | None = None
+    opp_first_won: int | None = None
+    opp_second_won: int | None = None
+    opp_sv_gms: int | None = None
+    opp_bp_saved: int | None = None
+    opp_bp_faced: int | None = None
+
+
+_TENNIS_STAT_COLS = (
+    "sport", "athlete_id", "tourney_id", "match_num", "opponent_id", "match_date", "season",
+    "tourney_name", "surface", "indoor", "tourney_level", "round", "best_of", "minutes", "won",
+    "ace", "df", "svpt", "first_in", "first_won", "second_won", "sv_gms", "bp_saved", "bp_faced",
+    "opp_ace", "opp_df", "opp_svpt", "opp_first_in", "opp_first_won", "opp_second_won",
+    "opp_sv_gms", "opp_bp_saved", "opp_bp_faced", "source",
+)
+
+
+async def write_tennis_match_stats(rows: list[TennisMatchStatInput]) -> int:
+    """Upsert, because TML rewrites a year's file as results land and a
+    retired/walkover match can gain its stat line days later."""
+    if not rows:
+        return 0
+    cols = ", ".join(_TENNIS_STAT_COLS)
+    placeholders = ", ".join(f"${i + 1}" for i in range(len(_TENNIS_STAT_COLS)))
+    updates = ", ".join(
+        f"{c} = excluded.{c}" for c in _TENNIS_STAT_COLS
+        if c not in ("sport", "athlete_id", "tourney_id", "match_num")
+    )
+    sql = f"""
+        INSERT INTO tennis_match_stats ({cols}, ingested_at)
+        VALUES ({placeholders}, now())
+        ON CONFLICT (sport, athlete_id, tourney_id, match_num) DO UPDATE SET
+          {updates}, ingested_at = now()
+    """
+    # `executemany`, NOT a loop of `execute`. Measured 2026-09-23: one
+    # round trip per row through the pooler made a three-season backfill
+    # (~34k rows) take longer than the ten minutes anyone would wait, and it
+    # committed nothing until the end, so it looked hung rather than slow.
+    # asyncpg pipelines these.
+    pool = await get_pool()
+    args = [tuple(getattr(r, c) for c in _TENNIS_STAT_COLS) for r in rows]
+    async with pool.acquire(timeout=120.0) as conn:
+        for i in range(0, len(args), 1000):
+            await conn.executemany(sql, args[i : i + 1000])
+    return len(rows)
+
+
+async def tennis_athlete_ids(sport: str) -> list[str]:
+    """Every ESPN athlete id this app holds tennis history for.
+
+    From `player_game_history`, NOT from `athlete_crosswalk`: the crosswalk
+    holds 401 of the 715 ATP players here (measured 2026-09-22), and matching
+    through it was what capped DJ-TEN's first run at 47% of players."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """SELECT DISTINCT athlete_id FROM player_game_history
+            WHERE sport = $1 AND athlete_id IS NOT NULL AND season >= 2023""",
+        sport,
+    )
+    return [str(r["athlete_id"]) for r in rows]
+
+
+async def tennis_stats_coverage(sport: str) -> tuple[int, int]:
+    """(rows held, distinct players) in `tennis_match_stats` for one tour."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT count(*) AS rows, count(DISTINCT athlete_id) AS players FROM tennis_match_stats WHERE sport = $1",
+        sport,
+    )
+    return (int(row["rows"] or 0), int(row["players"] or 0))
+
+
 async def golf_events_missing_course(limit: int) -> list[str]:
     """Event ids that `golf_tournament_results` knows about and
     `golf_tournaments` has no course for (DJ-GOLF).

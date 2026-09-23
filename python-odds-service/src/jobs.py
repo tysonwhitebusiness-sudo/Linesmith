@@ -857,6 +857,28 @@ async def _golf_history_inner() -> dict:
     }
 
 
+async def job_tennis_stats(yield_fn=None) -> dict:
+    """DJ-TEN — tennis serve and return numbers from TML-Database.
+
+    DAILY, and only the last two seasons: TML rewrites a year's file as
+    results land (a retired match can gain its stat line days later), so the
+    current season needs re-reading, and a finished one does not. The deep
+    history is a one-off from the CLI.
+
+    ATP ONLY, and not by choice — see `tennis_stats.TOURS`. Jeff Sackmann's
+    `tennis_atp`/`tennis_wta` repos, which the gameplan names, are both gone;
+    TML continues the ATP half and nothing continues the WTA half."""
+    return await _run_timed("tennisStatsJob", _tennis_stats_inner(yield_fn))
+
+
+async def _tennis_stats_inner(yield_fn=None) -> dict:
+    import tennis_stats
+
+    year = datetime.now(timezone.utc).year
+    async with httpx.AsyncClient() as client:
+        return await tennis_stats.ingest(client, year - 1, year, yield_fn)
+
+
 async def job_golf_courses(yield_fn=None) -> dict:
     """DJ-GOLF — fill the course for golf events that have none.
 
@@ -1476,6 +1498,9 @@ JOB_REGISTRY = [
     # never changes, so once the 235-event backlog clears this reads one row
     # and writes nothing.
     ("golfCoursesJob", job_golf_courses, 6 * 60 * 60),
+    # DJ-TEN. Daily: TML rewrites a year's file as results land, so the current
+    # season is re-read and finished ones are not.
+    ("tennisStatsJob", job_tennis_stats, 24 * 60 * 60),
     # Matches mlbOddsLinesCycleJob's own 5min cadence and reasoning — see
     # job_generic_capture's own docstring.
     ("genericCaptureJob", job_generic_capture, 5 * 60),
