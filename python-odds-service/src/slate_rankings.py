@@ -233,6 +233,8 @@ READS: dict[str, Callable[[float, dict], str | None]] = {
     # Tennis (SP-TEN)
     "win_rate": lambda v, c: f"has won {v:.0f}% of the last ten",
     "sets_rate": lambda v, c: f"is taking {v:.0f}% of sets",
+    "bp_saved_pct": lambda v, c: f"saves {v:.0f}% of break points",
+    "return_won_pct": lambda v, c: f"wins {v:.0f}% of return points",
     "hold_pct": lambda v, c: f"holds {v:.0f}% of service games",
     "break_pct": lambda v, c: f"breaks {v:.0f}% of the time",
     "ace_rate": lambda v, c: f"aces {v:.1f}% of service points",
@@ -1764,11 +1766,15 @@ TENNIS_FORM_FACTORS = (
     Factor("games_rate", "Game win %", info="Share of games won across those matches."),
 )
 
+# Every factor here is computable from BOTH sources. Hold and break % were the
+# first version, and they need a service-game count the Charting Project does
+# not record — so a card mixing the two sources could only rank the half with
+# TML rows. Break points saved and return points won are in both.
 TENNIS_SERVE_FACTORS = (
-    Factor("hold_pct", "Hold %", info="Share of service games held, last two seasons (TML-Database). A service game is lost exactly when a break point is faced and not saved."),
-    Factor("break_pct", "Break %", info="Share of the opponent's service games broken, over the same matches."),
-    Factor("ace_rate", "Ace %", info="Aces as a share of service points played."),
+    Factor("ace_rate", "Ace %", info="Aces as a share of service points played, last two seasons."),
     Factor("first_win_pct", "1st serve won %", info="Points won behind a first serve, as a share of first serves in."),
+    Factor("bp_saved_pct", "BP saved %", info="Break points saved, as a share of break points faced on serve."),
+    Factor("return_won_pct", "Return pts won %", info="Share of the opponent's service points won."),
 )
 
 TENNIS_SURFACE_FACTORS = (
@@ -1846,7 +1852,9 @@ async def _serve_rows(conn, sport: str, ids: list[str], surface: str | None = No
     where = "sport = $1 AND athlete_id = ANY($2::text[]) AND season = ANY($3::int[])"
     args: list = [sport, ids, [2025, 2026]]
     if surface:
-        where += " AND surface = $4"
+        # A win rate needs a winner and a hold rate needs service games; a
+        # Charting Project row has neither, so the surface record reads TML.
+        where += " AND surface = $4 AND won IS NOT NULL AND sv_gms IS NOT NULL"
         args.append(surface)
     return await conn.fetch(
         f"""SELECT athlete_id,
@@ -1854,6 +1862,8 @@ async def _serve_rows(conn, sport: str, ids: list[str], surface: str | None = No
                    sum(opp_sv_gms) AS opp_sv_gms, sum(opp_bp_faced) AS opp_bp_faced,
                    sum(opp_bp_saved) AS opp_bp_saved,
                    sum(ace) AS ace, sum(svpt) AS svpt,
+                   sum(opp_svpt) AS opp_svpt, sum(opp_first_won) AS opp_first_won,
+                   sum(opp_second_won) AS opp_second_won,
                    sum(first_in) AS first_in, sum(first_won) AS first_won,
                    count(*) AS matches, count(*) FILTER (WHERE won) AS wins
               FROM tennis_match_stats WHERE {where} GROUP BY 1""",
@@ -1878,17 +1888,16 @@ async def build_tennis_serve_return(conn, slate: date, sport: str) -> list[Candi
         if int(r["matches"] or 0) < 5 or aid not in today:
             continue
         me, them, game_id = today[aid]
-        # A break point faced and not saved IS a service game lost, because a
-        # converted break point ends the game. So this counts GAMES.
-        held = float(r["sv_gms"] or 0) - (float(r["bp_faced"] or 0) - float(r["bp_saved"] or 0))
-        broke = float(r["opp_bp_faced"] or 0) - float(r["opp_bp_saved"] or 0)
+        # Return points won = the opponent's service points, less the ones
+        # they won behind either serve. Same arithmetic for both sources.
+        opp_won = float(r["opp_first_won"] or 0) + float(r["opp_second_won"] or 0)
         out.append(Candidate(
             subject_id=aid, subject_name=names.get(aid, me), team=None, opponent=them, game_id=game_id,
             values={
-                "hold_pct": _pct(held, r["sv_gms"]),
-                "break_pct": _pct(broke, r["opp_sv_gms"]),
                 "ace_rate": _pct(r["ace"], r["svpt"]),
                 "first_win_pct": _pct(r["first_won"], r["first_in"]),
+                "bp_saved_pct": _pct(r["bp_saved"], r["bp_faced"]),
+                "return_won_pct": _pct(float(r["opp_svpt"] or 0) - opp_won, r["opp_svpt"]),
             },
         ))
     return out
@@ -2159,9 +2168,9 @@ RANKINGS: tuple[RankingDef, ...] = (
 
     RankingDef("tennis-form", ("tennis_atp", "tennis_wta"), "Form", "Who is winning right now",
                TENNIS_FORM_FACTORS, lambda c, d, s: build_tennis_form(c, d, s), kind="spotlight"),
-    RankingDef("tennis-serve-return", ("tennis_atp",), "Serve vs return", "Who holds, and who breaks",
-               TENNIS_SERVE_FACTORS, lambda c, d: build_tennis_serve_return(c, d, "tennis_atp"), kind="spotlight",
-               not_held="WTA serve data is not held: the only open source for it no longer exists."),
+    RankingDef("tennis-serve-return", ("tennis_atp", "tennis_wta"), "Serve vs return", "Who serves and returns best",
+               TENNIS_SERVE_FACTORS, lambda c, d, s: build_tennis_serve_return(c, d, s), kind="spotlight",
+               not_held="WTA, and ATP since January 2026, come from charted matches only, so their samples are smaller."),
     RankingDef("tennis-surface-record", ("tennis_atp",), "Surface record", "Records on the surface of the current swing",
                TENNIS_SURFACE_FACTORS, lambda c, d: build_tennis_surface(c, d, "tennis_atp"), kind="spotlight",
                not_held="WTA surface records are not held: the match table behind them is ATP-only."),

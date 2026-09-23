@@ -145,7 +145,7 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
   }, [playing, games.length]);
 
   return (
-    <div className="flex items-center gap-2 border-t border-line bg-ink/[0.02] px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 border-t border-line bg-ink/[0.02] px-3 py-2">
       {!collapsed ? (
         <>
           <Button variant={isToday ? 'secondary' : 'tertiary'} size="sm" onPress={() => onSetDate(undefined)}>
@@ -167,8 +167,13 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
             // kit wrapper is `w-full`; with `shrink-0` alone the field took
             // 100% of the header and pushed the collapse and pause buttons
             // off-screen — the page scrolled sideways at 1440 and at 400.
-            // Found in the C8 closeout sweep; C6 had shipped it.
-            className="w-44 shrink-0"
+            // Found in the C8 closeout sweep; C6 had shipped it. On a phone a
+            // fixed 176px still overflowed by 35px (Today + Tomorrow + two icon
+            // buttons leave ~140px). Letting it shrink made it 57px, which is
+            // unreadable, so it keeps a 144px floor and the ROW WRAPS instead:
+            // on a phone the date drops to its own line. From `sm` up it is a
+            // fixed width on one line.
+            className="min-w-36 flex-1 sm:w-44 sm:flex-none"
           />
         </>
       ) : null}

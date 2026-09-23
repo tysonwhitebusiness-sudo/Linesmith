@@ -97,7 +97,11 @@ test('C8 sweep: the date field has a width, so the header does not scroll sidewa
   // field took the whole header row and pushed "Hide date controls" and
   // "Pause" past the viewport: /mlb scrolled to 1660px at 1440, 620px at 400.
   const src = code(readFileSync('components/DateGameStrip.tsx', 'utf8'));
-  assert.match(src, /type="date"[\s\S]*?className="w-\d+ shrink-0"/);
+  // A phone gets what is left of the row (and may shrink); `sm` and up a fixed
+  // width. Never bare `shrink-0`, which is what made it 100% of the row.
+  assert.match(src, /type="date"[\s\S]*?className="min-w-36 flex-1 sm:w-\d+ sm:flex-none"/);
+  // ...and the row wraps rather than squashing it (it was 57px, unreadable).
+  assert.match(src, /className="flex flex-wrap items-center gap-2 border-t/);
 });
 
 test('C8 sweep: a face resolves from either id shape', async () => {

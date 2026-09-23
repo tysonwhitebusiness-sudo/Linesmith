@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Chip, Tooltip } from './ui';
 import { groupFlags, type FlagsData, type ResearchFlag } from '@/lib/slate/flags';
-import { formatFactor } from '@/lib/slate/specialsFormat';
+import { formatFactor, SOURCE_CREDIT } from '@/lib/slate/specialsFormat';
 
 /**
  * Research flags (F0) — the shared card and chip row.
@@ -87,7 +87,7 @@ export function ResearchFlagChips({ flags, subjectName, label = 'Flags today' }:
           hero reads as a stray control rather than as a label. */}
       <span className="text-overline uppercase text-ink-muted">{label}</span>
       {flags.map((f) => (
-        <Tooltip key={`${f.rankingId}:${f.subjectId}`} content={`${rankText(f)}. ${f.read ?? f.promo}`}>
+        <Tooltip key={`${f.rankingId}:${f.subjectId}`} content={`${rankText(f)}. ${f.read ?? f.promo}${SOURCE_CREDIT[f.rankingId] ? ` ${SOURCE_CREDIT[f.rankingId]}` : ''}`}>
           <Chip size="sm">{f.title}</Chip>
         </Tooltip>
       ))}
@@ -148,7 +148,10 @@ export function ResearchFlagsCard({
       title={title}
       count={flags.length}
       scope={groups.some((g) => g.frozen) ? 'Frozen at the first game' : 'Updates until the first game'}
-      caption="Where each one stands among today's slate on the factors named. A ranking of those factors, not a probability, and not compared to a price."
+      caption={[
+        "Where each one stands among today's slate on the factors named. A ranking of those factors, not a probability, and not compared to a price.",
+        ...[...new Set(groups.map((g) => SOURCE_CREDIT[g.rankingId]).filter(Boolean))],
+      ].join(' ')}
     >
       <ul>
         {flags.map((f) => (

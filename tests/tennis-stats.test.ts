@@ -70,3 +70,23 @@ test('surface is not re-ingested as if it were missing', () => {
   assert.match(MIGRATION, /game_result` has carried `surface`/);
   assert.match(INGEST, /SURFACE WAS ALREADY HELD, for both tours/);
 });
+
+test('the Charting Project fills WTA and post-January ATP, and never double-counts', () => {
+  assert.match(INGEST, /CHARTING: dict\[str, str\] = \{"tennis_wta": "w", "tennis_atp": "m"\}/);
+  // An ATP charted match is written only AFTER the newest TML match held.
+  assert.match(INGEST, /after = await db\.tennis_latest_match_date\(sport, SOURCE\)/);
+  assert.match(INGEST, /if after is not None and md <= after:/);
+  // It records no winner and no service games - stored as null, not guessed.
+  assert.match(INGEST, /"won": None, "source": CHARTING_SOURCE/);
+  assert.match(INGEST, /"sv_gms": None/);
+});
+
+test('a card that shows licensed data says so, visibly', () => {
+  // CC BY means attribution wherever the data is SHOWN. A tooltip naming the
+  // source was not that.
+  const fmt = readFileSync('lib/slate/specialsFormat.ts', 'utf8');
+  assert.match(fmt, /'tennis-serve-return':[\s\S]*?Match Charting Project[\s\S]*?Jeff Sackmann, CC BY-NC-SA 4\.0/);
+  assert.match(fmt, /'tennis-surface-record':[\s\S]*?TML-Database[\s\S]*?CC BY-NC-SA 4\.0/);
+  assert.match(readFileSync('lib/slate/spotlights.ts', 'utf8'), /SOURCE_CREDIT\[g\.rankingId\]/);
+  assert.match(readFileSync('components/ResearchFlags.tsx', 'utf8'), /SOURCE_CREDIT\[g\.rankingId\]/);
+});

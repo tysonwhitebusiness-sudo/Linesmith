@@ -332,14 +332,14 @@ export const SPOTLIGHT_RANKINGS: Record<string, SpecialRankingDef> = {
     ],
   },
   'tennis-serve-return': {
-    id: 'tennis-serve-return', title: 'Serve vs return', promo: 'Who holds, and who breaks',
+    id: 'tennis-serve-return', title: 'Serve vs return', promo: 'Who serves and returns best',
     factors: [
-      { key: 'hold_pct', label: 'Hold %', info: 'Share of service games held, last two seasons (TML-Database). A service game is lost exactly when a break point is faced and not saved.' },
-      { key: 'break_pct', label: 'Break %', info: "Share of the opponent's service games broken, over the same matches." },
-      { key: 'ace_rate', label: 'Ace %', info: 'Aces as a share of service points played.' },
+      { key: 'ace_rate', label: 'Ace %', info: 'Aces as a share of service points played, last two seasons.' },
       { key: 'first_win_pct', label: '1st serve won %', info: 'Points won behind a first serve, as a share of first serves in.' },
+      { key: 'bp_saved_pct', label: 'BP saved %', info: 'Break points saved, as a share of break points faced on serve.' },
+      { key: 'return_won_pct', label: 'Return pts won %', info: "Share of the opponent's service points won." },
     ],
-    notHeld: 'WTA serve data is not held: the only open source for it no longer exists.',
+    notHeld: 'WTA, and ATP since January 2026, come from charted matches only, so their samples are smaller.',
   },
   'tennis-surface-record': {
     id: 'tennis-surface-record', title: 'Surface record', promo: 'Records on the surface of the current swing',

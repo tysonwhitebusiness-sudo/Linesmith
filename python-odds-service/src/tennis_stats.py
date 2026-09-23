@@ -13,11 +13,10 @@ before this was written (run doc A4).
    `tennis_MatchChartingProject`. TML-Database exists because it continues that
    ATP work, which is why the plan's fallback source is the only source.
 
-2. **SO WTA HAS NO SERVE DATA.** TML is ATP: the Tennismylife org has
-   ATP-Rankings, ATP-Tennis-Record and this, and no WTA equivalent. Nothing
-   here is ATP-specific — `TOURS` takes a WTA source the day one exists, and
-   the rest of the file does not care. Until then WTA holds no serve line, and
-   that is recorded rather than faked.
+2. **TML IS ATP-ONLY, AND IT STALLED.** The Tennismylife org has no WTA
+   equivalent, and its ATP feed stops at 2026-01-17. Both gaps are filled by
+   the second source below, `CHARTING` — the Match Charting Project — which
+   is a charted SUBSET of matches, not every match, and says so.
 
 3. **SURFACE WAS ALREADY HELD, for both tours.** The gameplan's correction 6
    says surface is nowhere; `import_tennis.py` loaded tennis-data.co.uk's
@@ -77,6 +76,29 @@ TOURS: dict[str, str] = {
 }
 
 SOURCE = "tml"
+
+# THE SECOND SOURCE: the Tennis Abstract Match Charting Project (Jeff Sackmann,
+# CC BY-NC-SA 4.0 — attribution required wherever shown, non-commercial only;
+# licence cleared by the operator 2026-09-23). Crowd-charted matches, so a
+# SUBSET of each tour, weighted to the big matches and the top players — which
+# is the population the spotlight cards rank anyway.
+#
+# Why it is needed, measured 2026-09-23: WTA had no serve source at all
+# (Sackmann's `tennis_wta` is gone, TML is ATP-only, ESPN carries no tennis
+# serve stats — not even for a US Open match), and TML's ATP feed STALLED on
+# 2026-01-17 (`ongoing_tourneys.csv` holds four days of the Australian Open and
+# nothing since). The Charting Project had WTA through the 2026 US Open QF and
+# ATP through Roland Garros qualifying.
+#
+# What it lacks: the WINNER and the count of SERVICE GAMES. Its per-match
+# "Overview" line has serve and return points, aces, double faults and break
+# points, and nothing that says who won. Those rows store `won` and `sv_gms` as
+# null, and every reader that needs them filters on it.
+_MCP = "https://raw.githubusercontent.com/JeffSackmann/tennis_MatchChartingProject/master/charting-{g}-{f}.csv"
+CHARTING: dict[str, str] = {"tennis_wta": "w", "tennis_atp": "m"}
+CHARTING_SOURCE = "mcp"
+# Only the seasons the serve card reads.
+CHARTING_FIRST_YEAR = 2025
 
 
 def _ascii(s: str) -> str:
@@ -283,8 +305,98 @@ async def ingest_year(client: httpx.AsyncClient, sport: str, year: int, ids: dic
     }
 
 
+def _csv_text(res: httpx.Response) -> str:
+    # The Charting Project's files are UTF-8 with the odd Latin-1 row.
+    try:
+        return res.content.decode("utf-8")
+    except UnicodeDecodeError:
+        return res.content.decode("latin-1")
+
+
+async def ingest_charting(client: httpx.AsyncClient, sport: str, ids: dict[tuple[str, str], str]) -> dict:
+    """Charted matches for one tour into `tennis_match_stats` (source='mcp').
+
+    AVOIDS DOUBLE-COUNTING WITH TML. For ATP both sources hold the same
+    matches through TML's last date, and a match counted twice would weigh a
+    player's serve line twice. So an ATP charted match is only written when it
+    is AFTER the newest TML match held. WTA has no TML rows, so all of it goes.
+    """
+    g = CHARTING[sport]
+    try:
+        mres = await client.get(_MCP.format(g=g, f="matches"), timeout=httpx.Timeout(90.0))
+        ores = await client.get(_MCP.format(g=g, f="stats-Overview"), timeout=httpx.Timeout(120.0))
+    except httpx.HTTPError as err:
+        return {"error": f"{type(err).__name__}: {err}"}
+    if mres.status_code != 200 or ores.status_code != 200:
+        return {"error": f"HTTP {mres.status_code}/{ores.status_code}"}
+
+    after = await db.tennis_latest_match_date(sport, SOURCE)
+
+    matches: dict[str, dict] = {}
+    for r in csv.DictReader(io.StringIO(_csv_text(mres))):
+        md = _match_date(r.get("Date") or "")
+        if md is None or md.year < CHARTING_FIRST_YEAR:
+            continue
+        if after is not None and md <= after:
+            continue
+        matches[str(r.get("match_id"))] = {**r, "_date": md}
+
+    lines: dict[str, dict[str, dict]] = {}
+    for r in csv.DictReader(io.StringIO(_csv_text(ores))):
+        if (r.get("set") or "").strip() != "Total":
+            continue
+        mid = str(r.get("match_id"))
+        if mid in matches:
+            lines.setdefault(mid, {})[str(r.get("player") or "")] = r
+
+    def serve(line: dict) -> dict:
+        return {
+            "ace": _int(line.get("aces")),
+            "df": _int(line.get("dfs")),
+            "svpt": _int(line.get("serve_pts")),
+            "first_in": _int(line.get("first_in")),
+            "first_won": _int(line.get("first_won")),
+            "second_won": _int(line.get("second_won")),
+            "sv_gms": None,
+            "bp_saved": _int(line.get("bp_saved")),
+            "bp_faced": _int(line.get("bk_pts")),
+        }
+
+    rows: list[db.TennisMatchStatInput] = []
+    unresolved: set[str] = set()
+    for mid, m in matches.items():
+        pair = lines.get(mid) or {}
+        p1, p2 = str(m.get("Player 1") or ""), str(m.get("Player 2") or "")
+        if p1 not in pair or p2 not in pair:
+            continue
+        common = {
+            "sport": sport, "tourney_id": mid, "match_num": 0, "match_date": m["_date"],
+            "season": m["_date"].year, "tourney_name": m.get("Tournament") or None,
+            "surface": m.get("Surface") or None, "indoor": None, "tourney_level": None,
+            "round": m.get("Round") or None, "best_of": _int(m.get("Best of")), "minutes": None,
+            "won": None, "source": CHARTING_SOURCE,
+        }
+        for me, them in ((p1, p2), (p2, p1)):
+            key = name_key(me)
+            aid = ids.get(key) if key else None
+            if not aid:
+                unresolved.add(me)
+                continue
+            okey = name_key(them)
+            rows.append(db.TennisMatchStatInput(
+                athlete_id=aid, opponent_id=ids.get(okey) if okey else None, **common,
+                **serve(pair[me]), **{f"opp_{k}": v for k, v in serve(pair[them]).items()},
+            ))
+
+    written = await db.write_tennis_match_stats(rows)
+    return {"matches": len(matches), "rows": len(rows), "written": written,
+            "after_tml": str(after) if after else None,
+            "unresolved_players": len(unresolved), "unresolved_sample": sorted(unresolved)[:5]}
+
+
 async def ingest(client: httpx.AsyncClient, first_year: int, last_year: int, yield_fn=None) -> dict:
-    out: dict = {"tours": {}}
+    out: dict = {"tours": {}, "charting": {}}
+    # TML first, so the charting pass knows TML's newest ATP date.
     for sport in TOURS:
         names = await espn_names(client, sport)
         ids = _name_index(names)
@@ -296,8 +408,13 @@ async def ingest(client: httpx.AsyncClient, first_year: int, last_year: int, yie
         held, players = await db.tennis_stats_coverage(sport)
         out["tours"][sport] = {"espn_names": len(names), "matchable": len(ids), "years": years,
                                "rows_held": held, "players_held": players}
-    # Named so a reader of the job log is not left wondering where WTA went.
-    out["no_source"] = [s for s in ("tennis_atp", "tennis_wta") if s not in TOURS]
+    for sport in CHARTING:
+        if yield_fn is not None:
+            await yield_fn()
+        ids = _name_index(await espn_names(client, sport))
+        out["charting"][sport] = await ingest_charting(client, sport, ids)
+    # Named so a reader of the job log is not left wondering where a tour went.
+    out["no_source"] = [s for s in ("tennis_atp", "tennis_wta") if s not in TOURS and s not in CHARTING]
     return out
 
 

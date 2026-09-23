@@ -24,7 +24,7 @@ import type { PickCandidate } from '../core/types';
 import { readForm } from '../core/pickEngine';
 import { isOk } from '../core/windowedStat';
 import { groupFlags, type ResearchFlag } from './flags';
-import { formatFactor } from './specialsFormat';
+import { formatFactor, SOURCE_CREDIT } from './specialsFormat';
 import { headshotFor, teamLogoFor } from '../sports/shared/identity';
 import type { SlateGameCard } from '../sports/shared/slateShapes';
 
@@ -379,7 +379,7 @@ export function flagSpotlightCards(flags: ResearchFlag[], opts: { sport: string;
         logoUrl: teamLogoFor(sport, f.teamId, f.team),
         teamLogoUrl: f.subjectKind === 'player' ? teamLogoFor(sport, f.teamId, f.team) : null,
       })),
-      caption: `Where each one stands among today's slate on the factors named. A ranking of those factors, not a probability, and not compared to a price.`,
+      caption: `Where each one stands among today's slate on the factors named. A ranking of those factors, not a probability, and not compared to a price.${SOURCE_CREDIT[g.rankingId] ? ` ${SOURCE_CREDIT[g.rankingId]}` : ''}`,
       empty: 'Nothing qualified on this slate.',
     };
   });

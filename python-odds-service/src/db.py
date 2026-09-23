@@ -4139,7 +4139,7 @@ class TennisMatchStatInput:
     match_num: int
     match_date: object
     season: int
-    won: bool
+    won: bool | None  # None on a Charting Project row: it records no winner
     source: str
     opponent_id: str | None = None
     tourney_name: str | None = None
@@ -4221,6 +4221,14 @@ async def tennis_athlete_ids(sport: str) -> list[str]:
         sport,
     )
     return [str(r["athlete_id"]) for r in rows]
+
+
+async def tennis_latest_match_date(sport: str, source: str):
+    """The newest match one source holds for a tour — the line the Charting
+    Project's ATP rows start after, so no match is counted twice."""
+    pool = await get_pool()
+    return await pool.fetchval(
+        "SELECT max(match_date) FROM tennis_match_stats WHERE sport = $1 AND source = $2", sport, source)
 
 
 async def tennis_stats_coverage(sport: str) -> tuple[int, int]:
