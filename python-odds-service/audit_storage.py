@@ -79,7 +79,7 @@ RETENTION_INTERVAL_DAYS = 1
 MODEL_MODULES = [
     "src/predict/mlb_prop_serving.py", "src/predict/nhl_prop_serving.py",
     "src/predict/nfl_prop_serving.py", "src/predict/mlb_props.py",
-    "fit_mlb_props.py", "fit_nfl_props.py", "fit_nfl_elo.py",
+    "fit_mlb_props.py", "fit_nfl_props.py",
     "fit_nfl_longest.py", "fit_nfl_anytime_td.py",
 ]
 

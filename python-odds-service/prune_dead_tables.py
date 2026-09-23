@@ -156,6 +156,19 @@ DEAD: list[DeadTable] = [
         "prop_import_staging", "drop",
         "Declared by 20260901090000_odds_archive.sql and never written: 0 rows. "
         "The prop import path writes prop_odds directly."),
+    DeadTable(
+        "golf_model_predictions", "drop",
+        "Golf's per-round prediction model, deleted 2026-09-13 (Phase 8, "
+        "decision 2) — it was never actually fitted (hand-picked priors) and "
+        "its own reported accuracy was a measurement artifact (predictions "
+        "overwritten until graded, i.e. after the outcome was already known). "
+        "Rows frozen since the deletion, zero writes since; confirmed 2026-09-23."),
+    DeadTable(
+        "golf_tournament_predictions", "drop",
+        "Same deletion (Phase 8, decision 2), same reason. No golf price was "
+        "ever archived, so this table's predictions could never be gated "
+        "against a market close even before the model layer was found unfit. "
+        "Rows frozen since 2026-09-13; confirmed 2026-09-23."),
 ]
 
 BY_NAME = {d.name: d for d in DEAD}

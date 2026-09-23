@@ -1645,51 +1645,12 @@ async def read_prop_odds_history_for_key(game_id: str, subject_id: str, market_k
     ]
 
 
-async def fetch_player_games_from_db(sport: str, athlete_id: str, season: int | None = None) -> list["PlayerGameStat"]:
-    """Reads persisted player_game_history back into the exact same
-    PlayerGameStat shape predict/generic_player_gamelog.py's live-ESPN
-    fetch_player_gamelog() returns, so generic_prop_score.py's callers can
-    swap data sources (live fetch -> DB read) with zero changes to the
-    scoring code itself once the historical backfill has landed. `season`
-    omitted returns every season persisted so far, most-recent-first
-    within each; pass it to scope to one season the way a live fetch call
-    already must."""
-    from predict.generic_player_gamelog import PlayerGameStat  # local import: avoids a db.py -> predict/ import cycle
-
-    pool = await get_pool()
-    if season is not None:
-        rows = await pool.fetch(
-            """
-            SELECT event_id, game_date, opponent_id, is_home, stats
-            FROM player_game_history
-            WHERE sport = $1 AND athlete_id = $2 AND season = $3
-            ORDER BY game_date ASC
-            """,
-            sport,
-            athlete_id,
-            season,
-        )
-    else:
-        rows = await pool.fetch(
-            """
-            SELECT event_id, game_date, opponent_id, is_home, stats
-            FROM player_game_history
-            WHERE sport = $1 AND athlete_id = $2
-            ORDER BY game_date ASC
-            """,
-            sport,
-            athlete_id,
-        )
-    return [
-        PlayerGameStat(
-            event_id=r["event_id"],
-            game_date=r["game_date"].isoformat(),
-            opponent_id=int(r["opponent_id"]) if r["opponent_id"] is not None else None,
-            is_home=r["is_home"],
-            stats=json.loads(r["stats"]) if isinstance(r["stats"], str) else dict(r["stats"]),
-        )
-        for r in rows
-    ]
+# fetch_player_games_from_db was deleted 2026-09-23 — it existed solely to
+# feed generic_prop_score.py's DB-backed data path, and that whole scoring
+# layer was already deleted (Phase 1, "delete the condemned scoring layer").
+# Zero callers remained. predict/generic_player_gamelog.py, which it
+# imported PlayerGameStat from, was deleted alongside it for the same
+# reason.
 
 
 # ---------------------------------------------------------------------------

@@ -37,8 +37,13 @@ memory:
   cfb/game   ALSO records Phase 6's FAILED ridge-rating attempt in `evidence`:
              the sport is served by the baseline, and the researched attempt
              failed. Same for nba/prop (Phase 7) and soccer/game (Dixon-Coles).
-  golf       NONE. The model layer was deleted 2026-09-13 (Phase 8, decision 2).
-  tennis     NONE. `predict/tennis_elo.py` exists and is wired to nothing.
+  golf/prop  NONE. The model layer was deleted 2026-09-13 (Phase 8, decision 2).
+  golf/game  BASELINE (`golf_elo`), built 2026-09-20 — see the REGISTRY row,
+             not this stale summary line (fixed 2026-09-23; this line
+             previously said "NONE" for all of golf, contradicting the
+             REGISTRY two paragraphs below).
+  tennis/game BASELINE (`tennis_elo`) — WIRED 2026-09-20 (fixed 2026-09-23;
+             this line previously said "wired to nothing", also stale).
 
 Nothing here decides what to BUILD; it records what is true and what may be
 said. The gate specs travel with each row so M4 can re-run them.

@@ -750,6 +750,38 @@ async def _compute_mlb_game_model_inner() -> dict:
     }
 
 
+async def job_maintain_mlb_statcast_agg(yield_fn=None) -> dict:
+    """`predict/savant.py` is a real, careful "direct port... not a
+    reimplementation" of `lib/sports/mlb/savant.ts` — same Savant CSV
+    endpoint, same batching, same cache key (`mlb:statcast-agg:{season}:v2`
+    in `snapshot_cache`) by deliberate design so Python becomes the writer
+    and TS's own reader keeps working unmodified, the same "Python writes,
+    TS reads" cutover already used for player props. Found 2026-09-23: it
+    had zero real callers, so in practice TS's own `getSeasonStatcastPitcher
+    Rates`/`getSeasonStatcastBatterRates` were still the only thing keeping
+    this cache warm — a page-load-triggered write, exactly what this repo's
+    own caching convention exists to avoid. This job is what finally makes
+    Python the proactive writer; TS's functions stay as they are, cache-first
+    with a live-fetch fallback, the same pattern `adapter.ts` already uses
+    for `mlb_game_model_cache`/`mlb_prop_model_cache` — this just means that
+    fallback should now rarely fire.
+
+    6 hours, same cadence as the park-factors job this mirrors: Statcast
+    aggregates move slowly game to game, not minute to minute."""
+    return await _run_timed("maintainMlbStatcastAggJob", _maintain_mlb_statcast_agg_inner())
+
+
+async def _maintain_mlb_statcast_agg_inner() -> dict:
+    from predict import savant
+    from predict.statsapi import eastern_date
+
+    season = int(eastern_date()[:4])
+    async with httpx.AsyncClient(timeout=60) as client:
+        pitchers = await savant.get_season_statcast_pitcher_rates(client, season)
+        batters = await savant.get_season_statcast_batter_rates(client, season)
+    return {"season": season, "pitchers": len(pitchers), "batters": len(batters)}
+
+
 async def job_maintain_mlb_park_factors(yield_fn=None) -> dict:
     """Park factors — how much each venue inflates or deflates run scoring
     this season. Task 2.9 (the Phase 2 gate's own finding).
@@ -877,6 +909,35 @@ async def _tennis_stats_inner(yield_fn=None) -> dict:
     year = datetime.now(timezone.utc).year
     async with httpx.AsyncClient() as client:
         return await tennis_stats.ingest(client, year - 1, year, yield_fn)
+
+
+async def job_golf_elo(yield_fn=None) -> dict:
+    """`predict/golf_elo.py` has existed since 2026-09-20, registered in
+    `model_status.py` as golf's live game model — but its `ratings()`/
+    `rank_field()` functions had zero real callers anywhere in this repo
+    (found 2026-09-23 during the dead-code audit). Same shape as tennis's
+    "fitted, tested, wired to nothing" gap that `tennisPicksJob` closed:
+    this is what finally calls it.
+
+    Hourly, not every 5 minutes: `ratings()` already carries its own 6-hour
+    internal TTL cache, so most runs just confirm the cache is warm; a real
+    replay only happens when it actually expires or a new event landed.
+    Golf has no per-match "today's game" the way tennis does — a tournament
+    is 150 players against a field, not a head-to-head — so there is no
+    pick to capture here (see golf_elo.py's own docstring: "it does not
+    publish a probability... it ranks the field"). This job's job is only
+    to keep the ranking engine genuinely live; feeding its output into the
+    Slate ranking system is Phase 1h, not this job.
+    """
+    return await _run_timed("golfEloJob", _golf_elo_inner())
+
+
+async def _golf_elo_inner() -> dict:
+    from predict import golf_elo
+
+    table = await golf_elo.ratings()
+    rated = sum(1 for g in table.values() if g.events >= 5)
+    return {"golfers": len(table), "rated_5plus_events": rated}
 
 
 async def job_golf_courses(yield_fn=None) -> dict:
@@ -1490,6 +1551,7 @@ JOB_REGISTRY = [
     # why this one cannot be hourly like the other ingesters.
     ("ingestNflPbpJob", job_nfl_pbp, 24 * 60 * 60),
     ("maintainMlbParkFactorsJob", job_maintain_mlb_park_factors, 6 * 60 * 60),
+    ("maintainMlbStatcastAggJob", job_maintain_mlb_statcast_agg, 6 * 60 * 60),
     ("maintainMlbHrMatchupJob", job_maintain_mlb_hr_matchup, 6 * 60 * 60),
     # 5 min so a round's hole scores and its weather are captured while the
     # round is played. Was golfPredictionsJob; see job_golf_history.
@@ -1498,6 +1560,10 @@ JOB_REGISTRY = [
     # never changes, so once the 235-event backlog clears this reads one row
     # and writes nothing.
     ("golfCoursesJob", job_golf_courses, 6 * 60 * 60),
+    # Hourly cache-warm for golf_elo.py's ratings engine — see job_golf_elo's
+    # own docstring. ratings() carries its own 6h internal TTL, so most runs
+    # just confirm it's alive rather than paying for a full replay.
+    ("golfEloJob", job_golf_elo, 60 * 60),
     # DJ-TEN. Daily: TML rewrites a year's file as results land, so the current
     # season is re-read and finished ones are not.
     ("tennisStatsJob", job_tennis_stats, 24 * 60 * 60),

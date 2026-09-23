@@ -1091,7 +1091,17 @@ async def check_corpus_freshness() -> dict:
         except Exception:                                     # noqa: BLE001
             return None
 
-    tables = [t for t, sp in _cs.CORPUS.items() if sp.partition_by == "id_chunk"]
+    # Fixed 2026-09-23 — this used to read `if sp.partition_by == "id_chunk"`,
+    # which only ever checked 2 of the 6 real corpus tables (mlb_pitch_events,
+    # prop_odds_history). odds_archive, prop_odds_archive, player_game_history,
+    # and game_result — the tables an entire audit session was built around,
+    # because live Postgres only shows their short tail — were never checked
+    # for corpus readability at all. The underlying query (max(id) via the
+    # table's own glob, then a behind-count against each spec's own
+    # frozen_where()) has no real dependency on partition scheme; it was
+    # simply never widened when the sport_year-partitioned tables were added
+    # to CORPUS. All six now get the same check.
+    tables = list(_cs.CORPUS.keys())
     pool = await db.get_pool()
     worst, detail = 0, []
     for table in tables:
