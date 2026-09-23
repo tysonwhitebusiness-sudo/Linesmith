@@ -3,7 +3,9 @@
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
 answered. All sixteen phases of the run order are built and
-deployed. What is left is REVIEW, not build:
+deployed — but CLOSING them was over-claimed, and
+**`docs/design/closeout-2026-09-23.md` is the list of what is actually left**.
+Read it next. In short:
 
 1. **C5-UI sign-off** waits on a real graded slate — NFL Sunday **2026-09-27**
    plus one MLB day graded by PY-A's code. When it comes, check that NFL's
@@ -12,7 +14,14 @@ deployed. What is left is REVIEW, not build:
 2. **`docs/design/SIGNOFF-QUEUE.md` Q26–Q30** are this run's own decisions.
    **Q26 needs a real answer**: SPC's spec asks for graded spotlights and the
    build deliberately does the opposite.
-3. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
+3. **C8 is not really closed.** Three of its five items were done: `/kit` was
+   never opened at 1440/400, the render sweep covered two sports of ten with
+   no screenshots, and the 390px control-rows guard is still unwritten
+   (Playwright is available now, so it can be). Track B of the closeout.
+4. **An uncommitted two-system odds-model refactor is sitting in the working
+   tree** from another session. Not this run's, untouched by it, and it
+   modifies the same `src/db.py` and `src/jobs.py` — decide its fate first.
+5. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
    `/diagnostics`.**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
