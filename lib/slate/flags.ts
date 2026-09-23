@@ -84,7 +84,14 @@ export interface FlagSubject {
  */
 export function flagScope(sport: string, league?: string | null): string {
   if (sport.startsWith('soccer')) return sport.includes('_') ? sport : `soccer_${league ?? 'epl'}`;
-  if (sport.startsWith('tennis')) return 'tennis';
+  // TENNIS IS GRANULAR TOO, and the first version of this said it was not.
+  // `rankingSport()` only makes soccer granular, so this followed it — but
+  // that function describes the SPECIALS, and tennis has none. SP-TEN's
+  // spotlights are written per tour (`tennis_atp`, `tennis_wta`), so folding
+  // them to 'tennis' asked for a sport nothing had ever written and every
+  // tennis page showed no flags. Found by opening the page; `tsc` cannot see
+  // a string that matches no row.
+  if (sport.startsWith('tennis')) return sport.includes('_') ? sport : `tennis_${league ?? 'atp'}`;
   return sport;
 }
 

@@ -67,9 +67,13 @@ test('the scope is the key the ranking job writes, whatever a page holds', () =>
   assert.equal(flagScope('soccer', 'mls'), 'soccer_mls');
   assert.equal(flagScope('soccer', null), 'soccer_epl');
   assert.equal(flagScope('soccer_mls', null), 'soccer_mls');
-  // Tennis is NOT granular there, though every tennis page names a tour.
-  assert.equal(flagScope('tennis_atp', null), 'tennis');
-  assert.equal(flagScope('tennis', null), 'tennis');
+  // Tennis IS granular, and this test asserted the opposite until SP-TEN
+  // wrote the first tennis spotlight and every tennis page showed none. The
+  // writer stores `tennis_atp`/`tennis_wta`; 'tennis' matches no row at all.
+  assert.equal(flagScope('tennis_atp', null), 'tennis_atp');
+  assert.equal(flagScope('tennis_wta', null), 'tennis_wta');
+  assert.equal(flagScope('tennis', 'wta'), 'tennis_wta');
+  assert.equal(flagScope('tennis', null), 'tennis_atp');
 });
 
 test('a page gets its own rows, and only its own', () => {

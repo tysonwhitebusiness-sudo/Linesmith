@@ -228,10 +228,27 @@ READS: dict[str, Callable[[float, dict], str | None]] = {
     "slg_vs_hand": lambda v, c: f"slugs {v:.3f} against {'left' if c.get('_hand') == 'L' else 'right'}-handed pitching",
     "k_per_9": lambda v, c: f"strikes out {v:.1f} per nine",
     "opp_k_pct": lambda v, c: f"faces a lineup striking out {v:.1f}% of the time",
-    "hot_ops": lambda v, c: f"is slugging {v:.3f} over his last ten",
+    "hot_ops": lambda v, c: f"is slugging {v:.3f} over the last ten",
     "opp_gs": lambda v, c: f"faces a starter averaging a {v:.0f} game score",
+    # Tennis (SP-TEN)
+    "win_rate": lambda v, c: f"has won {v:.0f}% of the last ten",
+    "sets_rate": lambda v, c: f"is taking {v:.0f}% of sets",
+    "hold_pct": lambda v, c: f"holds {v:.0f}% of service games",
+    "break_pct": lambda v, c: f"breaks {v:.0f}% of the time",
+    "ace_rate": lambda v, c: f"aces {v:.1f}% of service points",
+    "first_win_pct": lambda v, c: f"wins {v:.0f}% behind a first serve",
+    "surface_win_pct": lambda v, c: f"has won {v:.0f}% on this surface",
+    "surface_hold_pct": lambda v, c: f"holds {v:.0f}% on it",
+    # Golf (SP-GOLF). A finish is lower-is-better, so these read as places.
+    "best_finish": lambda v, c: f"has finished as high as {v:.0f} here",
+    "avg_finish": lambda v, c: f"averages {v:.0f} at this course",
+    "cuts_made_pct": lambda v, c: f"has made {v:.0f}% of cuts here",
+    "rounds_here": lambda v, c: f"has {v:.0f} events here to go on",
 }
 
+# A read line names a real person, so it never guesses their gender: these
+# templates take no pronoun at all. Caught on a live WTA card reading
+# "Katie Volynets ... has won 70% of HIS last ten".
 NO_STANDOUT = "No single factor stands out; the rank comes from the mix."
 
 
@@ -1939,6 +1956,51 @@ async def build_tennis_surface(conn, slate: date, sport: str) -> list[Candidate]
     return out
 
 
+_GOLF_NAMES_KEY = "golf:espn-names"
+_GOLF_NAMES_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
+
+async def _golf_names(ids: list[str]) -> dict[str, str]:
+    """{ESPN golfer id: name}, cached.
+
+    `_name_all` bridges team-sport ids through rosters and the crosswalk, and
+    golf has neither, so the first run rendered ten rows of "Unknown player".
+    The live field was the obvious fix and the wrong one: this ranking's field
+    is the most recently COMPLETED tournament's, and by the time it is read the
+    live feed has usually moved to next week's event, so not one id matched.
+    ESPN's per-athlete endpoint always answers, and a golfer's name does not
+    change, so it is fetched once and cached for a month."""
+    cached = await db.read_snapshot_with_age(_GOLF_NAMES_KEY)
+    names: dict[str, str] = {}
+    if cached is not None:
+        payload, _age = cached
+        try:
+            names = json.loads(payload)
+        except ValueError:
+            names = {}
+
+    todo = [i for i in ids if i not in names]
+    if not todo:
+        return names
+
+    async with httpx.AsyncClient() as client:
+        for athlete_id in todo:
+            url = (f"https://sports.core.api.espn.com/v2/sports/golf/leagues/pga"
+                   f"/athletes/{athlete_id}?lang=en&region=us")
+            try:
+                res = await client.get(url, timeout=httpx.Timeout(15.0))
+                if res.status_code != 200:
+                    continue
+                full = (res.json() or {}).get("fullName") or (res.json() or {}).get("displayName")
+            except (httpx.HTTPError, ValueError):
+                continue
+            if full:
+                names[str(athlete_id)] = str(full)
+
+    await db.write_snapshot(_GOLF_NAMES_KEY, json.dumps(names))
+    return names
+
+
 async def build_golf_course_history(conn, slate: date) -> list[Candidate]:
     """Who has played THIS course well before.
 
@@ -1972,13 +2034,15 @@ async def build_golf_course_history(conn, slate: date) -> list[Candidate]:
             GROUP BY 1""",
         course, this_event, ids)
 
+    names = await _golf_names(ids)
+
     out: list[Candidate] = []
     for r in rows:
         events = int(r["events"] or 0)
         if events < 2 or r["best"] is None:
             continue
         out.append(Candidate(
-            subject_id=str(r["espn_id"]), subject_name="", team=None, opponent=course,
+            subject_id=str(r["espn_id"]), subject_name=names.get(str(r["espn_id"]), ""), team=None, opponent=course,
             game_id=this_event,
             values={
                 "best_finish": int(r["best"]),

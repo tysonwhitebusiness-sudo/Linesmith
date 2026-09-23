@@ -28,8 +28,8 @@ import { easternDate } from '@/lib/sports/mlb/statsapi';
 export const dynamic = 'force-dynamic';
 
 const TTL_MS = 5 * 60 * 1000;
-/** The scopes the ranking job writes: soccer is granular, everyone else generic. */
-const SCOPES = new Set(['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer_epl', 'soccer_mls', 'tennis', 'golf']);
+/** The scopes the ranking job actually writes: soccer AND tennis are per league/tour. */
+const SCOPES = new Set(['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer_epl', 'soccer_mls', 'tennis_atp', 'tennis_wta', 'golf']);
 
 function parseDate(raw: string | null): string | undefined {
   // Eastern, for the reason SL-19 records: a slate is a US sports day.
