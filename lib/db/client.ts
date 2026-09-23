@@ -2180,24 +2180,29 @@ function mapCurrentEloRow(row: any): CurrentEloRow {
   return { ...row, wasHome: !!row.wasHome };
 }
 
-/** A team's most recent rating THIS season — null if they haven't played a rated game yet this season. */
-export async function getCurrentElo(teamId: number, season: number): Promise<CurrentEloRow | null> {
+/**
+ * A team's most recent rating THIS season — null if they haven't played a rated game yet this season.
+ * `sport` is required, not defaulted, the same discipline `db.py`'s `get_current_elo` already uses —
+ * `team_elo_history` has a real `sport` column specifically so a numeric team id can't collide across
+ * sports, and the query didn't filter on it here until 2026-09-23 (a real, if latent, cross-sport bug).
+ */
+export async function getCurrentElo(teamId: number, season: number, sport: string): Promise<CurrentEloRow | null> {
   const row = await pgGet<any>(
     `SELECT elo, games_played AS "gamesPlayed", game_date AS "gameDate", opponent_team_id AS "opponentTeamId", was_home AS "wasHome"
-     FROM team_elo_history WHERE team_id = ? AND season = ?
+     FROM team_elo_history WHERE team_id = ? AND season = ? AND sport = ?
      ORDER BY game_date DESC, id DESC LIMIT 1`,
-    [teamId, season],
+    [teamId, season, sport],
   );
   return row ? mapCurrentEloRow(row) : null;
 }
 
 /** A team's most recent rating from ANY season before the given one — the season-reversion path's source value. */
-export async function getLatestEloBeforeSeason(teamId: number, season: number): Promise<CurrentEloRow | null> {
+export async function getLatestEloBeforeSeason(teamId: number, season: number, sport: string): Promise<CurrentEloRow | null> {
   const row = await pgGet<any>(
     `SELECT elo, games_played AS "gamesPlayed", game_date AS "gameDate", opponent_team_id AS "opponentTeamId", was_home AS "wasHome"
-     FROM team_elo_history WHERE team_id = ? AND season < ?
+     FROM team_elo_history WHERE team_id = ? AND season < ? AND sport = ?
      ORDER BY season DESC, game_date DESC, id DESC LIMIT 1`,
-    [teamId, season],
+    [teamId, season, sport],
   );
   return row ? mapCurrentEloRow(row) : null;
 }

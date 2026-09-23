@@ -242,7 +242,7 @@ export async function backfillElo(season: number): Promise<EloHistoryRow[]> {
 
   const startingRatingFor = async (teamId: number): Promise<number> => {
     if (ratings.has(teamId)) return ratings.get(teamId)!;
-    const prior = await getLatestEloBeforeSeason(teamId, season);
+    const prior = await getLatestEloBeforeSeason(teamId, season, 'mlb');
     const start = prior ? regressToMean(prior.elo) : STARTING_ELO;
     ratings.set(teamId, start);
     return start;
@@ -313,7 +313,7 @@ export interface CurrentElo {
  * starting value for a team with no history at all.
  */
 export async function getCurrentElo(teamId: number, season: number): Promise<CurrentElo> {
-  const thisSeason = await dbGetCurrentElo(teamId, season);
+  const thisSeason = await dbGetCurrentElo(teamId, season, 'mlb');
   if (thisSeason) {
     return {
       elo: thisSeason.elo,
@@ -322,7 +322,7 @@ export async function getCurrentElo(teamId: number, season: number): Promise<Cur
       lastLocationTeamId: thisSeason.wasHome ? teamId : thisSeason.opponentTeamId,
     };
   }
-  const prior = await getLatestEloBeforeSeason(teamId, season);
+  const prior = await getLatestEloBeforeSeason(teamId, season, 'mlb');
   if (prior) {
     return {
       elo: regressToMean(prior.elo),
