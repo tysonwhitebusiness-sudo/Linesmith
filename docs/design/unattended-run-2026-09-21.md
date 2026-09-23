@@ -61,7 +61,7 @@ authorised.
 | 9 | **C6** Props controls (tabs → filters, Home Runs deleted) | C | 8 | no | **done** |
 | 10 | **F0-UI** `/api/slate/flags`, the shared `ResearchFlags` card and chips on player/team/game pages; the Slate renders the Python spotlights beside the two TS ones. N5 weather ships here. | S | 6, 8 | no | **done** |
 | 11 | **C5-UI** Receipts table + the new Specials cards | C | 4 **and a real graded slate** (A6) | no | **built, awaiting graded slate** |
-| 12 | **DJ-GOLF** Tournament → course backfill | S | — | **yes** | — |
+| 12 | **DJ-GOLF** Tournament → course backfill | S | — | **yes** | **done** — 235/235 (100%), deployed `f3b6817` |
 | 13 | **DJ-TEN** TML-Database ingest (licence check first, A4) | S | — | **yes** | — |
 | 14 | **SP-GOLF**, **SP-TEN** (rankings + render) | S | 10, 12, 13 | **yes** | — |
 | 15 | **C8** Close Track C: guards, `/kit`, sweep, `CLAUDE.md`, mockup marked historical | C | 9, 11 | no | — |

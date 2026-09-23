@@ -1,11 +1,12 @@
 # CURRENT — pick up here
 
-**Updated 2026-09-22 after C5-UI. Track C (card redesign) and the
+**Updated 2026-09-23 after DJ-GOLF. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
-answered. Phases 1-11 are BUILT. C5-UI is built but NOT signed
+answered. Phases 1-12 are BUILT. C5-UI is built but NOT signed
 off: it waits on a real graded slate (NFL Sunday 2026-09-27 plus one MLB day
-graded by PY-A's code). The next unbuilt phase is 12 (DJ-GOLF, a deploy).
-Don't stop to ask.**
+graded by PY-A's code). The next unbuilt phase is 13 (DJ-TEN) — **check the
+TML licence first (A4)**; if it does not permit this use, stop, write a queue
+row, and ship SP-TEN with Form only. Don't stop to ask.**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
@@ -45,7 +46,7 @@ Don't stop to ask.**
 | 9 | C6 props controls (tabs → filters, Home Runs deleted) | **done** — tabs → status/watchlist, HR deleted, Position, Showing line, filter surfaces on the kit, <640 filters sheet (`5c41440`, `b3f7d5c`, `fc8e69f`) |
 | 10 | F0-UI research-page flags + Slate spotlight cards | **done** — `/api/slate/flags`, `ResearchFlags` (chips on the player page, card on team/game), the Python spotlights on the Slate, N5 weather (`400802d`) |
 | 11 | C5-UI receipts table + new Specials (needs a real graded slate) | **built, awaiting graded slate** — receipts card, percentile cells, read line, sticky player column (`815b94e`). Sign off after NFL Sunday 2026-09-27 + one MLB day graded by PY-A's code |
-| 12 | DJ-GOLF tournament → course backfill (**deploy**) | — |
+| 12 | DJ-GOLF tournament → course backfill (**deploy**) | **done** — 235/235 events have a course (was 4), 82 courses, `golfCoursesJob` now a no-op (`f3b6817`) |
 | 13 | DJ-TEN TML-Database ingest, licence check first (**deploy**) | — |
 | 14 | SP-GOLF, SP-TEN | — |
 | 15 | C8 close Track C | — |
@@ -58,6 +59,7 @@ Update this table and the run doc's §2 after every phase commit, then push.
 | when | commit | service | what it enables |
 |---|---|---|---|
 | 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |
+| 2026-09-23 03:04 UTC | `f3b6817` (DJ-GOLF) | line-buddy-odds-worker (`dep-dapk2ik9v7es738t1qng`, live) | `golfCoursesJob`, six-hourly: fills `golf_tournaments.course_name` for events that have none. The 235-event backlog was cleared locally before the deploy, so the job runs as a no-op from here. Was on `5f9a7df`. |
 | 2026-09-22 02:26 UTC | `5f9a7df` (PY-B) | line-buddy-odds-worker (`dep-daoudr5g1s2s738njlcg`, live) | 32 spotlight rankings (`kind='spotlight'`, never graded) across NFL/CFB/NHL/soccer/MLB: the sport-specific cards and the eight N ideas (N1/N2/N3/N6/N7/N8, N4 MLB). Was on `5e6568d`. |
 
 ## Decisions that bind this run
@@ -166,6 +168,14 @@ Update this table and the run doc's §2 after every phase commit, then push.
   read properties of undefined" — `tsc` says the field is there and the cached
   bytes disagree. **Read a new array off a cached payload defensively**, and
   render before believing.
+- **DJ-GOLF: the Ryder Cup is not a stroke-play event and its feed says so.**
+  Event 401734110's `competitions` is a list of LISTS (the pairings) where
+  every other golf event's is a list of one dict. `.get` on it threw and killed
+  the first full backfill 46 events in. Anything reading ESPN golf per event
+  must tolerate it; a team event has no field size to report.
+- **DJ-GOLF: ESPN answers an unknown `&event=` with a 200 and TODAY's
+  tournament**, not an error. The id returned is checked against the id asked
+  for, or a dead id writes today's course onto a 2022 event.
 - **C5: a ranking can have a leader row and NO graded players.** Measured on
   `nfl-longest-reception` 2026-09-21: `grade()` skips a row whose team's game
   has not landed in `player_game_history`, so the slate's real leader was

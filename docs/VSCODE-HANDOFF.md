@@ -20,6 +20,10 @@
 
 ## Session state — 2026-09-22
 
+**DJ-GOLF is done and deployed** (`f3b6817`, live 2026-09-23 03:04 UTC) —
+every one of the 235 golf events now names a course, from four. The next
+unbuilt phase is **13, DJ-TEN**, and its licence check (A4) comes first.
+
 **C5-UI is BUILT, not signed off** (`815b94e`) — the receipts card, percentile
 cells on the Specials table, Python's one-line read under each player, and the
 sticky player column. It renders on the real 2026-09-21 MLB receipts. Sign-off
@@ -33,8 +37,10 @@ beside the two TS cards, and N5's weather list. The Specials registry split
 into `SPECIAL_ONLY_RANKINGS` + `SPOTLIGHT_RANKINGS` with `rankingKind()`, and
 the drift guard now covers both kinds.
 
-Phases 1-11 of the run order are built. The next UNBUILT phase is **12,
-DJ-GOLF** (tournament -> course backfill, a deploy).
+Phases 1-12 of the run order are built. The next UNBUILT phase is **13,
+DJ-TEN** (TML-Database ingest) — **check the licence before writing anything**
+(A4): if it does not permit this use, stop, write a queue row, and ship SP-TEN
+with Form only.
 
 ### Environment note
 
@@ -63,30 +69,7 @@ DJ-GOLF** (tournament -> course backfill, a deploy).
   receipts actually fill: `nfl-longest-reception` for 09-21 produced a leader
   row and ZERO graded players, because `grade()` skips a row whose team's game
   has not landed in `player_game_history`. If that repeats it is a Python fix.
-- **DJ-GOLF** (phase 12, deploy) — NEXT. **Measured, not yet built**
-  (`scripts/probe-dj-golf.ts`), and the measurement changes the plan:
-  - The join key is `event_id` (an ESPN event id) and **`golf_tournaments`
-    already has `course_name` and `holes_json`** — it just holds 4 rows. So
-    this is a fetch-and-upsert over events the results table already names,
-    **not a new table and no ownership row needed** (row 19 already says
-    Python owns it).
-  - 235 distinct events, 2022-01-09 to 2026-09-22, 4 with a course.
-  - **The per-event ESPN endpoint works for historical events** —
-    `site.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga&event={id}`
-    returned Sedgefield Country Club for 401811961 (2026) and TPC Craig Ranch
-    for 401703508 (2025), each with par and 18 holes. One GET per event.
-  - It also returns the event's own `date`, so the backfill can fill
-    `start_date`, which is null on all four live-written rows
-    (`golf/playerResearchShapes.ts:13` notes this).
-  - `db.write_golf_tournament` already exists and `ingest_golf_history`
-    already calls it for the LIVE event, so going forward is covered; only
-    history is missing.
-  - Shape to build: `fetch_event_meta(client, event_id)` in
-    `predict/golf_espn.py` (reuse `_parse_course`), a
-    `golf_events_missing_course(limit)` read in `db.py`, a
-    `golf_courses.py` backfill with a CLI, and a `JOB_REGISTRY` entry so it
-    self-heals and `health_check` covers it. Run it locally against the DB
-    first (A1), then deploy.
+- **DJ-GOLF** (phase 12) — **done**, see Entry 14.
 - **C4 follow-ups**, both *data* additions to `lib/slate/marketMoves.ts`:
   Movers game-line rows still show text matchups (no team logos —
   `ConsensusMover` carries no team ids), and the "books moved" cell still shows
@@ -537,3 +520,59 @@ and two did-not-plays shown as neither a hit nor a miss.
 
 **Not done, and deliberately:** the sign-off itself. Per the run doc, don't
 sign C5 off on a slate graded by the old code.
+
+
+### Entry 14 — DJ-GOLF: 4 of 235 events had a course, now 235 (commit `f3b6817`, deployed)
+
+Golf's Course history spotlight was blocked because there was nothing to group
+a golfer's past finishes BY. `golf_tournament_results` holds 235 events back to
+2022-01-09; `golf_tournaments` named a course for four.
+
+**The plan's three premises were all wrong, and checking them shrank the
+phase from M to S.** It called for a new data job with a new table and an
+ownership row. `golf_tournaments` already had `course_name` and `holes_json`;
+`db.write_golf_tournament` already existed; `ingest_golf_history` already
+called it for the live event, which is where those four rows came from. The
+only gap was history, and the only missing piece was a way to ask ESPN about an
+event that is not the current one.
+
+- `fetch_event_meta` (`predict/golf_espn.py`): the same leaderboard endpoint
+  answers with `&event=` for an event years finished. It also carries the
+  event's own `date`, which the live path deliberately refuses to guess — so a
+  backfilled row is better described than a live-written one.
+- `golf_courses.py`: the backfill and a CLI (`backfill` / `status`). 60 per
+  run, 0.25s apart; ESPN's golf endpoints are free, public and not ours.
+- `golfCoursesJob`, six-hourly, in `JOB_REGISTRY` — a job rather than a
+  one-shot script so `health_check` watches it, and so a live event whose
+  leaderboard omitted a course still gets one later. **Verified to be a no-op
+  now**: one read, no writes.
+
+**Two measurements, one of which broke the first run.**
+
+1. **The Ryder Cup is not stroke play and its feed says so.** Event 401734110's
+   `competitions` is a list of LISTS (the pairings) where every other event's
+   is a list of one dict. `.get` on it threw `AttributeError` and killed the
+   run 46 events in. A team event has no field size to report — that is the
+   honest answer, not a count of matches.
+2. **ESPN answers an unknown `&event=` with a 200 and TODAY's tournament**, not
+   an error. The id returned is now checked against the id asked for; without
+   that, a dead id writes today's course onto a 2022 event.
+
+**Result: 235/235 (100%)** against the phase's 90% bar. 82 distinct courses,
+the majors recurring five seasons deep (Augusta National, Pebble Beach,
+Muirfield Village, Harbour Town) — exactly what Course history needs. Start
+dates: 231 on the first pass, the last four on a second once the query also
+treated a null `start_date` as missing, closing the gap
+`golf/playerResearchShapes.ts:13` records.
+
+**Also grepped, not assumed:** `writeGolfTournament`,
+`writeGolfTournamentResults`, `writeGolfHoleScores` and `writeGolfRoundScores`
+exist in **zero** TypeScript files and `historyIngest.ts` is gone (one comment
+in `golf/adapter.ts:398` still names it). Rows 17-20 of
+`docs/table-ownership.md` carry a stale ⚠ on all four. Recorded in that file's
+staleness banner rather than patched into the rows, per its own
+re-derive-don't-edit rule.
+
+**Verified:** 662/0 (7 new in `tests/golf-courses.test.ts`); typecheck and
+build clean; the backfill run against the real database; the job re-run to
+confirm the no-op; deployed and polled to `live` on the exact commit.
