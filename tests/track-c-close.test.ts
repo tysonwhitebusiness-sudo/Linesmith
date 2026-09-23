@@ -87,6 +87,37 @@ test('C8: CLAUDE.md records what Track C changed', () => {
   assert.match(md, /controls are on the kit/);
 });
 
+/**
+ * Three bugs the C8 closeout sweep found by rendering every sport at 1440 and
+ * 400. None was visible to `tsc` or to any test that existed; each is pinned
+ * here so it cannot return without a failure.
+ */
+test('C8 sweep: the date field has a width, so the header does not scroll sideways', () => {
+  // The kit Input's wrapper is `w-full`. C6 passed only `shrink-0`, so the date
+  // field took the whole header row and pushed "Hide date controls" and
+  // "Pause" past the viewport: /mlb scrolled to 1660px at 1440, 620px at 400.
+  const src = code(readFileSync('components/DateGameStrip.tsx', 'utf8'));
+  assert.match(src, /type="date"[\s\S]*?className="w-\d+ shrink-0"/);
+});
+
+test('C8 sweep: a face resolves from either id shape', async () => {
+  // Candidates carry `espn:football:4361050`; ranking rows carry `4361050`.
+  // The market cards passed the namespaced one through, and every NFL face
+  // requested `.../full/espn:football:4361050.png` - thirteen 404s a load.
+  const { headshotFor, espnHeadshot } = await import('../lib/sports/shared/identity');
+  assert.equal(headshotFor('nfl', 'espn:football:4361050'), espnHeadshot('nfl', '4361050'));
+  assert.equal(headshotFor('nfl', '4361050'), espnHeadshot('nfl', '4361050'));
+  assert.doesNotMatch(headshotFor('nfl', 'espn:football:1') ?? '', /espn:/);
+  assert.equal(headshotFor('nfl', 'espn:football:'), null);
+});
+
+test('C8 sweep: Movers answers golf with an empty list, not a 400', () => {
+  // Golf has no price history to have moved - a true answer. As a 400 it put
+  // two console errors on every golf Slate load.
+  const src = readFileSync('app/api/slate/movers/route.ts', 'utf8');
+  assert.match(src, /if \(sport === 'golf'\) return NextResponse\.json\(\{ games: 0, lines: \[\], props: \[\] \}\)/);
+});
+
 test('SPC: CLAUDE.md says where a research flag renders', () => {
   const md = readFileSync('CLAUDE.md', 'utf8');
   assert.match(md, /ResearchFlags/);

@@ -64,7 +64,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const sport = url.searchParams.get('sport') ?? '';
   // Golf is not here on purpose: its winner prices are cached, not stored as
-  // history, so there is nothing to have moved (spec §4.8).
+  // history, so there is nothing to have moved (spec §4.8). That is a TRUE
+  // ANSWER, not a bad request, so it is an empty 200: the golf Slate asked
+  // for Movers on every load and logged two 400s for it (C8 closeout sweep).
+  // The Movers section already hides itself when there is nothing to list.
+  if (sport === 'golf') return NextResponse.json({ games: 0, lines: [], props: [] });
   if (!SPORTS.has(sport)) return NextResponse.json({ error: 'No Movers for this sport' }, { status: 400 });
   const league = url.searchParams.get('league');
   // The client sends one value as both `league` and `tour`; each is checked

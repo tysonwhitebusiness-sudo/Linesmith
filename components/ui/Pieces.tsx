@@ -218,7 +218,12 @@ export function ResultMark({
           ? '\u2715'
           : '\u2013'
       : (mark ?? (result === 'hit' ? 'W' : result === 'miss' ? 'L' : result === 'dnp' ? '\u2013' : (result ?? '\u00b7')));
-  const name = label ?? (good ? 'Win' : bad ? 'Loss' : result === 'D' ? 'Draw' : result === 'dnp' ? 'Did not play' : 'No result');
+  // A graded CALL is a hit or a miss, not a win or a loss: the receipts table
+  // (C5) reads these to a screen reader, and "Win" for a player who homered is
+  // a claim about a bet the page never makes. Found on /kit in the C8 closeout.
+  const name =
+    label ??
+    (result === 'hit' ? 'Hit' : result === 'miss' ? 'Miss' : good ? 'Win' : bad ? 'Loss' : result === 'D' ? 'Draw' : result === 'dnp' ? 'Did not play' : 'No result');
   return (
     <span
       role="img"

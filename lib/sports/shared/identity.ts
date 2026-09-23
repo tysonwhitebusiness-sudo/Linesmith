@@ -44,9 +44,19 @@ export function mlbHeadshot(id: string | number | null | undefined): string | nu
     : `https://img.mlbstatic.com/mlb-photos/image/upload/c_thumb,g_face,w_213,h_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 }
 
-/** A player face for a sport: the one shared dispatcher the Slate cards use. */
-export function headshotFor(sport: string, id: string | number | null | undefined): string | null {
-  if (id == null || id === '') return null;
+/**
+ * A player face for a sport: the one shared dispatcher the Slate cards use.
+ *
+ * TAKES EITHER ID SHAPE. A candidate's `subjectId` is namespaced
+ * (`espn:football:4361050`); a ranking row's is bare. The market cards passed
+ * the namespaced one straight through, so every NFL face on them requested
+ * `.../full/espn:football:4361050.png` and 404'd — thirteen per page load,
+ * found in the C8 closeout sweep. Stripping here fixes every caller at once.
+ */
+export function headshotFor(sport: string, rawId: string | number | null | undefined): string | null {
+  if (rawId == null || rawId === '') return null;
+  const id = String(rawId).split(':').pop() ?? '';
+  if (id === '') return null;
   if (sport === 'mlb') return mlbHeadshot(id);
   if (sport === 'nfl') return espnHeadshot('nfl', id);
   if (sport === 'cfb') return espnHeadshot('college-football', id);

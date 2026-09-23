@@ -163,7 +163,12 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
             min={easternDate()}
             onChange={(e) => onSetDate(e.target.value || undefined)}
             aria-label="Pick a date"
-            className="shrink-0"
+            // A date is ten characters, so it gets a width, not the row. The
+            // kit wrapper is `w-full`; with `shrink-0` alone the field took
+            // 100% of the header and pushed the collapse and pause buttons
+            // off-screen — the page scrolled sideways at 1440 and at 400.
+            // Found in the C8 closeout sweep; C6 had shipped it.
+            className="w-44 shrink-0"
           />
         </>
       ) : null}
