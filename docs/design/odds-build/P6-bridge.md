@@ -1,0 +1,268 @@
+# P6 · The bridge (B4)
+
+**Lane:** laptop (line-buddy's `python-odds-service`, run on the operator's
+machine like OddsHarvester). **Deploys:** one Render deploy ⚑ (the new
+health check). **Needs:** P5 applied and deployed, D24, the operator's green
+light.
+**Goal:** every matched, de-flapped price change the scraper sees reaches
+the app's tables within about a minute, carrying its own times, under the
+D24 policy, with a heartbeat the health check reads.
+**Audit findings covered:** F10, F13, and the bridge half of B3.
+
+---
+
+## Facts this is built on (read 2026-09-24)
+
+- **Scraper rows:**
+  - `offers` holds one row per change (write-on-change).
+  - `price` is **American, possibly fractional** (Kalshi 354.55, Sleeper
+    −128.21, Polymarket 104.08).
+  - `source_ts_ms` is the source's own per-price time where it exists
+    (Kalshi, BetRivers `changedDate`, Underdog, Sleeper, Polymarket, Action
+    Network `inserted`).
+  - `depth` holds per-source detail: Pinnacle `limit`/`version`/`alt`,
+    Kalshi `yes_bid`/`yes_ask`/sizes/`ticker`, Polymarket
+    `bid`/`ask`/`volume_24h`/`liquidity`, Underdog `mult`/`one_sided`, DK
+    `alt`.
+  - `snapshots` holds one row per poll (`status` ok|unchanged|error,
+    `fetched_at`, `cache_age_s`).
+  - `offer_events` holds `pulled`/`returned` (B3, per endpoint).
+  - `splits` and `reference_data` (`vsin_opener`, …) hold the rest.
+- **The scraper prunes SQLite after `HOT_DAYS` = 3.** The bridge's cursor
+  must never fall that far behind; it alerts at 6 h of lag.
+- `db.get_pool()` is `max_size=3` per process, which is inside the
+  15-connection pooler budget.
+  - The bridge is one process.
+  - It holds a connection only inside a write call.
+  - Each call is one transaction on one batch (the batching lesson of
+    `write_game_odds_book_lines`).
+- Health: a laptop job reports through
+  `db.write_health_check_results([{"name", "healthy", "status", "raw"}])`
+  into `job_health_checks`, and `health_check.py` reads it with a dedicated
+  check (`check_harvester_scrapes()` is the template).
+
+---
+
+## Build
+
+### 1. Files
+
+- `python-odds-service/src/scraper_bridge.py`: pure logic (mapping, hold
+  buffer, policy). It is unit-tested.
+- `python-odds-service/src/odds_checks.py`: `opener_sanity()` (below). It is
+  pure.
+- `python-odds-service/scraper_bridge_run.py`: the long-running process
+  (the loop, cursors, writes, heartbeat).
+- `python-odds-service/scraper_bridge_policy.json`: D24 as data (below).
+- `python-odds-service/run-scraper-bridge.ps1`: the launcher and freshness
+  watchdog. It follows the P0 watchdog pattern but checks
+  `odds-scraper/data/bridge_status.json` → `last_cycle_at`.
+- Scheduled task `LinesmithScraperBridge`: at logon plus every 5 min. The
+  operator creates it ⚑, the same way as `OddsScraper`.
+
+### 2. The loop (`scraper_bridge_run.py`)
+
+Every **30 s** (one cycle):
+
+1. **Read new scraper rows since the cursors**, read-only
+   (`scraper.db?mode=ro`). The cursors are max ids for `offers`,
+   `offer_events`, `snapshots`, `splits` and `reference_data`, stored in
+   `bridge.db` table `cursors(name PK, last_id, updated_at)`.
+   - At most 200k offers per cycle (a first start after downtime catches up
+     over several cycles).
+   - Sort by **source priority**: pinnacle, kalshi, polymarket, vsin
+     (Circa), then draftkings, fanduel, betmgm, betrivers, sleeper,
+     underdog, then the aggregators by `SOURCE_RANK`.
+2. **Every 5 min, run P3's `run_matching`** for canonical games starting in
+   the next 36 h (and those started < 6 h ago, for in-game rows under D24).
+3. **Map each offer (§3) and apply the D24 policy (§5).** Unmatched or
+   filtered rows are only **counted**. They remain on the laptop (D14).
+4. **Hold for a second reading (§4) and forward the confirmed changes.**
+   Writes go in this order, each an awaited `db.write_*` batch of ≤ 5,000
+   rows:
+   1. `write_prop_odds` (provider `scraper:<source>`);
+   2. `write_game_lines` (source `scraper:<source>`);
+   3. `write_exchange_books`;
+   4. pulls: `write_prop_pulls` / `write_game_line_pulls` from
+      `offer_events`;
+   5. `write_splits`;
+   6. `write_openers`.
+5. **Checked times:** upsert `scraper_checks(source, game_id, last_ok_at)` in
+   Supabase (§6) for every (source, game) whose endpoint had an `ok` or
+   `unchanged` snapshot this cycle.
+6. **Advance the cursors only after the writes commit.** A crash re-reads
+   rows; that is safe, because the writers are log-on-change and upserts.
+7. **Heartbeat:**
+   - write `odds-scraper/data/bridge_status.json` with `last_cycle_at`,
+     `lag_s` (now − newest snapshot bridged), the rows forwarded per table,
+     the rows held, and the rows skipped by reason;
+   - every 5 min, call `db.write_health_check_results` with
+     `{"name": "scraper_bridge", "healthy": lag_s < 600 and cycle ok, "status": "...", "raw": {…counts…}}`;
+   - once a day, write the top 200 unmatched (game, player, market, book)
+     to `odds_unresolved` with `provider_id = 'scraper'` (the existing
+     table and writer at `db.py:4045`), so the backlog is visible from the
+     app.
+
+### 3. Mapping one offer (`scraper_bridge.map_offer`)
+
+| field | rule |
+|---|---|
+| game | `offers.event_external_id` → scraper `game_links` (source, external_id) → `game_key` → `bridge.db.game_links` → (`app_sport`, `app_game_id`, `reversed`). None → skip `unmatched-game` |
+| book | `bridgeable_book(book_key)` (P2) → else skip `non-price` / `unidentified-book` |
+| game market | `game_market(market)` → (period, type). None → skip `unmapped-game-market`. `reversed` → swap `home`/`away` sides; for `sp` negate `point`; swap `tt_home`/`tt_away` |
+| prop | `prop_market_external_id` → scraper `prop_markets` (player, player_norm, stat, line) → `bridge.db.player_links (source, player_norm, app_game_id)` → subject. Key = `prop_market_key(source, stat, position)`, falling back to `prop_market_key(source, offers.market)`. None → skip `unmapped-market` / `unmatched-player` |
+| side | game: as above. Prop: `over`/`under`, else passed through (the writer's `canonical_prop_side` makes it `other`) |
+| price | `american = round(price)`; a value in (−100, 100) after rounding becomes −100 or +100 by sign (the schema's sanity check). `decimal = 1 + price/100` if price > 0 else `1 + 100/−price`, computed from the **unrounded** price |
+| checked (`observed_at`) | the offer's snapshot `fetched_at` |
+| since (`changed_at`) | `source_ts_ms` if present; else `fetched_at − cache_age_s` if the snapshot recorded an Age (Pinnacle's CDN copies, D13); else `fetched_at` |
+| is_main (game lines) | `depth.alt == false` → main; `depth.alt == true` → alternate; no `alt` flag → main when it is the book's only line for that (period, type) in the batch; if several, the pair closest to even money (the BetMGM rule, R2) |
+| extra | a whitelist copied from `depth`: `limit, version, yes_bid, yes_ask, no_bid, no_ask, yes_bid_size, yes_ask_size, bid, ask, bid_size, ask_size, volume_24h, open_interest, liquidity, mult, fantasy, one_sided, yes_only, ticker`; plus `price_alt` as `multiplier` for pick'em |
+| exchange book | Kalshi/Polymarket rows whose `depth` carries a ladder (odds-scraper `5533251`) → `ExchangeBookInput` (contract = `ticker` / `token`) |
+
+### 4. The hold buffer (B3 flap rule: "a new price counts once it holds two readings")
+
+- `pending[key] = (value, change_snapshot_id, endpoint, row)`, where `key`
+  is the app-side natural key.
+- A pending change is **confirmed** when a later `ok`/`unchanged` snapshot of
+  the same (source, endpoint) exists and no newer offer for the key arrived.
+  It is then forwarded, with its **original** times.
+- A newer offer for a pending key replaces it. If that newer value equals
+  the **last forwarded** value within `FLAP_WINDOW_SECONDS` (600, the
+  scraper's rule), both are dropped and counted as a flap.
+- A pull event for a pending key drops the pending change.
+- **Cost:** one poll interval of delay (≈ 60–75 s for direct books,
+  45–90 s for aggregators). It is recorded in the status as `hold_s`
+  (median).
+- The buffer lives in memory and is rebuilt on restart by re-reading the
+  last 10 min of offers.
+
+### 5. Policy — `scraper_bridge_policy.json` (D24 as data)
+
+```json
+{ "decision": "D24",
+  "classes": { "first_hand": {"pregame": true, "ingame": true},
+               "relay_only": {"pregame": true, "ingame": false},
+               "relay_duplicate": {"pregame": false, "ingame": false} },
+  "first_hand_sources": ["pinnacle","kalshi","polymarket","vsin","draftkings","fanduel","betmgm","betrivers","sleeper","underdog"],
+  "hot_windows_days": {"first_hand": 10, "relay_only": 10} }
+```
+
+The values above are **placeholders showing the shape**; P4's D24 sets them.
+A book is `relay_duplicate` when its `book_key` has a first-hand source in
+`first_hand_sources` (`draftkings` via comparenbet, …). Pre-game vs in-game
+is decided against `game_links.app_start`.
+
+### 6. Checked times in Supabase (`scraper_checks`)
+
+A tiny table, added to P5's migration if P5 has not shipped yet, or as its
+own additive migration:
+
+```sql
+CREATE TABLE IF NOT EXISTS scraper_checks (
+  source text NOT NULL, game_id text NOT NULL, last_ok_at timestamptz NOT NULL,
+  PRIMARY KEY (source, game_id));
+ALTER TABLE scraper_checks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY scraper_checks_read ON scraper_checks FOR SELECT USING (true);
+```
+
+- **Why:** the scraper writes a row only on change, but it re-confirms
+  every quoted price on each poll (B3 pull detection proves a key still
+  present was confirmed). Bumping every row's `fetched_at` on every poll
+  would be millions of updates a day. So a scraper row's **checked** time =
+  `max(row.fetched_at, scraper_checks.last_ok_at)` for its source and game.
+  The P8/P9 readers apply that (a documented join).
+- The bridge keeps an endpoint → games map from the offers it has seen, to
+  know which games an endpoint confirms.
+- Retention: `RETENTION_RULES` `last_ok_at < now() - interval '3 days'`.
+
+### 7. Openers (D21)
+
+- **first_seen:**
+  - When the bridge first forwards a key's **main** line for a book, it
+    writes `OpenerInput(opener_source='first_seen', opened_at=changed_at)`.
+  - **Seed on first start:** for every linked game not yet started, query
+    the scraper for the earliest `offers` row per (book, market, side) main
+    line (history since 2026-09-22) and write those as `first_seen`. This
+    is one query per game, then never again.
+- **vsin_open:** `reference_data` rows `kind='vsin_opener'` → per Nevada
+  book.
+- **an_open:** Action Network `AN Open` rows (`book_key='anopen'`) →
+  `bookmaker='anopen'`.
+- **Sanity check** — `odds_checks.opener_sanity(opener, peers) -> (flag, reason)`:
+  - It needs ≥ 3 peer books' openers for the same game, period and market.
+    Fewer → not flagged.
+  - Spread: the opener's point differs from the peers' median by more than
+    **3.0** (NFL, CFB, NBA), **1.5** (MLB run line), **1.5** (NHL puck
+    line), **1.0** (soccer); or its sign is opposite to the median's.
+  - Total: it differs from the median by more than **4.0** (NFL, CFB),
+    **8.0** (NBA), **1.5** (MLB), **1.0** (NHL, soccer).
+  - Moneyline: its implied probability differs from the peers' median by
+    more than **0.15**.
+  - Props: the line differs from the median by more than 25% of the median
+    (and ≥ 1.0).
+  - Any price with implied probability outside [0.02, 0.98].
+  - A flagged opener is stored with `check_flag=true` and the reason, and
+    is never used as "the opener" (D21).
+  - Known case (the fixture): BetMGM NV ATL −2 / 52.5 against peers
+    −6.5 / 45 → flagged (spread diff 4.5 > 3.0; total diff 7.5 > 4.0).
+
+### 8. Splits and exchange books
+
+- **Splits:** each scraper `splits` row → its game via the event link →
+  `SplitInput(market ∈ {ml, sp, tot} as stored, period 'fg', source, book,
+  kind, pcts, counts, observed_at = at)`.
+  - Sleeper pick counts are keyed to the player through `player_links`
+    (`subject_id`) with the prop key from P2.
+  - Covers stays `kind='picks'`, never money.
+- **Exchange books:** see §3.
+
+### 9. Health check — `python-odds-service/src/health_check.py` (the deploy)
+
+- `check_scraper_bridge()`, modelled on `check_harvester_scrapes()`:
+  - reads `job_health_checks` row `scraper_bridge`;
+  - **stale** if `checked_at` is older than 15 min;
+  - **unhealthy** if `healthy=false` (lag ≥ 600 s or cycle errors).
+- It is added to the results list beside `check_harvester_scrapes()`.
+- Deploy the health-check cron ⚑.
+
+---
+
+## Tests (these gate P7–P9)
+
+| test | kind | what it proves |
+|---|---|---|
+| `src/test_scraper_bridge.py` (new, hermetic → CI) | Python | **mapping:** reversed game swaps sides and negates spreads; tt_home↔tt_away; fractional price → int + exact decimal; ±99.5 → ±100; `changed_at` from `source_ts_ms` / from Age / from fetch time; is_main by `alt` flag, sole line, closest-to-even; extra whitelist; comparenbet_fair skipped. **Hold buffer:** A→B then a later reading of B → B forwarded with its own times; A→B→A within 600 s → nothing forwarded, 1 flap; A→B→C before a second reading → only C (once confirmed); a pull drops the pending change. **Policy:** a relay_duplicate row is skipped when the policy says so; in-game is decided at `app_start`. **Openers:** the BetMGM NV fixture is flagged; a peer set of 2 is not checked; a normal opener passes |
+| `src/test_odds_checks.py` (new, hermetic → CI) | Python | each threshold row of §7 at its boundary (just inside passes, just outside flags) |
+| replay test | laptop, live DB | run the bridge against a **copy** of `scraper.db` limited to one recorded hour, writing to Supabase under provider `scraper-test:*` and fake-game-free real links. Rows written equal the replay's own expected count (a script counts it independently from the same hour). Times are preserved: `prop_odds_history.observed_at` equals the source times. Then delete every `scraper-test:*` row (a cleanup script, listed in the test) |
+| heartbeat drill | laptop | stop the bridge → within 15 min `health_check` reports `scraper_bridge` STALE; start it → OK. Kill the process → the watchdog restarts it within 5 min |
+| connections | live | under a full-speed catch-up, `select count(*) from pg_stat_activity where application_name like '%bridge%'` (set `server_settings={'application_name':'scraper_bridge'}` in the bridge's pool) never exceeds 3 |
+| after start | live | within 5 min, `scraper:*` rows appear in `prop_odds` and `game_lines`; a DraftKings price on a live board changes in the app within ~2 min of changing on the site (one poll + one hold + one cycle) |
+
+**Exit criteria:**
+- the hermetic tests pass;
+- the replay test matches and is cleaned up;
+- the drills pass;
+- the bridge has run for 1 h with a green heartbeat;
+- the health check is deployed.
+
+## Background checks (never gate)
+
+- **Two days unattended:**
+  - heartbeat green;
+  - lag < 10 min;
+  - no restart loops in the watchdog log;
+  - Supabase growth inside P4's projection (`pg_database_size` morning and
+    evening).
+- **The paid-feed overlap check** (~2 weeks in): for each paid provider,
+  the share of its prop prices matched by a `scraper:*` price for the same
+  (game, player, market, line, book) within 10 min. The keep-or-cut call
+  is the operator's.
+
+## Files touched
+
+- New: the files in §1, plus `src/test_scraper_bridge.py` and
+  `src/test_odds_checks.py`.
+- Edited: `python-odds-service/src/health_check.py`,
+  `python-odds-service/src/db.py` (the `scraper_checks` upsert and
+  retention rule), `.github/workflows/ci.yml`, `docs/CURRENT.md`.
+- odds-scraper: none (the bridge only reads `scraper.db`).
