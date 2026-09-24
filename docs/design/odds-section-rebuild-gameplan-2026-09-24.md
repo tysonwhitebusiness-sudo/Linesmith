@@ -1,7 +1,9 @@
 # Odds section rebuild — gameplan (Track O)
 
-**Written 2026-09-24.** Nothing here is built. Do not start a phase without the
-operator's go. Parent plan: `scraper-bridge-and-edge-gameplan-2026-09-23.md`
+**Written 2026-09-24; revised the same day with the operator's answers.**
+Nothing here is built. **No UI is built before 1:1 detailed mockups with real
+data are approved by the operator (D16, phase OM)** — this plan is not
+approved until those mockups are. Parent plan: `scraper-bridge-and-edge-gameplan-2026-09-23.md`
 (its decisions D1–D15 apply here, especially D4 edge only where accurate, D6
 edge lives in the odds sections and not as the frame of every card, D14 never
 discard / freshest / every movement, D15 as many props and game markets as
@@ -39,23 +41,48 @@ several are broken today.
    the field unset.
 2. **Research first, odds as one section** (standing rule: pages are research,
    not betting). The odds section is its own section on each page; edge lives
-   there, never as the frame of other cards.
-3. **Every price shows its age and its source.** "12 s", "3 min", "Pinnacle as
+   there, never as the frame of other cards. **But the odds section itself is
+   built in depth, with as much detail as the data allows — researching lines
+   IS research** (operator, 2026-09-24). It works as its own part of the app,
+   not a thin appendix to the stat cards.
+3. **The sharp price is very visible wherever one exists** (operator,
+   2026-09-24). Pinnacle (props and game lines), Circa (game lines) and the
+   exchanges are shown as their own highlighted "Sharp" strip at the top of
+   every board, as a column on Scan, on every Slate game card and in every
+   market tab: the sharp price, its no-vig fair probability, and its age
+   ("Pinnacle -108 / -116 · fair 51.1% · 13 min"). Where there is no sharp
+   price the strip says so ("No sharp price at this line") — never hidden, so
+   the reader always knows whether one exists.
+4. **Every price shows its age and its source.** "12 s", "3 min", "Pinnacle as
    of 13 min ago". Stale is shown, never hidden. Pulled lines are shown as
    pulled, not as silence.
-4. **Book groups, always in this order:** Sharp (Pinnacle, Circa) · Exchanges
+5. **Book groups, always in this order:** Sharp (Pinnacle, Circa) · Exchanges
    (Kalshi, Polymarket, Novig, ProphetX) · US books (DraftKings, FanDuel,
    BetMGM, BetRivers, Caesars, Fanatics, bet365, Hard Rock, …) · Nevada books
    (Westgate, South Point, Wynn, …) · Pick'em (Underdog, Sleeper, PrizePicks).
    The user's own book is pinned and starred.
-5. **Edge only where the gates pass** (plan §7). Otherwise the edge slot says
+6. **Edge only where the gates pass** (plan §7). Otherwise the edge slot says
    WHY there is none ("no sharp price at this line"), never a guess.
-6. **Freshness is live.** The odds section refreshes itself (30–60 s) while
+7. **Freshness is live.** The odds section refreshes itself (30–60 s) while
    open; everything else on the page can stay on its current cadence.
-7. **Python computes, TypeScript renders.** Edge, fair prices, openers, pulls,
+8. **Python computes, TypeScript renders.** Edge, fair prices, openers, pulls,
    splits, latency are Python-written tables; the components read them.
 
 ## 3. The components (built once)
+
+### O-S Sharp strip (operator: the sharp price very visible)
+
+A highlighted band that heads every board and appears compact everywhere a
+price does:
+
+```
+SHARP  Pinnacle -108 / -116  fair 51.1% / 48.9%  13 min (cached)  limit $500
+       Kalshi 52–55¢ ($4.1k)  · Circa (game lines) -110 / -110  2 min
+```
+
+Compact forms: a "Sharp" column on Scan and the props tables, a sharp line on
+every Slate game card, a sharp price in each market tab. Missing sharp price:
+"No sharp price at this line" in the same place.
 
 ### O-A Price board — the bookmakers grid, rebuilt
 
@@ -79,6 +106,11 @@ Market hold at best prices: 2.1%   ·   17 books   ·   all within 90 s
 - Best price per side marked (fill chip); pulled lines struck through with
   "pulled N min ago"; moved-since-open per row; age per row.
 - `[All lines]` switches to the ladder (O-G).
+- **Latency badges** (approved idea 2, from T0): a small tag on a book's row —
+  "follows Pinnacle by ~4 min on NFL props" — measured, not assumed.
+- **Pick'em rows** (approved idea 4): Underdog and Sleeper payouts converted to
+  implied probability beside the books' — shown as a price, and as an EDGE only
+  when the gates pass.
 - The line stepper is the SAME control as the prop-analysis stepper (moving
   one moves the other).
 - Game markets use the same board with Home/Away or Over/Under columns and
@@ -93,6 +125,10 @@ Your book (FanDuel): best on the over; under -118 is 13 cents worse
 ```
 
 Short, always correct, one tap to the book (B5 "open at book" links).
+
+**Market hold meter** (approved idea 1): "Hold at one book 4.5% · at the best
+prices 1.1%" — the vig at best prices per market, beside the best price and
+on the Slate's Market hub (lowest-hold markets).
 
 ### O-C Edge (new)
 
@@ -112,11 +148,17 @@ link opens the edge log entry. The kill switch hides the whole card.
 ### O-D Line movement, rebuilt (Track L1/L2/L4)
 
 - Windows: 2 h · 6 h · 12 h · 48 h · since open; minute/5-min buckets.
-- Lines: the sharp reference (Pinnacle) and the user's book emphasised, every
-  other book as context; the consensus price optional.
+- **Book picker (operator):** choose any books to draw — one, several or all.
+  Chips per book with its move count ("DraftKings · 6 moves"), presets
+  (Sharp · My book · Most moves · All), each selected book in its own colour
+  with a legend; unselected books can stay as grey context or be hidden. The
+  sharp line is selected by default and drawn heaviest.
+- The consensus price optional.
 - Markers: opener, line changes (65.5 → 64.5 annotated, not just price), pulls
-  (a gap with a "pulled" tick), steam (3+ books same way within 30 min), the
-  first book to move.
+  (a gap with a "pulled" tick), steam (3+ books same way within 30 min), and
+  the **first mover** (approved idea 3): which book moved first on each move,
+  marked on the chart and named in the move table ("Pinnacle moved first; 5
+  books followed within 9 min").
 - Table in the drill-down: every move with its time, book, from → to.
 
 ### O-E Where the money is (Track V3)
@@ -135,11 +177,14 @@ Each row labelled by its source; never called "the public" or "sharp money",
 never presented as total handle. Props: Sleeper pick counts, Kalshi prop
 volume where it exists.
 
-### O-F Opening and closing
+### O-F Opening and closing, and closing-line research (approved idea 6)
 
 "Opened 46.5, now 42.5 (−4) — Pinnacle first to move, 2 h ahead of DraftKings."
-Per book open → now. After the game: close per book, and where our fair close
-was (research CLV).
+Per book open → now. After the game: **close per book against the result**
+(which side covered, how far the line moved toward it), the sharp close vs
+each book's close, and where our fair close was (research CLV; the same data
+feeds E3). On finished games' pages and on the team page (a team's record
+against the closing number).
 
 ### O-G Alternate-line ladder (D15)
 
@@ -148,10 +193,19 @@ the best price per line marked, plus the sharp fair probability curve across
 lines where the sharp book prices alternates. Answers "where is the best number
 for the line I want", and shows how deep each book's menu is.
 
-### O-H Market depth and limits
+### O-H Market depth, limits and the exchange order book (approved idea 7)
 
 Pinnacle's stated limit, exchange bid/ask and size, book count — a quiet
 "confidence" strip under the board (it is also what the edge gates use).
+Expanding it shows an **exchange order book mini** for Kalshi / Polymarket:
+the bid and ask ladders with sizes, traded volume, and open interest.
+
+### O-K Coverage map (approved idea 5, D15)
+
+Per player (and per game): every market any source prices, how many books
+price each one, which books offer it at all, and which lines exist — a grid
+of markets × book groups. Shows where the menu is deep, where one book is
+alone, and what the app does not collect yet (feeds §4d G7).
 
 ### O-I Freshness strip
 
@@ -217,20 +271,15 @@ section is the hub.
   pulled line, big money/bets split) become flags like the others.
 - **Alerts** (with Your lines): price and pull alerts.
 
-## 5. Other ideas (for the operator to pick from)
+## 5. Operator's answers (2026-09-24)
 
-1. **Market hold meter** — the vig at best prices per market ("shopping takes
-   hold from 4.5% to 1.1%").
-2. **Book latency badges** from T0 ("FanDuel follows Pinnacle by ~4 min on NFL
-   props"), shown on the board.
-3. **First mover** — which book moved first on each move (steam origin).
-4. **Pick'em vs books** — Underdog/Sleeper implied probability beside the
-   books'; only as an edge when the gates pass.
-5. **Coverage map (D15)** — per player: every market, how many books price it,
-   who offers it at all.
-6. **Closing-line research** — for finished games, how each line closed vs the
-   result, per book (feeds E3 too).
-7. **Exchange order book mini** — Kalshi/Polymarket bid/ask depth for a market.
+All seven ideas approved and wired into the components above: market hold
+meter (O-B, Slate Market), book latency badges (O-A, from T0), first mover
+(O-D, O-F, Slate Movers), pick'em vs books (O-A rows; O-C only when gated),
+coverage map (O-K), closing-line research (O-F, finished games, team page),
+exchange order book mini (O-H). Also: the sharp price very visible (O-S, §2.3);
+line movement with a book picker (O-D); the odds section built in depth
+(§2.2).
 
 ## 6. Data the rebuild needs (and where it comes from)
 
@@ -247,10 +296,16 @@ section is the hub.
 
 ## 7. Phases
 
+**The mockup-first rule (D16).** No UI is built until the operator has
+approved 1:1 detailed mockups — the real page layouts, at desktop and phone
+widths, filled with REAL data (a frozen snapshot of tonight's games from the
+scraper and the app) — and changes are made on the mockups, not in the build.
+
 | phase | what | depends on |
 |---|---|---|
-| **O0** | Fix what is broken now: the player page's "No game line yet"; raw market keys on the game page; book display names (`parx parx`, casing); a best price with no book name | nothing — can run any time |
-| **O1** | Build the components (O-A … O-I) on the kit, shown on `/kit` in every state; wire to today's data so they render now | O0 |
+| **OM** | **1:1 detailed mockups with real data**: the player page odds section, the game page Lines, the Slate (Games cards, Movers, Market hub, Props/Scan columns), phone widths; interactive where the design is (market tabs, line stepper, book picker, period tabs, All lines). Operator reviews, changes are made on the mockups, then approves — and only then is this plan approved | nothing |
+| **O0** | Fix what is broken now (bug fixes that do not change the design): the player page's "No game line yet"; raw market keys on the game page; book display names (`parx parx`, casing); a best price with no book name | nothing — can run any time |
+| **O1** | Build the approved components (O-S, O-A … O-K) on the kit, shown on `/kit` in every state; wire to today's data so they render now | O0 |
 | **O2** | Player page odds section rebuild | O1 |
 | **O3** | Game page Lines rebuild (periods, Vegas board, props table upgrade) | O1 |
 | **O4** | Slate: Games cards, Movers, Market section, Props/Scan columns | O1, B4 for the full data |
@@ -259,7 +314,7 @@ section is the hub.
 | **O7** | Where the money is (V3) and splits on the Slate | V1–V2 via bridge |
 | **O8** | Your lines alerts, bet slip best book, odds research flags | O2–O4 |
 
-O0–O3 can start before the bridge: the components render today's thinner
+After OM is approved, O0–O3 can start before the bridge: the components render today's thinner
 data and fill up as B4 lands. O6 waits for E1. Every phase ends with the
 standing checks: render at 1440 and 400 on every sport (a fresh tab), the kit
 guards, and `tests/scan-no-edge.test.ts` / `tests/slate-shell.test.ts`

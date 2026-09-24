@@ -32,6 +32,7 @@ kept 48 h). Its own resume notes: `HANDOFF.md`, `SOURCE_HANDOFF.md`.
 | D13 | **Pinnacle's CDN-cached prices (up to ~15 min old, `max-age=905`) are acceptable** — accounted for, not rejected. Price time = `Last-Modified` (or fetch time − `Age`). The edge compares Pinnacle with the soft book's price **at that same instant** (from the soft book's minute-level history), then shows it only if neither the soft price nor the fast sharp sources (Kalshi ~15 s, Novig/ProphetX) have moved since. The page shows the reference's age ("Pinnacle as of 13 min ago"). |
 | D14 | **Never discard useful data; keep it as fresh as it is useful; track every useful movement for everything we can** (operator, 2026-09-24). Every price change, pull, return, split and timestamp is kept — the laptop Parquet history forever, Supabase in its hot window with older rows moved to the corpus (moved, never deleted). Nothing is thinned, sampled or dropped to save space or effort without the operator's say; where a cadence or storage limit is a trade-off, it is written down with its cost and the operator decides. Freshness problems (writer lag, slow tiers, cached copies) are measured and shown, not hidden. |
 | D15 | **Master goal: as many player props and game props to analyze as possible** (operator, 2026-09-24) — every market, line and alternate any source prices, for every sport we cover, first-hand where we can read it. Coverage gaps are tracked as work (§4d), not accepted as limits. |
+| D16 | **Mockup first** (operator, 2026-09-24): no UI or design is built without 1:1 detailed mockups — real layouts, real data, desktop and phone — that the operator has approved. Changes are made on the mockups. A plan with UI in it is approved only with its mockups. |
 
 ## 2. The three systems today
 
@@ -522,9 +523,11 @@ Confidence (2026-09-23): timing 4/10 today. Edge as originally planned ~5/10
 
 The app's odds sections rebuilt for ~20 books, minute-level movement, pulls,
 openers, splits and edge: `docs/design/odds-section-rebuild-gameplan-2026-09-24.md`
-(today's state measured on a prod build, the shared components O-A…O-I, where
-each goes on the player / game / team pages and the Slate, phases O0–O8). O0
-(fix what is broken now) and O1–O3 can start before the bridge.
+(today's state measured on a prod build; the sharp price made very visible;
+the shared components O-S, O-A…O-K incl. the seven approved ideas; where each
+goes on the player / game / team pages and the Slate; phases OM, O0–O8). **OM
+— 1:1 mockups with real data — comes first (D16); nothing in Track O is built
+before the operator approves them.**
 
 ## 8. Other tracks and routed findings
 
