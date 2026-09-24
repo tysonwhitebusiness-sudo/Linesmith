@@ -101,6 +101,10 @@ player, and who has been bet on more, as a %. **Measured 2026-09-23:**
 - **Not checked:** state regulators' monthly handle by operator (aggregate,
   never per game); other public splits sites.
 
+**Decided (operator, 2026-09-23): implement all three alternatives** — VSiN
+splits (one book's bets % vs money %), Kalshi volume, Polymarket volume. Each
+is shown labelled by its source; none is presented as all-book handle.
+
 | phase | what |
 |---|---|
 | V1 | Store VSiN splits snapshots (every 5–10 min, pre-game) with game matching |
