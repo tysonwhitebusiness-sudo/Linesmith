@@ -209,4 +209,78 @@ python scraper_match_run.py [--sports mlb,nfl,...] [--report] [--sample 50]
 
 ## Result
 
-*(linked shares per sport, MLB fallback decision, hand-check outcome)*
+**Closed 2026-09-24 ~23:15 UTC.** Built as specified, with the notes below.
+
+**Live report** (`scraper_match_run.py --report --sample 50`, 23:05 UTC,
+151 s, after the MLB fallback):
+
+| sport | canon games | linked | ambiguous | no game in window | other (no name match) |
+|---|---|---|---|---|---|
+| cfb | 432 | 171 (39.6%) | 0 | 0 | 261 |
+| mlb | 66 | 12 (18.2%) | 0 | 52 | 2 |
+| nba | 42 | 1 (2.4%) | 0 | 41 | 0 |
+| nfl | 32 | 32 (100%) | 0 | 0 | 0 |
+| nhl | 83 | 55 (66.3%) | 0 | 28 | 0 |
+| soccer_mls | 25 | 16 (64.0%) | 0 | 1 | 8 |
+| tennis_atp | 24 | 5 (20.8%) | 0 | 12 | 7 |
+| tennis_wta | 14 | 4 (28.6%) | 0 | 7 | 3 |
+
+1,383 canonical games were in leagues the app does not cover.
+
+| sport | prop rows | linked (% of rows) | not on roster | ambiguous |
+|---|---|---|---|---|
+| cfb | 2,618,873 | 89.4% | 269,973 | 7,551 |
+| mlb | 127,897 | **98.3%** (88.7% before the fallback) | 2,216 | 0 |
+| nfl | 2,608,455 | 99.6% | 9,722 | 5 |
+| nhl | 142 | 0% (no roster, see below) | 142 | 0 |
+| soccer_mls | 403,427 | 95.8% | 15,778 | 1,334 |
+| tennis_atp / wta | 67 / 42 | 100% / 83.3% | 0 / 7 | 0 |
+
+- **Why games miss:**
+  - `no-game-in-window` is the app's own horizon: MLB's loader holds
+    today's slate only, NBA's season has not started, and ESPN's tennis
+    lists only some matches. The bridge (P6) runs for games in the next
+    36 h, which are in the app's window.
+  - CFB's 261 name misses are mostly FCS games that are not on ESPN's FBS
+    scoreboard (Brown–Harvard, Duquesne–Rio Grande), plus name forms no
+    safe rule bridges ("Sam Houston State" vs "Sam Houston Bearkats").
+    Misses are accepted; no rule was loosened to catch them.
+- **MLB roster fallback: added** (88.7% < 95%). The snapshot roster is the
+  ~20 tracked players a game, **with no positions**, so the fallback also
+  fills a missing position from StatsAPI. Without it, P2's
+  position-dependent labels ("Strikeouts") could never resolve for MLB.
+  98.3% after.
+- **NHL:** `load_nhl_games` has no roster by design, so NHL players cannot
+  link. It is 142 rows today (preseason). Routed to P6: add an api-web
+  roster fetch in `load_app_games('nhl')` before NHL props matter.
+- **Hand check (`results/p3-sample-2026-09-24.csv`): zero wrong links**
+  in 170 games and 215 players. That is 50 per sport, or every link where
+  a sport had fewer (NBA 1, ATP 5, WTA 4).
+  - Games read side by side, including "Louisiana-Monroe" → UL Monroe,
+    "Dallas vs Los Angeles FC" → FC Dallas vs LAFC, "Wang Xinyu" /
+    "Xinyu Wang", and swapped tennis orientations.
+  - Of the players, 208 are identical names. The 7 others are the same
+    person: Gio/Giovanni Richardson, Benjamin/Ben Rice, Sam/Samuel Junqua,
+    Baker-Whiting, Ajani "Jay" Fortune, Dorde/Djordje Mihailovic,
+    Cheikh/Cheick Sabaly.
+- **Rule changes and why:**
+  - **Team matching** lives in `entity_resolution` (`team_side_match`,
+    `team_words_match`, `surname_initial_matches`, `match_team_pair`), and
+    the harvester's `_match_game` calls it with its pass order unchanged
+    (`test_harvester_scrape` passes). Where the two sides matched by
+    different rules, the pair's method is the **weaker** side, so case (4)
+    tests the abbreviation rule with the other side exact.
+  - **Tennis:** the scraper's `person_match` fails "Sinner J." (it reads
+    "j" as the surname). `person_names_match` is that rule **or** the
+    harvester's "Surname F." parse. It is ported, not imported, so CI can
+    run it without the scraper repo.
+  - **"Man City":** no rule bridged it, so `TEAM_NAME_ALIASES` gains an
+    anchored `^man` → "manchester". "Man Utd" becomes "manchester
+    united" and still never matches City (tested).
+- **Tests:** `test_scraper_match` 21/21 (a CI step) and
+  `test_harvester_scrape` pass.
+- **Background check started:** the Windows task `OddsBridgeMatchReport`
+  runs the report daily at 05:15 local into
+  `odds-scraper\data\match_report.log` for 7 days. It watches for a
+  sport's linked share dropping more than 5 points. Delete the task after
+  2026-10-01, or when P6 schedules the report.

@@ -1,0 +1,386 @@
+kind,sport,scraper_key,scraper_names,scraper_start,app_names,app_start,method,detail
+game,cfb,g_e12740dc7a7023e641f7dc01,Florida vs Ole Miss,2026-09-26 17:00:00.000000,Florida Gators vs Ole Miss Rebels,2026-09-26T19:30Z,contain,reversed=0 delta_min=-150.0
+game,cfb,g_18b99ee37ea4b92ff40a841a,Florida International vs New Mexico State,2026-10-08 00:30:00.000000,Florida International Panthers vs New Mexico State Aggies,2026-10-07T23:30Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_f3d98fe88a85c6e64f313e1d,Kent St. vs Ball St.,2026-09-26 17:00:00.000000,Kent State Golden Flashes vs Ball State Cardinals,2026-09-26T16:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_70fe965c3709cc74298c25ee,Jacksonville State Gamecocks vs Middle Tennessee Blue Raiders,2026-09-26 23:00:00.000000,Jacksonville State Gamecocks vs Middle Tennessee Blue Raiders,2026-09-26T23:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_f225e76fffdc50fac8e9732f,West Virginia Mountaineers vs Oklahoma State Cowboys,2026-09-26 23:00:00.000000,West Virginia Mountaineers vs Oklahoma State Cowboys,2026-09-26T23:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_40eabc94f80d926ce573c147,Sacramento St vs Massachusetts,2026-09-27 01:00:00.000000,Sacramento State Hornets vs Massachusetts Minutemen,2026-09-27T01:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_33bcb368b56dee652857d391,Ball St. vs Toledo,2026-10-03 17:00:00.000000,Ball State Cardinals vs Toledo Rockets,2026-10-03T18:00Z,contain,reversed=0 delta_min=-60.0
+game,cfb,g_5c063e52e6e76be0b320b9f2,Mississippi State vs Alabama,2026-10-03 05:00:00.000000,Mississippi State Bulldogs vs Alabama Crimson Tide,2026-10-03T04:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_03a659c8bdffe25d0c502a71,Temple vs Army,2026-09-25 20:00:00.000000,Temple Owls vs Army Black Knights,2026-09-25T20:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_dd7a3f33bd62b5772ae7303c,USC Trojans vs Oregon Ducks,2026-09-26 23:30:00.000000,USC Trojans vs Oregon Ducks,2026-09-26T23:30Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_bfa7938d9b197ad074b14227,UTSA vs Colorado St.,2026-09-26 17:00:00.000000,UTSA Roadrunners vs Colorado State Rams,2026-09-26T16:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_fe5287b51f3ec4a479086632,Louisiana-Monroe vs Florida Atlantic,2026-09-27 00:00:00.000000,UL Monroe Warhawks vs Florida Atlantic Owls,2026-09-27T00:00Z,abbr,reversed=0 delta_min=0.0
+game,cfb,g_4f0da07d33947614ab13b3d1,New Mexico St. vs New Mexico,2026-09-26 19:30:00.000000,New Mexico State Aggies vs New Mexico Lobos,2026-09-26T19:30Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_c0cdfa1351ff3011c853c7cc,Texas St. vs Incarnate Word,2026-09-26 22:00:00.000000,Texas State Bobcats vs Incarnate Word Cardinals,2026-09-26T22:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_6d921e23e8f1a32fc1df8336,Utah State Aggies vs Troy Trojans,2026-09-26 23:30:00.000000,Utah State Aggies vs Troy Trojans,2026-09-26T23:30Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_86b4cab194cb35fac68d7a55,James Madison vs Marshall,2026-10-03 17:00:00.000000,James Madison Dukes vs Marshall Thundering Herd,2026-10-03T19:45Z,contain,reversed=0 delta_min=-165.0
+game,cfb,g_82f94658756e6d71ce7e8868,Kent State vs Ball State,2026-09-26 16:00:00.000000,Kent State Golden Flashes vs Ball State Cardinals,2026-09-26T16:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_094a68d604fa575c291437e4,Michigan Wolverines vs Iowa Hawkeyes,2026-09-26 19:30:00.000000,Michigan Wolverines vs Iowa Hawkeyes,2026-09-26T19:30Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_3058b0abaab2261de59886a8,New Mexico St. vs Western Kentucky,2026-10-02 00:00:00.000000,New Mexico State Aggies vs Western Kentucky Hilltoppers,2026-10-02T00:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_5448bf411919850d339773fd,Penn State Nittany Lions vs Wisconsin Badgers,2026-09-26 21:00:00.000000,Penn State Nittany Lions vs Wisconsin Badgers,2026-09-26T21:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_e4fa9b896e1485b4bacc72ad,UNLV vs California,2026-10-03 20:30:00.000000,UNLV Rebels vs California Golden Bears,2026-10-03T19:30Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_34b02734d717ee4773de4396,Penn ST Nittany Lions vs Wisconsin Badgers,2026-09-26 21:00:00.000000,Penn State Nittany Lions vs Wisconsin Badgers,2026-09-26T21:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_984b777ca17f33de7a2fe542,Mississippi State Bulldogs vs Missouri Tigers,2026-09-26 23:45:00.000000,Mississippi State Bulldogs vs Missouri Tigers,2026-09-26T23:45Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_ad7c60bf9c484a6844ade8df,Texas Tech vs Sam Houston,2026-09-26 16:00:00.000000,Texas Tech Red Raiders vs Sam Houston Bearkats,2026-09-26T16:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_db18b4cc432530bc30690757,Western Kentucky Hilltoppers vs Mercyhurst Lakers,2026-09-26 23:00:00.000000,Western Kentucky Hilltoppers vs Mercyhurst Lakers,2026-09-26T23:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_1d3853166fb7427f4db2f555,Florida Atlantic vs Texas Southern,2026-10-03 23:00:00.000000,Florida Atlantic Owls vs Texas Southern Tigers,2026-10-03T22:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_963669724e52665b55f110b9,Fresno St. vs Rice,2026-09-27 02:00:00.000000,Fresno State Bulldogs vs Rice Owls,2026-09-27T02:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_4828e91be60b7e96098f3f74,Tennessee Volunteers vs Auburn Tigers,2026-10-03 19:30:00.000000,Tennessee Volunteers vs Auburn Tigers,2026-10-03T19:30Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_1f52c0742b5bfe3f61e33815,Ohio State vs Illinois,2026-09-26 16:00:00.000000,Ohio State Buckeyes vs Illinois Fighting Illini,2026-09-26T16:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_11a11e33a3ee11e6165d3b00,Tulsa vs North Texas,2026-10-02 02:00:00.000000,Tulsa Golden Hurricane vs North Texas Mean Green,2026-10-02T01:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_878d5bc0f96cb84bd582f257,Wake Forest vs Stanford,2026-10-03 17:00:00.000000,Wake Forest Demon Deacons vs Stanford Cardinal,2026-10-03T16:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_ed53edde421efa29e08fa42e,Akron vs UNLV,2026-09-26 16:00:00.000000,Akron Zips vs UNLV Rebels,2026-09-26T16:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_e907558e7535974a52cd75f1,Georgia State Panthers vs Northern Illinois Huskies,2026-09-26 18:00:00.000000,Georgia State Panthers vs Northern Illinois Huskies,2026-09-26T18:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_7d73e5425192c47447a10fa9,Bowling Green Falcons vs South Florida Bulls,2026-09-26 21:00:00.000000,Bowling Green Falcons vs South Florida Bulls,2026-09-26T21:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_ceddd35e9844603e325b7f63,North Texas vs Houston Christian,2026-09-27 00:30:00.000000,North Texas Mean Green vs Houston Christian Huskies,2026-09-26T23:30Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_6227e45fb36deb2e1b52fdfa,Charlotte 49ers vs Louisiana Ragin Cajuns,2026-09-26 22:30:00.000000,Charlotte 49ers vs Louisiana Ragin' Cajuns,2026-09-26T22:30Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_cef16d00ae05a8c0f8dd8625,ULM vs Florida Atlantic,2026-09-27 00:00:00.000000,UL Monroe Warhawks vs Florida Atlantic Owls,2026-09-27T00:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_bdd6d0b9b8def73e9e42b22d,Rutgers vs Howard,2026-09-25 23:00:00.000000,Rutgers Scarlet Knights vs Howard Bison,2026-09-25T23:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_a266bbe77d44b697edeb6aac,Miami (OH) vs Bowling Green,2026-10-03 17:00:00.000000,Miami (OH) RedHawks vs Bowling Green Falcons,2026-10-03T19:30Z,contain,reversed=0 delta_min=-150.0
+game,cfb,g_ae1f3752e61e87741715dc9b,Florida State Seminoles vs Central Arkansas Bears,2026-09-26 19:00:00.000000,Florida State Seminoles vs Central Arkansas Bears,2026-09-26T19:00Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_3b9f558639f0a0631b414067,Colorado St. vs Oregon St.,2026-10-03 22:00:00.000000,Colorado State Rams vs Oregon State Beavers,2026-10-03T22:00Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_aa38b170862f095c0fd50819,Washington State vs Fresno State,2026-10-04 02:30:00.000000,Washington State Cougars vs Fresno State Bulldogs,2026-10-04T01:30Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_9c81807ab250a778d9c8ce76,UCF Knights vs TCU Horned Frogs,2026-09-26 19:30:00.000000,UCF Knights vs TCU Horned Frogs,2026-09-26T19:30Z,exact,reversed=0 delta_min=0.0
+game,cfb,g_79439079b69c56c6ea66e6e5,North Dakota State vs Wyoming,2026-10-03 20:30:00.000000,North Dakota State Bison vs Wyoming Cowboys,2026-10-03T19:30Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_46b18c70f9d8be587d99f7ab,Washington St. vs Fresno St.,2026-10-04 01:30:00.000000,Washington State Cougars vs Fresno State Bulldogs,2026-10-04T01:30Z,contain,reversed=0 delta_min=0.0
+game,cfb,g_2524524ae9f2bfeebe51b749,Kent St. vs Ohio,2026-10-03 17:00:00.000000,Kent State Golden Flashes vs Ohio Bobcats,2026-10-03T19:30Z,contain,reversed=0 delta_min=-150.0
+game,cfb,g_82b6a1ebfba0dbef4b62c21d,Florida St. vs Virginia,2026-10-03 17:00:00.000000,Florida State Seminoles vs Virginia Cavaliers,2026-10-03T19:30Z,contain,reversed=0 delta_min=-150.0
+game,cfb,g_e82bd49b73a97249b26eceb5,San Diego State vs Texas State,2026-10-04 03:30:00.000000,San Diego State Aztecs vs Texas State Bobcats,2026-10-04T02:30Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_f3a0d0fee43506a583409348,Ohio St. vs Illinois,2026-09-26 17:00:00.000000,Ohio State Buckeyes vs Illinois Fighting Illini,2026-09-26T16:00Z,contain,reversed=0 delta_min=60.0
+game,cfb,g_3825dc5731bdfd1cf5438735,Iowa vs Ohio St.,2026-10-03 17:00:00.000000,Iowa Hawkeyes vs Ohio State Buckeyes,2026-10-03T19:30Z,contain,reversed=0 delta_min=-150.0
+player,cfb,sleeper:pj martin,PJ Martin,,PJ Martin (USA RB) id=espn:football:5124334,USA@UK,exact,
+player,cfb,steezanomics:gio richardson,Gio Richardson,,Giovanni Richardson (ARIZ WR) id=espn:football:5217700,ARIZ@WSU,last_team,
+player,cfb,comparenbet:luke harpring,Luke Harpring,,Luke Harpring (FLA TE) id=espn:football:5218907,MISS@FLA,exact,
+player,cfb,comparenbet:chris marshall,Chris Marshall,,Chris Marshall (ARK WR) id=espn:football:4717430,TLSA@ARK,exact,
+player,cfb,underdog:landen chambers,Landen Chambers,,Landen Chambers (UCF RB) id=espn:football:5078144,TCU@UCF,exact,
+player,cfb,betrivers:caden durham,Caden Durham,,Caden Durham (LSU RB) id=espn:football:5079379,TA&M@LSU,exact,
+player,cfb,steezanomics:deuce lawrence,Deuce Lawrence,,Deuce Lawrence (WAKE RB) id=espn:football:5382529,WAKE@LOU,exact,
+player,cfb,comparenbet:keenan phillips,Keenan Phillips,,Keenan Phillips (USA RB) id=espn:football:5295070,USA@UK,exact,
+player,cfb,steezanomics:mason mckenzie,Mason McKenzie,,Mason McKenzie (BC QB) id=espn:football:5307005,VT@BC,exact,
+player,cfb,comparenbet:titus myers,Titus Myers,,Titus Myers (AKR WR) id=espn:football:5295925,UNLV@AKR,exact,
+player,cfb,sleeper:keyan burnett,Keyan Burnett,,Keyan Burnett (UNLV TE) id=espn:football:4685289,UNLV@AKR,exact,
+player,cfb,comparenbet:cale hellums,Cale Hellums,,Cale Hellums (ARMY QB) id=espn:football:5150297,ARMY@TEM,exact,
+player,cfb,comparenbet:dajaun riggs,Dajaun Riggs,,Da'Jaun Riggs (ORE RB) id=espn:football:5146711,ORE@USC,exact,
+player,cfb,steezanomics:blaze kamoku,Blaze Kamoku,,Blaze Kamoku (HAW WR) id=espn:football:5218880,HAW@WYO,exact,
+player,cfb,comparenbet:decker degraaf,Decker Degraaf,,Decker DeGraaf (WASH TE) id=espn:football:5079373,MINN@WASH,exact,
+player,cfb,betrivers:cam edwards,Cam Edwards,,Cam Edwards (MSU RB) id=espn:football:5086034,NEB@MSU,exact,
+player,cfb,betmgm:tony diaz,Tony Diaz,,Tony Diaz (IOWA WR) id=espn:football:5300856,IOWA@MICH,exact,
+player,cfb,comparenbet:zay robinson,Zay Robinson,,Zay Robinson (PSU WR) id=espn:football:5296212,WIS@PSU,exact,
+player,cfb,sleeper:jayce freeman,Jayce Freeman,,Jayce Freeman (TEM WR) id=espn:football:5087747,ARMY@TEM,exact,
+player,cfb,comparenbet:jarvis green,Jarvis Green,,Jarvis Green (CLEM RB) id=espn:football:5093141,CLEM@CAL,exact,
+player,cfb,pinnacle:isaiah horton,Isaiah Horton,,Isaiah Horton (TA&M WR) id=espn:football:4685383,TA&M@LSU,exact,
+player,cfb,steezanomics:josh manning,Josh Manning,,Josh Manning (KSU WR) id=espn:football:4921113,KSU@CIN,exact,
+player,cfb,steezanomics:terrence smith,Terrence Smith Jr.,,Terrence Smith Jr. (CSU WR) id=espn:football:5193168,CSU@UTSA,exact,
+player,cfb,steezanomics:radarious jackson,Radarious Jackson,,Radarious Jackson (TENN WR) id=espn:football:5195481,TEX@TENN,exact,
+player,cfb,fanduel:lawayne mccoy,Lawayne McCoy,,Lawayne McCoy (LOU WR) id=espn:football:5086096,WAKE@LOU,exact,
+player,cfb,steezanomics:latrelle murrell,Latrelle Murrell,,Latrelle Murrell (KENN RB) id=espn:football:5224714,KENN@ARST,exact,
+player,cfb,steezanomics:derek meadows,Derek Meadows,,Derek Meadows (ALA WR) id=espn:football:5143923,SC@ALA,exact,
+player,cfb,comparenbet:kam davis,Kam Davis,,Kam Davis (LIB RB) id=espn:football:5079364,LIB@CCU,exact,
+player,cfb,steezanomics:dj darling,DJ Darling,,DJ Darling (UNM WR) id=espn:football:5282659,UNM@NMSU,exact,
+player,cfb,comparenbet:kamario taylor,Kamario Taylor,,Kamario Taylor (MSST QB) id=espn:football:5177084,MIZ@MSST,exact,
+player,cfb,pinnacle:chrishon mccray,Chrishon McCray,,Chrishon McCray (MSU WR) id=espn:football:4869599,NEB@MSU,exact,
+player,cfb,betrivers:marquis johnson,Marquis Johnson,,Marquis Johnson (MSST WR) id=espn:football:5076106,MIZ@MSST,exact,
+player,cfb,steezanomics:ty robinson,Ty Robinson,,Ty Robinson (ILL WR) id=espn:football:4689721,ILL@OSU,exact,
+player,cfb,underdog:nick minicucci,Nick Minicucci,,Nick Minicucci (DEL QB) id=espn:football:5153846,DEL@UVA,exact,
+player,cfb,steezanomics:jamarion mcdougle,Jamarion McDougle,,Jamarion McDougle (BALL WR) id=espn:football:5222761,BALL@KENT,exact,
+player,cfb,comparenbet:will henderson,Will Henderson,,Will Henderson III (UTSA RB) id=espn:football:5223167,CSU@UTSA,exact,
+player,cfb,pinnacle:gavin freeman,Gavin Freeman,,Gavin Freeman (BAY WR) id=espn:football:4896289,COLO@BAY,exact,
+player,cfb,steezanomics:ladon bryant,La'Don Bryant,,La'Don Bryant (NIU WR) id=espn:football:5193292,NIU@GAST,exact,
+player,cfb,betrivers:brandon inniss,Brandon Inniss,,Brandon Inniss (OSU WR) id=espn:football:4870835,ILL@OSU,exact,
+player,cfb,comparenbet:cameron seldon,Cameron Seldon,,Cameron Seldon (USF WR) id=espn:football:4870941,USF@BGSU,exact,
+player,cfb,steezanomics:parker livingstone,Parker Livingstone,,Parker Livingstone (OU WR) id=espn:football:5079556,OU@UGA,exact,
+player,cfb,underdog:jamal roberts,Jamal Roberts,,Jamal Roberts (MIZ RB) id=espn:football:4921116,MIZ@MSST,exact,
+player,cfb,comparenbet:marshaun brown,Marshaun Brown,,Marshaun Brown (NEV WR) id=espn:football:5103836,AFA@NEV,exact,
+player,cfb,steezanomics:devin mccuin,Devin McCuin,,Devin McCuin (OSU WR) id=espn:football:5076952,ILL@OSU,exact,
+player,cfb,fanduel:arch manning,Arch Manning,,Arch Manning (TEX QB) id=espn:football:4870906,TEX@TENN,exact,
+player,cfb,underdog:owen carey,Owen Carey,,Owen Carey (TLSA PK) id=espn:football:5326901,TLSA@ARK,exact,
+player,cfb,underdog:gabe burkle,Gabe Burkle,,Gabe Burkle (PSU TE) id=espn:football:4869519,WIS@PSU,exact,
+player,cfb,underdog:kd jones,KD Jones,,KD Jones (OKST RB) id=espn:football:5207641,OKST@WVU,exact,
+player,cfb,underdog:devin mccuin,Devin McCuin,,Devin McCuin (OSU WR) id=espn:football:5076952,ILL@OSU,exact,
+player,cfb,sleeper:devin roche,Devin Roche,,Devin Roche (ODU RB) id=espn:football:4922993,JMU@ODU,exact,
+game,mlb,g_2d8d5e1a07e667504ffcb3d1,Los Angeles Dodgers vs San Diego Padres,2026-09-25 02:10:00.000000,Los Angeles Dodgers vs San Diego Padres,2026-09-25T02:10:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_06497fd60b212f5d9dea7c87,Chicago Cubs vs Miami Marlins,2026-09-24 18:20:00.000000,Chicago Cubs vs Miami Marlins,2026-09-24T18:20:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_b004ce51021acab2cea6219b,Texas Rangers vs New York Mets,2026-09-24 18:35:00.000000,Texas Rangers vs New York Mets,2026-09-24T18:35:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_a2cd0bd88285d3a5cb8df930,Pittsburgh Pirates vs St. Louis Cardinals,2026-09-24 16:35:00.000000,Pittsburgh Pirates vs St. Louis Cardinals,2026-09-24T16:35:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_eac4a71fced1507d2a10ac15,New York Yankees vs Tampa Bay Rays,2026-09-24 23:05:00.000000,New York Yankees vs Tampa Bay Rays,2026-09-24T23:05:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_bdcbfcf688b2f25a55a53538,Boston Red Sox vs Cleveland Guardians,2026-09-24 22:45:00.000000,Boston Red Sox vs Cleveland Guardians,2026-09-24T22:45:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_f680e066dfe3a799d01f25ea,Kansas City Royals vs Chicago White Sox,2026-09-24 18:10:00.000000,Kansas City Royals vs Chicago White Sox,2026-09-24T18:10:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_81fdd33774603f5fb45f44e9,Atlanta Braves vs Cincinnati Reds,2026-09-24 23:15:00.000000,Atlanta Braves vs Cincinnati Reds,2026-09-24T23:15:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_9cf2a91f01364fb7bc1f84b8,Seattle Mariners vs Los Angeles Angels,2026-09-25 01:40:00.000000,Seattle Mariners vs Los Angeles Angels,2026-09-25T01:40:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_88afe01f2611ce29864d111d,Colorado Rockies vs Arizona Diamondbacks,2026-09-24 19:10:00.000000,Colorado Rockies vs Arizona Diamondbacks,2026-09-24T19:10:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_f2dc0ad3d2fadad6bbaa2958,Athletics vs Houston Astros,2026-09-25 01:40:00.000000,Athletics vs Houston Astros,2026-09-25T01:40:00Z,exact,reversed=0 delta_min=0.0
+game,mlb,g_084e587cb167f7cadeb41c11,Philadelphia Phillies vs Milwaukee Brewers,2026-09-24 22:05:00.000000,Philadelphia Phillies vs Milwaukee Brewers,2026-09-24T22:05:00Z,exact,reversed=0 delta_min=0.0
+player,mlb,4codds:will smith,WILL SMITH,,Will Smith (LAD C) id=669257,SD@LAD,exact,
+player,mlb,steezanomics:isiah kinerfalefa,Isiah Kiner-Falefa,,Isiah Kiner-Falefa (BOS 2B) id=643396,CLE@BOS,exact,
+player,mlb,sleeper:jose siri,Jose Siri,,Jose Siri (LAA LF) id=642350,LAA@SEA,exact,
+player,mlb,steezanomics:mookie betts,Mookie Betts,,Mookie Betts (LAD SS) id=605141,SD@LAD,exact,
+player,mlb,4codds:jake mccarthy,JAKE MCCARTHY,,Jake McCarthy (COL LF) id=664983,AZ@COL,exact,
+player,mlb,draftkings:pedro ramirez,Pedro Ramirez,,Pedro Ramírez (CHC 2B) id=699393,MIA@CHC,exact,
+player,mlb,underdog:corbin carroll,Corbin Carroll,,Corbin Carroll (AZ RF) id=682998,AZ@COL,exact,
+player,mlb,fanduel:jj wetherholt,JJ Wetherholt,,JJ Wetherholt (STL 2B) id=802139,STL@PIT,exact,
+player,mlb,betmgm:cam smith,Cam Smith,,Cam Smith (HOU RF) id=701358,HOU@ATH,exact,
+player,mlb,underdog:hunter goodman,Hunter Goodman,,Hunter Goodman (COL C) id=696100,AZ@COL,exact,
+player,mlb,4codds:manny machado,MANNY MACHADO,,Manny Machado (SD 3B) id=592518,SD@LAD,exact,
+player,mlb,pinnacle:patrick bailey,Patrick Bailey,,Patrick Bailey (CLE C) id=672275,CLE@BOS,exact,
+player,mlb,betmgm:jake burger,Jake Burger,,Jake Burger (TEX 1B) id=669394,NYM@TEX,exact,
+player,mlb,comparenbet:john rave,John Rave,,John Rave (KC RF) id=670231,CWS@KC,exact,
+player,mlb,steezanomics:bryan torres,Bryan Torres,,Bryan Torres (STL LF) id=663494,STL@PIT,exact,
+player,mlb,underdog:ezequiel tovar,Ezequiel Tovar,,Ezequiel Tovar (COL SS) id=678662,AZ@COL,exact,
+player,mlb,draftkings:brett sullivan,Brett Sullivan,,Brett Sullivan (COL C) id=664954,AZ@COL,exact,
+player,mlb,sleeper:michael conforto,Michael Conforto,,Michael Conforto (CHC DH) id=624424,MIA@CHC,exact,
+player,mlb,comparenbet:benjamin rice,Benjamin Rice,,Ben Rice (NYY DH) id=700250,TB@NYY,last_team,
+player,mlb,betmgm:matt mclain,Matt McLain,,Matt McLain (CIN 2B) id=680574,CIN@ATL,exact,
+player,mlb,betmgm:denzer guzman,Denzer Guzman,,Denzer Guzman (LAA 3B) id=694203,LAA@SEA,exact,
+player,mlb,sleeper:carson kelly,Carson Kelly,,Carson Kelly (CHC C) id=608348,MIA@CHC,exact,
+player,mlb,steezanomics:caleb durbin,Caleb Durbin,,Caleb Durbin (BOS 3B) id=702332,CLE@BOS,exact,
+player,mlb,4codds:tommy white,TOMMY WHITE,,Tommy White (ATH 3B) id=695720,HOU@ATH,exact,
+player,mlb,pinnacle:rafael flores,Rafael Flores,,Rafael Flores Jr. (PIT C) id=804668,STL@PIT,exact,
+player,mlb,draftkings:kyle karros,Kyle Karros,,Kyle Karros (COL 3B) id=691720,AZ@COL,exact,
+player,mlb,4codds:ceddanne rafaela,CEDDANNE RAFAELA,,Ceddanne Rafaela (BOS CF) id=678882,CLE@BOS,exact,
+player,mlb,fanduel:josh lowe,Josh Lowe,,Josh Lowe (LAA LF) id=666139,LAA@SEA,exact,
+player,mlb,pinnacle:ketel marte,Ketel Marte,,Ketel Marte (AZ 2B) id=606466,AZ@COL,exact,
+player,mlb,fanduel:wilyer abreu,Wilyer Abreu,,Wilyer Abreu (BOS RF) id=677800,CLE@BOS,exact,
+player,mlb,betmgm:nick loftin,Nick Loftin,,Nick Loftin (KC 3B) id=679845,CWS@KC,exact,
+player,mlb,oddstrader:tyler stephenson,Tyler Stephenson,,Tyler Stephenson (CIN C) id=663886,CIN@ATL,exact,
+player,mlb,oddstrader:colson montgomery,Colson Montgomery,,Colson Montgomery (CWS SS) id=695657,CWS@KC,exact,
+player,mlb,oddstrader:cedric mullins,Cedric Mullins,,Cedric Mullins (TB CF) id=656775,TB@NYY,exact,
+player,mlb,kalshi:brett sullivan,Brett Sullivan,,Brett Sullivan (COL C) id=664954,AZ@COL,exact,
+player,mlb,fanduel:matthew boyd,Matthew Boyd,,Matthew Boyd (CHC P) id=571510,MIA@CHC,exact,
+player,mlb,steezanomics:michael conforto,Michael Conforto,,Michael Conforto (CHC DH) id=624424,MIA@CHC,exact,
+player,mlb,pinnacle:luis lara,Luis Lara,,Luis Lara (MIL RF) id=800325,MIL@PHI,exact,
+player,mlb,betrivers:mickey gasper,Mickey Gasper,,Mickey Gasper (BOS DH) id=681508,CLE@BOS,exact,
+player,mlb,oddstrader:seiya suzuki,Seiya Suzuki,,Seiya Suzuki (CHC RF) id=673548,MIA@CHC,exact,
+player,mlb,4codds:thomas saggese,THOMAS SAGGESE,,Thomas Saggese (STL SS) id=695336,STL@PIT,exact,
+player,mlb,kalshi:brayan rocchio,Brayan Rocchio,,Brayan Rocchio (CLE SS) id=677587,CLE@BOS,exact,
+player,mlb,fanduel:brian navarreto,Brian Navarreto,,Brian Navarreto (MIA C) id=640459,MIA@CHC,exact,
+player,mlb,comparenbet:paul goldschmidt,Paul Goldschmidt,,Paul Goldschmidt (NYY 1B) id=502671,TB@NYY,exact,
+player,mlb,draftkings:ivan herrera,Ivan Herrera,,Iván Herrera (STL DH) id=671056,STL@PIT,exact,
+player,mlb,fanduel:heliot ramos,Heliot Ramos,,Heliot Ramos (NYY LF) id=671218,TB@NYY,exact,
+player,mlb,betmgm:yordan alvarez,Yordan Alvarez,,Yordan Alvarez (HOU DH) id=670541,HOU@ATH,exact,
+player,mlb,steezanomics:william contreras,William Contreras,,William Contreras (MIL C) id=661388,MIL@PHI,exact,
+player,mlb,pinnacle:brandon lowe,Brandon Lowe,,Brandon Lowe (PIT 2B) id=664040,STL@PIT,exact,
+player,mlb,betrivers:jonah heim,Jonah Heim,,Jonah Heim (ATH C) id=641680,HOU@ATH,exact,
+game,nba,g_3479f6ccbeaccbc919dea613,Toronto Raptors vs Miami Heat,2026-10-03 23:00:00.000000,Toronto Raptors vs Miami Heat,2026-10-03T23:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_31433467ff9da69e297f6de2,San Francisco 49ers vs Arizona Cardinals,2026-09-27 20:05:00.000000,San Francisco 49ers vs Arizona Cardinals,2026-09-27T20:05Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_a78731fb7c82a4f75d6b5a64,Chicago Bears vs Philadelphia Eagles,2026-09-29 00:15:00.000000,Chicago Bears vs Philadelphia Eagles,2026-09-29T00:15Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_eeae0c56196de6ad9ca0691e,Buffalo Bills vs New England Patriots,2026-10-04 17:00:00.000000,Buffalo Bills vs New England Patriots,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_940fadc56cc4e4efb81f716b,New York Giants vs Arizona Cardinals,2026-10-04 17:00:00.000000,New York Giants vs Arizona Cardinals,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_be9f2f0b621224e33c453a6e,Houston Texans vs Dallas Cowboys,2026-10-04 17:00:00.000000,Houston Texans vs Dallas Cowboys,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_e475f2594655dd0727c84a9f,Pittsburgh Steelers vs Cincinnati Bengals,2026-09-27 17:00:00.000000,Pittsburgh Steelers vs Cincinnati Bengals,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_75d7db6bcc299a3b66ea5a4b,TEN Titans vs NY Giants,2026-09-27 17:00:00.000000,New York Giants vs Tennessee Titans,2026-09-27T17:00Z,exact,reversed=1 delta_min=0.0
+game,nfl,g_4317a7dc3e0df46b214cd2ad,New Orleans Saints vs Las Vegas Raiders,2026-09-27 20:25:00.000000,New Orleans Saints vs Las Vegas Raiders,2026-09-27T20:25Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_e776da3ac50634d3130850c1,Las Vegas Raiders vs Kansas City Chiefs,2026-10-04 20:25:00.000000,Las Vegas Raiders vs Kansas City Chiefs,2026-10-04T20:25Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_8680ed996a2dbaac4aa60faa,Jacksonville Jaguars vs New England Patriots,2026-09-27 17:00:00.000000,Jacksonville Jaguars vs New England Patriots,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_770a1f118c7660983efa1d11,Philadelphia Eagles vs Los Angeles Rams,2026-10-04 17:00:00.000000,Philadelphia Eagles vs Los Angeles Rams,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_49b3d0395e6d95da06c35317,Chicago Bears vs New York Jets,2026-10-04 17:00:00.000000,Chicago Bears vs New York Jets,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_918c06a6161321099160d766,New Orleans Saints vs Atlanta Falcons,2026-10-06 00:15:00.000000,New Orleans Saints vs Atlanta Falcons,2026-10-06T00:15Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_2e952ec8db001ee0b5661bbf,Buffalo Bills vs Los Angeles Chargers,2026-09-27 17:00:00.000000,Buffalo Bills vs Los Angeles Chargers,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_0d6074f4601e5e52ec14497a,Green Bay Packers vs Atlanta Falcons,2026-09-25 00:15:00.000000,Green Bay Packers vs Atlanta Falcons,2026-09-25T00:15Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_9c691b92a5ea54601ab4d0fa,Washington Commanders vs Indianapolis Colts,2026-10-04 13:30:00.000000,Washington Commanders vs Indianapolis Colts,2026-10-04T13:30Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_2390e36a9a6ec00f3a702405,Cleveland Browns vs Pittsburgh Steelers,2026-10-02 00:15:00.000000,Cleveland Browns vs Pittsburgh Steelers,2026-10-02T00:15Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_f8ba9319a2ae393fb8b89676,Minnesota Vikings vs Miami Dolphins,2026-10-04 20:05:00.000000,Minnesota Vikings vs Miami Dolphins,2026-10-04T20:05Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_d38141d0ba76b32f144f0881,San Francisco 49ers vs Denver Broncos,2026-10-04 20:25:00.000000,San Francisco 49ers vs Denver Broncos,2026-10-04T20:25Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_a0c17f69ce3a4d9f0f828998,Cincinnati Bengals vs Jacksonville Jaguars,2026-10-04 17:00:00.000000,Cincinnati Bengals vs Jacksonville Jaguars,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_e322bc4d42d6770a10020569,Dallas Cowboys vs Baltimore Ravens,2026-09-27 20:25:00.000000,Dallas Cowboys vs Baltimore Ravens,2026-09-27T20:25Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_b2602f06e55fa983a7c479c9,Indianapolis Colts vs Houston Texans,2026-09-27 17:00:00.000000,Indianapolis Colts vs Houston Texans,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_c75279dcb34496154009e621,Cleveland Browns vs Carolina Panthers,2026-09-27 17:00:00.000000,Cleveland Browns vs Carolina Panthers,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_3cbf24fe055ffa6455b0fbc0,Seattle Seahawks vs Los Angeles Chargers,2026-10-04 20:25:00.000000,Seattle Seahawks vs Los Angeles Chargers,2026-10-04T20:25Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_a631b0ae54f3be03fdfbfda3,Detroit Lions vs New York Jets,2026-09-27 17:00:00.000000,Detroit Lions vs New York Jets,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_ca34025d01d7dfe65659b2ad,Tampa Bay Buccaneers vs Green Bay Packers,2026-10-04 17:00:00.000000,Tampa Bay Buccaneers vs Green Bay Packers,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_69003b5867837fe5f0e93813,Baltimore Ravens vs Tennessee Titans,2026-10-04 17:00:00.000000,Baltimore Ravens vs Tennessee Titans,2026-10-04T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_353c6a2fa347e37da0b5b5c1,Denver Broncos vs Los Angeles Rams,2026-09-28 00:20:00.000000,Denver Broncos vs Los Angeles Rams,2026-09-28T00:20Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_4f305d83ebfb53b7a6a246b2,Washington Commanders vs Seattle Seahawks,2026-09-27 17:00:00.000000,Washington Commanders vs Seattle Seahawks,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_a7179e93e03b2c0fec302ddb,Carolina Panthers vs Detroit Lions,2026-10-05 00:20:00.000000,Carolina Panthers vs Detroit Lions,2026-10-05T00:20Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_51aac4eadc811ef08ae93aeb,Miami Dolphins vs Kansas City Chiefs,2026-09-27 17:00:00.000000,Miami Dolphins vs Kansas City Chiefs,2026-09-27T17:00Z,exact,reversed=0 delta_min=0.0
+game,nfl,g_1847ad88c5382e4f9287bf9b,Tampa Bay Buccaneers vs Minnesota Vikings,2026-09-27 20:05:00.000000,Tampa Bay Buccaneers vs Minnesota Vikings,2026-09-27T20:05Z,exact,reversed=0 delta_min=0.0
+player,nfl,comparenbet:demarcus robinson,Demarcus Robinson,,Demarcus Robinson (SF WR) id=espn:football:3043116,ARI@SF,exact,
+player,nfl,draftkings:skyy moore,Skyy Moore,,Skyy Moore (GB WR) id=espn:football:4430191,ATL@GB,exact,
+player,nfl,betrivers:tre tucker,Tre Tucker,,Tre Tucker (LV WR) id=espn:football:4428718,LV@NO,exact,
+player,nfl,kalshi:terrance ferguson,Terrance Ferguson,,Terrance Ferguson (LAR TE) id=espn:football:4570037,LAR@DEN,exact,
+player,nfl,kalshi:brashard smith,Brashard Smith,,Brashard Smith (KC RB) id=espn:football:4596602,KC@MIA,exact,
+player,nfl,sleeper:devon achane,De'Von Achane,,De'Von Achane (MIA RB) id=espn:football:4429160,KC@MIA,exact,
+player,nfl,sleeper:patrick mahomes,Patrick Mahomes,,Patrick Mahomes (KC QB) id=espn:football:3139477,KC@MIA,exact,
+player,nfl,comparenbet:courtland sutton,Courtland Sutton,,Courtland Sutton (DEN WR) id=espn:football:3128429,LAR@DEN,exact,
+player,nfl,betmgm:nick muse,Nick Muse,,Nick Muse (ATL TE) id=espn:football:4249624,ATL@GB,exact,
+player,nfl,kalshi:evan engram,Evan Engram,,Evan Engram (DEN TE) id=espn:football:3051876,LAR@DEN,exact,
+player,nfl,comparenbet:ej jenkins,Ej Jenkins,,E.J. Jenkins (PHI TE) id=espn:football:4248557,PHI@CHI,exact,
+player,nfl,betmgm:puka nacua,Puka Nacua,,Puka Nacua (LAR WR) id=espn:football:4426515,LAR@DEN,exact,
+player,nfl,comparenbet:wil lutz,Wil Lutz,,Wil Lutz (DEN PK) id=espn:football:2985659,LAR@DEN,exact,
+player,nfl,steezanomics:xavier worthy,Xavier Worthy,,Xavier Worthy (KC WR) id=espn:football:4683062,KC@MIA,exact,
+player,nfl,draftkings:christian mccaffrey,Christian McCaffrey,,Christian McCaffrey (SF RB) id=espn:football:3117251,ARI@SF,exact,
+player,nfl,comparenbet:colson yankoff,Colson Yankoff,,Colson Yankoff (WSH TE) id=espn:football:4361088,SEA@WSH,exact,
+player,nfl,underdog:kavontae turpin,KaVontae Turpin,,KaVontae Turpin (DAL WR) id=espn:football:3676833,BAL@DAL,exact,
+player,nfl,underdog:cj henderson,C.J. Henderson,,C.J. Henderson (ATL CB) id=espn:football:4240596,ATL@GB,exact,
+player,nfl,betrivers:brian robinson,Brian Robinson Jr.,,Brian Robinson Jr. (ATL RB) id=espn:football:4241474,ATL@GB,exact,
+player,nfl,sleeper:tyjae spears,Tyjae Spears,,Tyjae Spears (TEN RB) id=espn:football:4428557,TEN@NYG,exact,
+player,nfl,pinnacle:cam ward,Cam Ward,,Cam Ward (TEN QB) id=espn:football:4688380,TEN@NYG,exact,
+player,nfl,draftkings:xavier worthy,Xavier Worthy,,Xavier Worthy (KC WR) id=espn:football:4683062,KC@MIA,exact,
+player,nfl,steezanomics:nick kallerup,Nick Kallerup,,Nick Kallerup (SEA TE) id=espn:football:4569547,SEA@WSH,exact,
+player,nfl,kalshi:brevyn spannford,Brevyn Spann-Ford,,Brevyn Spann-Ford (DAL TE) id=espn:football:4360967,BAL@DAL,exact,
+player,nfl,draftkings:emeka egbuka,Emeka Egbuka,,Emeka Egbuka (TB WR) id=espn:football:4567750,MIN@TB,exact,
+player,nfl,steezanomics:nate boerkircher,Nate Boerkircher,,Nate Boerkircher (JAX TE) id=espn:football:4686248,NE@JAX,exact,
+player,nfl,kalshi:marvin harrison,Marvin Harrison Jr.,,Marvin Harrison Jr. (ARI WR) id=espn:football:4432708,ARI@SF,exact,
+player,nfl,betrivers:treylon burks,Treylon Burks,,Treylon Burks (WSH WR) id=espn:football:4567156,SEA@WSH,exact,
+player,nfl,comparenbet:brenton cox,Brenton Cox Jr,,Brenton Cox Jr. (GB DE) id=espn:football:4361776,ATL@GB,exact,
+player,nfl,comparenbet:dyami brown,Dyami Brown,,Dyami Brown (WSH WR) id=espn:football:4361577,SEA@WSH,exact,
+player,nfl,sleeper:chase mclaughlin,Chase McLaughlin,,Chase McLaughlin (TB PK) id=espn:football:3150744,MIN@TB,exact,
+player,nfl,underdog:travis hunter,Travis Hunter,,Travis Hunter (JAX WR) id=espn:football:4685415,NE@JAX,exact,
+player,nfl,betmgm:saquon barkley,Saquon Barkley,,Saquon Barkley (PHI RB) id=espn:football:3929630,PHI@CHI,exact,
+player,nfl,sleeper:brian robinson,Brian Robinson,,Brian Robinson Jr. (ATL RB) id=espn:football:4241474,ATL@GB,exact,
+player,nfl,betrivers:davis allen,Davis Allen,,Davis Allen (LAR TE) id=espn:football:4426553,LAR@DEN,exact,
+player,nfl,fanduel:ted hurst,Ted Hurst III,,Ted Hurst III (TB WR) id=espn:football:5220680,MIN@TB,exact,
+player,nfl,steezanomics:jackson meeks,Jackson Meeks,,Jackson Meeks (DET WR) id=espn:football:4602788,NYJ@DET,exact,
+player,nfl,steezanomics:ronnie rivers,Ronnie Rivers,,Ronnie Rivers (LAR RB) id=espn:football:4243003,LAR@DEN,exact,
+player,nfl,underdog:colbie young,Colbie Young,,Colbie Young (CIN WR) id=espn:football:5092508,CIN@PIT,exact,
+player,nfl,betmgm:ashton dulin,Ashton Dulin,,Ashton Dulin (IND WR) id=espn:football:4061956,HOU@IND,exact,
+player,nfl,pinnacle:xavier hutchinson,Xavier Hutchinson,,Xavier Hutchinson (HOU WR) id=espn:football:4686422,HOU@IND,exact,
+player,nfl,steezanomics:brashard smith,Brashard Smith,,Brashard Smith (KC RB) id=espn:football:4596602,KC@MIA,exact,
+player,nfl,comparenbet:rhamondre stevenson,Rhamondre Stevenson,,Rhamondre Stevenson (NE RB) id=espn:football:4569173,NE@JAX,exact,
+player,nfl,underdog:brevyn spannford,Brevyn Spann-Ford,,Brevyn Spann-Ford (DAL TE) id=espn:football:4360967,BAL@DAL,exact,
+player,nfl,kalshi:ladd mcconkey,Ladd McConkey,,Ladd McConkey (LAC WR) id=espn:football:4612826,LAC@BUF,exact,
+player,nfl,underdog:kc concepcion,KC Concepcion,,KC Concepcion (CLE WR) id=espn:football:4870653,CAR@CLE,exact,
+player,nfl,betmgm:jameis winston,Jameis Winston,,Jameis Winston (NYG QB) id=espn:football:2969939,TEN@NYG,exact,
+player,nfl,betrivers:mark redman,Mark Redman,,Mark Redman (GB TE) id=espn:football:4431346,ATL@GB,exact,
+player,nfl,draftkings:hunter henry,Hunter Henry,,Hunter Henry (NE TE) id=espn:football:3046439,NE@JAX,exact,
+player,nfl,steezanomics:jaylin lane,Jaylin Lane,,Jaylin Lane (WSH WR) id=espn:football:4602667,SEA@WSH,exact,
+game,nhl,g_52bb0989f59a078fa5bfd1ee,Colorado Avalanche vs St. Louis Blues,2026-10-04 01:00:00.000000,Colorado Avalanche vs St. Louis Blues,2026-10-04T01:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_b8d8c62dac646a7be392e915,Philadelphia Flyers vs Carolina Hurricanes,2026-10-03 23:00:00.000000,Philadelphia Flyers vs Carolina Hurricanes,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_130413154bc6f9bba91e835c,Toronto Maple Leafs vs Montreal Canadiens,2026-09-29 23:00:00.000000,Toronto Maple Leafs vs Montréal Canadiens,2026-09-29T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_12eef61ccf7aab807cf52e2e,Vegas Golden Knights vs Anaheim Ducks,2026-10-03 02:00:00.000000,Vegas Golden Knights vs Anaheim Ducks,2026-10-03T02:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_f0b36db21c74d4b08f339aa1,San Jose Sharks vs Los Angeles Kings,2026-10-04 02:00:00.000000,San Jose Sharks vs Los Angeles Kings,2026-10-04T02:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_5d4b48211bad1e3a3f5d19f7,Columbus Blue Jackets vs Buffalo Sabres,2026-10-01 23:00:00.000000,Columbus Blue Jackets vs Buffalo Sabres,2026-10-01T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_6bafa1ff1dc1b6cfffce2bdd,Boston Bruins vs Ottawa Senators,2026-10-05 23:30:00.000000,Boston Bruins vs Ottawa Senators,2026-10-05T23:30:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_561213abe714f4e735bc1e6e,Seattle Kraken vs Vegas Golden Knights,2026-10-07 01:40:00.000000,Seattle Kraken vs Vegas Golden Knights,2026-10-07T01:40:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_c334a3da4831525c61cfbd15,Toronto Maple Leafs vs Nashville Predators,2026-10-06 23:00:00.000000,Toronto Maple Leafs vs Nashville Predators,2026-10-06T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_dac6c3c3d74aafe0ad0c6a62,Vancouver Canucks vs Vegas Golden Knights,2026-10-05 01:00:00.000000,Vancouver Canucks vs Vegas Golden Knights,2026-10-05T01:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_4fecc6f5885e921ecc2e5edd,Pittsburgh Penguins vs Winnipeg Jets,2026-10-05 23:30:00.000000,Pittsburgh Penguins vs Winnipeg Jets,2026-10-05T23:30:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_b17f37c619559d6f0c7e7761,Vegas Golden Knights vs Chicago Blackhawks,2026-09-30 02:30:00.000000,Vegas Golden Knights vs Chicago Blackhawks,2026-09-30T02:30:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_8e007fcc973122a0917797e8,Colorado Avalanche vs Los Angeles Kings,2026-10-01 02:00:00.000000,Colorado Avalanche vs Los Angeles Kings,2026-10-01T02:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_1f9fa3573ad4c69794c07a52,New York Rangers vs New York Islanders,2026-10-07 00:00:00.000000,New York Rangers vs New York Islanders,2026-10-06T23:30:00Z,exact,reversed=0 delta_min=30.0
+game,nhl,g_eb613c97782f2326ab69bd37,Edmonton Oilers vs Seattle Kraken,2026-10-03 23:00:00.000000,Edmonton Oilers vs Seattle Kraken,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_3882da4ac91c35c8a31fbf0f,Carolina Hurricanes vs Florida Panthers,2026-09-29 21:00:47.000000,Carolina Hurricanes vs Florida Panthers,2026-09-29T21:00:00Z,exact,reversed=0 delta_min=0.8
+game,nhl,g_13fe9106eb4ae9ade42932ed,Dallas Stars vs San Jose Sharks,2026-10-06 00:00:00.000000,Dallas Stars vs San Jose Sharks,2026-10-06T00:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_b6b933177113ad8c39b13e91,Buffalo Sabres vs Minnesota Wild,2026-10-07 00:00:00.000000,Buffalo Sabres vs Minnesota Wild,2026-10-06T23:00:00Z,exact,reversed=0 delta_min=60.0
+game,nhl,g_47113f73fe55b7cea617ba28,New Jersey Devils vs Philadelphia Flyers,2026-10-01 23:00:00.000000,New Jersey Devils vs Philadelphia Flyers,2026-10-01T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_41873bb0d2963fab888f68a4,Chicago Blackhawks vs St Louis Blues,2026-10-07 00:10:00.000000,Chicago Blackhawks vs St. Louis Blues,2026-10-07T00:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_d1052969d61e29d2f46e6b42,Anaheim Ducks vs Edmonton Oilers,2026-10-08 02:00:00.000000,Anaheim Ducks vs Edmonton Oilers,2026-10-08T02:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_649e24737c6a26234ca952c5,Nashville Predators vs Dallas Stars,2026-10-04 00:00:00.000000,Nashville Predators vs Dallas Stars,2026-10-04T00:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_dd7833a9b96e55b95ab9cf10,Columbus Blue Jackets vs Utah Mammoth,2026-10-03 23:00:00.000000,Columbus Blue Jackets vs Utah Mammoth,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_4b107f169342910b8915084f,Detroit Red Wings vs Winnipeg Jets,2026-10-04 17:00:00.000000,Detroit Red Wings vs Winnipeg Jets,2026-10-04T17:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_12f1e3c3a860d429a22f6830,Philadelphia Flyers vs Pittsburgh Penguins,2026-09-30 23:30:00.000000,Philadelphia Flyers vs Pittsburgh Penguins,2026-09-30T23:30:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_14957c2555c724e341825c26,New York Islanders vs New Jersey Devils,2026-10-03 23:40:00.000000,New York Islanders vs New Jersey Devils,2026-10-03T23:30:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_b9b6a24b576f6d376441b20d,Toronto Maple Leafs vs Ottawa Senators,2026-10-03 23:00:00.000000,Toronto Maple Leafs vs Ottawa Senators,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_76651427133112af87705c6c,Detroit Red Wings vs New York Rangers,2026-10-02 22:40:00.000000,Detroit Red Wings vs New York Rangers,2026-10-02T22:30:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_15769b47b0a04400aca156bf,Buffalo Sabres vs Chicago Blackhawks,2026-10-03 23:10:00.000000,Buffalo Sabres vs Chicago Blackhawks,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_f272b7ae7875965c897f3184,Tampa Bay Lightning vs Philadelphia Flyers,2026-10-05 23:00:00.000000,Tampa Bay Lightning vs Philadelphia Flyers,2026-10-05T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_fa8c2495b3de24070a5c5d5a,Minnesota Wild vs Boston Bruins,2026-10-04 00:10:00.000000,Minnesota Wild vs Boston Bruins,2026-10-04T00:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_42821c5162ba35fe6291f3dc,Seattle Kraken vs Calgary Flames,2026-10-05 00:10:00.000000,Seattle Kraken vs Calgary Flames,2026-10-05T00:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_e042fb702c81233b7c750537,Vancouver Canucks vs Calgary Flames,2026-10-04 02:00:00.000000,Vancouver Canucks vs Calgary Flames,2026-10-04T02:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_fafc0fdaeabe28c6905ec9a0,San Jose vs Florida,2026-10-02 02:00:00.000000,San Jose Sharks vs Florida Panthers,2026-10-02T02:00:00Z,contain,reversed=0 delta_min=0.0
+game,nhl,g_55e7244eca12b77d70dc1879,Utah vs Chicago,2026-10-02 01:30:00.000000,Utah Mammoth vs Chicago Blackhawks,2026-10-02T01:30:00Z,contain,reversed=0 delta_min=0.0
+game,nhl,g_cebeede07aa0eda3c6fb4daa,New York Rangers vs Utah Mammoth,2026-10-04 22:00:00.000000,New York Rangers vs Utah Mammoth,2026-10-04T22:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_f27ba19086468c2f74ad97db,New York Rangers vs Tampa Bay Lightning,2026-10-01 23:00:00.000000,New York Rangers vs Tampa Bay Lightning,2026-10-01T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_3985578c56a976a252fd9c62,Boston Bruins vs New York Rangers,2026-09-30 00:00:00.000000,Boston Bruins vs New York Rangers,2026-09-30T00:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_cbb6c00b95ac983052f061c9,Detroit Red Wings vs Ottawa Senators,2026-10-06 23:00:00.000000,Detroit Red Wings vs Ottawa Senators,2026-10-06T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_857ed45764dc1825991fa1a0,Toronto Maple Leafs vs New York Islanders,2026-09-30 23:40:00.000000,Toronto Maple Leafs vs New York Islanders,2026-09-30T23:30:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_12bf82482de179caccaa3f41,Winnipeg Jets vs Boston Bruins,2026-10-03 00:10:00.000000,Winnipeg Jets vs Boston Bruins,2026-10-03T00:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_c5797d3f47bba82cd84326c6,Edmonton Oilers vs Vancouver Canucks,2026-09-30 02:00:00.000000,Edmonton Oilers vs Vancouver Canucks,2026-09-30T02:00:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_540fff23c176aae02f839d95,Pittsburgh Penguins vs Montréal Canadiens,2026-10-03 23:10:00.000000,Pittsburgh Penguins vs Montréal Canadiens,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_b992c400489e4dfa6a9595e6,Tampa Bay Lightning vs Washington Capitals,2026-10-03 23:10:00.000000,Tampa Bay Lightning vs Washington Capitals,2026-10-03T23:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_23b1742803276e4f3ca12a8b,Winnipeg Jets vs Colorado Avalanche,2026-10-07 23:30:00.000000,Winnipeg Jets vs Colorado Avalanche,2026-10-07T23:30:00Z,exact,reversed=0 delta_min=0.0
+game,nhl,g_7eafd48eaad468d375f95540,Anaheim Ducks vs Florida Panthers,2026-10-05 00:10:00.000000,Anaheim Ducks vs Florida Panthers,2026-10-05T00:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_b109139f83d696c459da8190,Dallas Stars vs St Louis Blues,2026-10-03 01:10:00.000000,Dallas Stars vs St. Louis Blues,2026-10-03T01:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_8e7de923719a2a7657cda07b,Los Angeles Kings vs Florida Panthers,2026-10-07 02:40:00.000000,Los Angeles Kings vs Florida Panthers,2026-10-07T02:00:00Z,exact,reversed=0 delta_min=40.0
+game,nhl,g_f1002a407e8d7396be77b37d,Montréal Canadiens vs Carolina Hurricanes,2026-10-06 23:10:00.000000,Montréal Canadiens vs Carolina Hurricanes,2026-10-06T23:00:00Z,exact,reversed=0 delta_min=10.0
+game,nhl,g_8ab7ee4e79cbf8c195eff8d4,Carolina Hurricanes vs Washington Capitals,2026-10-02 23:00:00.000000,Carolina Hurricanes vs Washington Capitals,2026-10-02T23:00:00Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_ea201435a3a2f103f9a669e9,Seattle Sounders vs Minnesota United,2026-09-27 00:30:00.000000,Seattle Sounders FC vs Minnesota United FC,2026-09-27T00:30Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_08a9a48b7f27aa4ef0e7903e,LA Galaxy vs Colorado Rapids,2026-09-27 02:30:00.000000,LA Galaxy vs Colorado Rapids,2026-09-27T02:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_7a4c5aee5591fdf54984bdeb,Columbus Crew SC vs Inter Miami CF,2026-09-27 23:00:00.000000,Columbus Crew vs Inter Miami CF,2026-09-27T23:00Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_25df3ba5475ac90d9acb2eb7,Atlanta United vs New York City FC,2026-09-26 23:30:00.000000,Atlanta United FC vs New York City FC,2026-09-26T23:30Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_06bfbe444698302a514f84c8,Houston Dynamo vs Sporting KC,2026-09-27 00:30:00.000000,Houston Dynamo FC vs Sporting Kansas City,2026-09-27T00:30Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_93f92a59a464db451f90457f,San Jose Earthquakes vs Portland Timbers,2026-09-27 02:30:00.000000,San Jose Earthquakes vs Portland Timbers,2026-09-27T02:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_3c8e7ed15bc123ae44a334bc,Charlotte FC vs Chicago Fire,2026-09-26 23:30:00.000000,Charlotte FC vs Chicago Fire FC,2026-09-26T23:30Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_d74ec67f2c03eeee3094d7d5,Real Salt Lake vs New England Revolution,2026-09-27 01:30:00.000000,Real Salt Lake vs New England Revolution,2026-09-27T01:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_b5f48ec8831b14f183be99a7,NY Red Bulls vs St  Louis City SC,2026-09-26 23:30:00.000000,Red Bull New York vs St. Louis CITY SC,2026-09-26T23:30Z,words,reversed=0 delta_min=0.0
+game,soccer_mls,g_0c3142b958b137ecbcb4347b,Seattle Sounders FC vs Sporting Kansas City,2026-10-02 01:30:00.000000,Seattle Sounders FC vs Sporting Kansas City,2026-10-02T01:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_42a0ca0b794e974e0b9f96ff,Austin FC vs San Diego FC,2026-09-27 00:30:00.000000,Austin FC vs San Diego FC,2026-09-27T00:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_e8bd1fa0bcd9f8dc2af8eca1,CF Montreal vs FC Cincinnati,2026-09-26 23:30:00.000000,CF Montréal vs FC Cincinnati,2026-09-26T23:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_478b97783db30d767216da90,Philadelphia Union vs Orlando City SC,2026-09-26 23:30:00.000000,Philadelphia Union vs Orlando City SC,2026-09-26T23:30Z,exact,reversed=0 delta_min=0.0
+game,soccer_mls,g_80a817caf3f456208ee51ab8,Dallas vs Los Angeles FC,2026-09-27 00:30:00.000000,FC Dallas vs LAFC,2026-09-27T00:30Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_0edb7230830d26beaa942199,Vancouver Whitecaps FC vs D.C. United,2026-09-27 02:30:00.000000,Vancouver Whitecaps vs D.C. United,2026-09-27T02:30Z,contain,reversed=0 delta_min=0.0
+game,soccer_mls,g_7ef57ae4027245198ab0422c,Nashville SC vs Toronto,2026-09-27 00:30:00.000000,Nashville SC vs Toronto FC,2026-09-27T00:30Z,contain,reversed=0 delta_min=0.0
+player,soccer_mls,comparenbet:luca moisa,Luca Moisa,,Luca Moisa (RSL M) id=espn:soccer:380794,NE@RSL,exact,
+player,soccer_mls,comparenbet:dejan joveljic,Dejan Joveljic,,Dejan Joveljic (SEA F) id=espn:soccer:240110,SKC@SEA,exact,
+player,soccer_mls,comparenbet:anderson julio,Anderson Julio,,Anderson Julio (DAL F) id=espn:soccer:199822,LAFC@DAL,exact,
+player,soccer_mls,comparenbet:rayan elloumi,Rayan Elloumi,,Rayan Elloumi (VAN F) id=espn:soccer:405591,DC@VAN,exact,
+player,soccer_mls,comparenbet:shakur mohammed,Shakur Mohammed,,Shakur Mohammed (NSH M) id=espn:soccer:325936,TOR@NSH,exact,
+player,soccer_mls,comparenbet:cristiano oliveira,Cristiano Oliveira,,Cristiano Oliveira (NE M) id=espn:soccer:403366,NE@RSL,exact,
+player,soccer_mls,comparenbet:kristian fletcher,Kristian Fletcher,,Kristian Fletcher (CIN F) id=espn:soccer:340690,CIN@MTL,exact,
+player,soccer_mls,comparenbet:antino lopez,Antino Lopez,,Antino Lopez (SEA D) id=espn:soccer:299188,MIN@SEA,exact,
+player,soccer_mls,comparenbet:kwaku agyabeng,Kwaku Agyabeng,,Kwaku Agyabeng (SKC M) id=espn:soccer:417725,SKC@SEA,exact,
+player,soccer_mls,comparenbet:lalas abubakar,Lalas Abubakar,,Lalas Abubakar (DAL D) id=espn:soccer:251801,LAFC@DAL,exact,
+player,soccer_mls,comparenbet:pep biel,Pep Biel,,Pep Biel (CLT M) id=espn:soccer:268604,CHI@CLT,exact,
+player,soccer_mls,comparenbet:israel boatwright,Israel Boatwright,,Israel Boatwright (MIA D) id=espn:soccer:359239,MIA@CLB,exact,
+player,soccer_mls,comparenbet:johnny selemani,Johnny Selemani,,Johnny Selemani (VAN F) id=espn:soccer:403773,DC@VAN,exact,
+player,soccer_mls,comparenbet:tayvon gray,Tayvon Gray,,Tayvon Gray (NYC D) id=espn:soccer:297380,NYC@ATL,exact,
+player,soccer_mls,comparenbet:timothy tillman,Timothy Tillman,,Timothy Tillman (LAFC M) id=espn:soccer:231192,LAFC@DAL,exact,
+player,soccer_mls,comparenbet:malte amundsen,Malte Amundsen,,Malte Amundsen (CLB D) id=espn:soccer:271075,MIA@CLB,exact,
+player,soccer_mls,comparenbet:antonio carlos,Antonio Carlos,,Antônio Carlos (HOU D) id=espn:soccer:196842,SKC@HOU,exact,
+player,soccer_mls,comparenbet:manu duah,Manu Duah,,Manu Duah (SD M) id=espn:soccer:400713,SD@ATX,exact,
+player,soccer_mls,comparenbet:ayoub lajhar,Ayoub Lajhar,,Ayoub Lajhar (CIN D) id=espn:soccer:419469,CIN@MTL,exact,
+player,soccer_mls,comparenbet:aiden oneill,Aiden Oneill,,Aiden O'Neill (NYC M) id=espn:soccer:241031,NYC@ATL,exact,
+player,soccer_mls,comparenbet:timo baumgartl,Timo Baumgartl,,Timo Baumgartl (STL D) id=espn:soccer:198189,STL@RBNY,exact,
+player,soccer_mls,comparenbet:sergi roberto,Sergi Roberto,,Sergi Roberto (LA M) id=espn:soccer:150225,COL@LA,exact,
+player,soccer_mls,comparenbet:sam junqua,Sam Junqua,,Samuel Junqua (RSL D) id=espn:soccer:256489,NE@RSL,last_team,
+player,soccer_mls,comparenbet:jesus ferreira,Jesus Ferreira,,Jesús Ferreira (SEA F) id=espn:soccer:251571,MIN@SEA,exact,
+player,soccer_mls,comparenbet:reed bakerwhiting,Reed Bakerwhiting,,Reed Baker-Whiting (NSH D) id=espn:soccer:304120,TOR@NSH,exact,
+player,soccer_mls,comparenbet:ajani fortune,Ajani Fortune,,Jay Fortune (ATL M) id=espn:soccer:304153,NYC@ATL,last_team,
+player,soccer_mls,comparenbet:jorge ruvalcaba,Jorge Ruvalcaba,,Jorge Ruvalcaba (RBNY F) id=espn:soccer:329917,STL@RBNY,exact,
+player,soccer_mls,comparenbet:javier otero,Javier Otero,,Javier Otero (ORL G) id=espn:soccer:316317,ORL@PHI,exact,
+player,soccer_mls,comparenbet:evander,Evander,,Evander (CIN M) id=espn:soccer:86436,CIN@MTL,exact,
+player,soccer_mls,comparenbet:matti peltola,Matti Peltola,,Matti Peltola (DC D) id=espn:soccer:320300,DC@VAN,exact,
+player,soccer_mls,comparenbet:andrew rick,Andrew Rick,,Andrew Rick (PHI G) id=espn:soccer:365853,ORL@PHI,exact,
+player,soccer_mls,comparenbet:daniel edelman,Daniel Edelman,,Daniel Edelman (STL M) id=espn:soccer:304164,STL@RBNY,exact,
+player,soccer_mls,comparenbet:juan arias,Juan Arias,,Juan Arias (RSL D) id=espn:soccer:137565,NE@RSL,exact,
+player,soccer_mls,comparenbet:jacob shaffelburg,Jacob Shaffelburg,,Jacob Shaffelburg (LAFC F) id=espn:soccer:286214,LAFC@DAL,exact,
+player,soccer_mls,comparenbet:oscar avilez,Oscar Avilez,,Oscar Avilez (DC F) id=espn:soccer:412984,DC@VAN,exact,
+player,soccer_mls,comparenbet:richie laryea,Richie Laryea,,Richie Laryea (TOR D) id=espn:soccer:230626,TOR@NSH,exact,
+player,soccer_mls,comparenbet:dorde mihailovic,Dorde Mihailovic,,Djordje Mihailovic (TOR M) id=espn:soccer:252351,TOR@NSH,last_team,
+player,soccer_mls,comparenbet:noah streit,Noah Streit,,Noah Streit (MTL M) id=espn:soccer:362775,CIN@MTL,exact,
+player,soccer_mls,comparenbet:ryan hollingshead,Ryan Hollingshead,,Ryan Hollingshead (LAFC D) id=espn:soccer:183758,LAFC@DAL,exact,
+player,soccer_mls,comparenbet:jd gunn,Jd Gunn,,JD Gunn (NE G) id=espn:soccer:384152,NE@RSL,exact,
+player,soccer_mls,comparenbet:rafael santos,Rafael Santos,,Rafael Santos (STL D) id=espn:soccer:203974,STL@RBNY,exact,
+player,soccer_mls,comparenbet:cheikh tidiane sabaly,Cheikh Tidiane Sabaly,,Cheick Sabaly (VAN F) id=espn:soccer:276451,DC@VAN,last_team,
+player,soccer_mls,comparenbet:talles magno,Talles Magno,,Talles Magno (NYC F) id=espn:soccer:288930,NYC@ATL,exact,
+player,soccer_mls,comparenbet:riley thomas,Riley Thomas,,Riley Thomas (ATX D) id=espn:soccer:308642,SD@ATX,exact,
+player,soccer_mls,comparenbet:alexandru matan,Alexandru Matan,,Alexandru Matan (STL M) id=espn:soccer:239736,STL@RBNY,exact,
+player,soccer_mls,comparenbet:ibrahim aliyu,Ibrahim Aliyu,,Ibrahim Aliyu (HOU F) id=espn:soccer:287444,SKC@HOU,exact,
+player,soccer_mls,comparenbet:jackson ragen,Jackson Ragen,,Jackson Ragen (SEA D) id=espn:soccer:254383,MIN@SEA,exact,
+player,soccer_mls,comparenbet:albert rusnak,Albert Rusnak,,Albert Rusnák (SEA M) id=espn:soccer:171573,MIN@SEA,exact,
+player,soccer_mls,comparenbet:ian james,Ian James,,Ian James (SKC D) id=espn:soccer:217816,SKC@HOU,exact,
+player,soccer_mls,comparenbet:robin jansson,Robin Jansson,,Robin Jansson (ORL D) id=espn:soccer:147256,ORL@PHI,exact,
+game,tennis_atp,g_9d90a1904f8714f6f32c1454,Valentin Vacherot vs Lloyd Harris,2026-09-26 05:00:00.000000,Valentin Vacherot vs Lloyd Harris,2026-09-26T04:00Z,person,reversed=0 delta_min=60.0
+game,tennis_atp,g_e02ab139886022adaae526cf,Juan Manuel Cerundolo vs Alejandro Davidovich Fokina,2026-09-26 03:00:00.000000,Juan Manuel Cerundolo vs Alejandro Davidovich Fokina,2026-09-26T04:00Z,person,reversed=0 delta_min=-60.0
+game,tennis_atp,g_229ee4b34d3f6ae9c10558ca,Martin Damm Jr. vs Hubert Hurkacz,2026-09-26 03:00:00.000000,Martin Damm vs Hubert Hurkacz,2026-09-26T04:00Z,person,reversed=0 delta_min=-60.0
+game,tennis_atp,g_4be7e7cf58f12fa96b0d2b54,Kyrian Jacquet vs Tomas Martin Etcheverry,2026-09-25 05:00:00.000000,Kyrian Jacquet vs Tomas Martin Etcheverry,2026-09-25T05:30Z,person,reversed=0 delta_min=-30.0
+game,tennis_atp,g_fe4d2d519476adb0eb9edb22,Adrian Mannarino vs Alejandro Tabilo,2026-09-25 06:30:00.000000,Alejandro Tabilo vs Adrian Mannarino,2026-09-25T06:30Z,person,reversed=1 delta_min=0.0
+player,tennis_atp,underdog:valentin vacherot,Valentin Vacherot,,Valentin Vacherot (None None) id=espn:tennis:9376,Lloyd Harris@Valentin Vacherot,exact,
+player,tennis_atp,underdog:martin damm,Martin Damm Jr,,Martin Damm (None None) id=espn:tennis:10130,Hubert Hurkacz@Martin Damm,exact,
+player,tennis_atp,underdog:tomas martin etcheverry,Tomas Martin Etcheverry,,Tomas Martin Etcheverry (None None) id=espn:tennis:3739,Tomas Martin Etcheverry@Kyrian Jacquet,exact,
+player,tennis_atp,underdog:kyrian jacquet,Kyrian Jacquet,,Kyrian Jacquet (None None) id=espn:tennis:7509,Tomas Martin Etcheverry@Kyrian Jacquet,exact,
+player,tennis_atp,underdog:hubert hurkacz,Hubert Hurkacz,,Hubert Hurkacz (None None) id=espn:tennis:2726,Hubert Hurkacz@Martin Damm,exact,
+player,tennis_atp,underdog:lloyd harris,Lloyd Harris,,Lloyd Harris (None None) id=espn:tennis:2863,Lloyd Harris@Valentin Vacherot,exact,
+player,tennis_atp,underdog:alejandro tabilo,Alejandro Tabilo,,Alejandro Tabilo (None None) id=espn:tennis:2970,Adrian Mannarino@Alejandro Tabilo,exact,
+player,tennis_atp,underdog:alejandro davidovich fokina,Alejandro Davidovich Fokina,,Alejandro Davidovich Fokina (None None) id=espn:tennis:3212,Alejandro Davidovich Fokina@Juan Manuel Cerundolo,exact,
+player,tennis_atp,underdog:juan manuel cerundolo,Juan Manuel Cerundolo,,Juan Manuel Cerundolo (None None) id=espn:tennis:4008,Alejandro Davidovich Fokina@Juan Manuel Cerundolo,exact,
+player,tennis_atp,underdog:adrian mannarino,Adrian Mannarino,,Adrian Mannarino (None None) id=espn:tennis:1266,Adrian Mannarino@Alejandro Tabilo,exact,
+game,tennis_wta,g_c0c6fbf226f646cc6050dd8c,Xinyu Wang vs Tatiana Prozorova,2026-09-25 06:30:00.000000,Wang Xinyu vs Tatiana Prozorova,2026-09-25T06:30Z,person,reversed=0 delta_min=0.0
+game,tennis_wta,g_afcf228f42cf833e2788b70b,Maria Sakkari vs Talia Gibson,2026-09-25 12:00:00.000000,Maria Sakkari vs Talia Gibson,2026-09-25T12:00Z,person,reversed=0 delta_min=0.0
+game,tennis_wta,g_2d34046dfa1977b760ed5593,Elise Mertens vs Maja Chwalinska,2026-09-25 04:00:00.000000,Elise Mertens vs Maja Chwalinska,2026-09-25T05:00Z,person,reversed=0 delta_min=-60.0
+game,tennis_wta,g_52951845ca25e6a775ff89da,Mirra Andreeva vs Leylah Fernandez,2026-09-25 10:30:00.000000,Mirra Andreeva vs Leylah Fernandez,2026-09-25T10:30Z,person,reversed=0 delta_min=0.0
+player,tennis_wta,underdog:maria sakkari,Maria Sakkari,,Maria Sakkari (None None) id=espn:tennis:3018,Talia Gibson@Maria Sakkari,exact,
+player,tennis_wta,underdog:maja chwalinska,Maja Chwalinska,,Maja Chwalinska (None None) id=espn:tennis:3417,Maja Chwalinska@Elise Mertens,exact,
+player,tennis_wta,underdog:tatiana prozorova,Tatiana Prozorova,,Tatiana Prozorova (None None) id=espn:tennis:12846,Tatiana Prozorova@Wang Xinyu,exact,
+player,tennis_wta,underdog:talia gibson,Talia Gibson,,Talia Gibson (None None) id=espn:tennis:6708,Talia Gibson@Maria Sakkari,exact,
+player,tennis_wta,underdog:elise mertens,Elise Mertens,,Elise Mertens (None None) id=espn:tennis:2221,Maja Chwalinska@Elise Mertens,exact,

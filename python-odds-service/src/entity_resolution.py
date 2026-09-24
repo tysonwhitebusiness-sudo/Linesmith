@@ -624,6 +624,11 @@ def canonical_bookmaker(raw: str | None) -> str | None:
 # IS its full name, not a different club).
 TEAM_NAME_ALIASES: list[tuple[str, str]] = [
     (r"\butd\b", "united"),
+    # P3 (odds build, 2026-09-24): the scraper's sources write "Man City" /
+    # "Man Utd". Anchored at the start and to a whole word, so it can only
+    # expand a leading "Man " (never "Mansfield"), and "Man Utd" becomes
+    # "manchester united", which still never matches Manchester City.
+    (r"^man\b", "manchester"),
     (r"\blafc\b", "los angeles fc"),
     (r"\bla\b", "los angeles"),
 ]
@@ -694,6 +699,108 @@ def team_name_words(name: str) -> frozenset[str]:
         name = re.sub(pattern, replacement, name)
     words = re.findall(r"[a-z]+", name)
     return frozenset(w.rstrip("s") for w in words if len(w) >= 3)  # rstrip("s"): Bull vs Bulls
+
+
+# ---------------------------------------------------------------------------
+# Team-pair matching (P3, 2026-09-24). Moved here from harvester_scrape's
+# _match_game so the harvester and the scraper bridge share ONE
+# implementation; _match_game now calls these, with its pass order unchanged.
+# ---------------------------------------------------------------------------
+_SURNAME_INITIAL_RE = re.compile(r"^(.+?)\s+([A-Za-z])\.?$")
+
+
+def team_side_match(raw_norm: str, game_full_name: str, game_abbr: str | None) -> str | None:
+    """One side of a game: 'exact' | 'abbr' | 'contain' | None. `raw_norm` is
+    normalize_team_name(raw). Abbreviation match is safe on its own (ESPN's
+    abbr codes are unique official per-team codes: "TCU Horned Frogs" carries
+    "TCU"); containment needs MIN_CONTAINMENT_LEN on both sides (EPL
+    "Nottingham" for "Nottingham Forest")."""
+    game_n = normalize_team_name(game_full_name)
+    if raw_norm == game_n:
+        return "exact"
+    abbr_n = re.sub(r"[^a-z]", "", (game_abbr or "").lower())
+    if abbr_n and raw_norm == abbr_n:
+        return "abbr"
+    if len(raw_norm) < MIN_CONTAINMENT_LEN or len(game_n) < MIN_CONTAINMENT_LEN:
+        return None
+    return "contain" if (raw_norm in game_n or game_n in raw_norm) else None
+
+
+def team_words_match(raw: str, game_full_name: str) -> bool:
+    """Word-set equality, order-independent (MLS "Red Bull New York" vs "New
+    York Red Bulls")."""
+    return team_name_words(raw) == team_name_words(game_full_name)
+
+
+def surname_initial_matches(short_name: str, full_name: str) -> bool:
+    """Tennis "Surname F." (OddsPortal: "Sinner J.") against ESPN's "Jannik
+    Sinner". A single-letter initial is dropped by team_name_words, so no
+    generic rule bridges it; this is its own parse."""
+    m = _SURNAME_INITIAL_RE.match(short_name.strip())
+    if not m:
+        return normalize_team_name(short_name) == normalize_team_name(full_name)
+    surname, initial = m.group(1).lower(), m.group(2).lower()
+    full_words = re.findall(r"[a-z]+", full_name.lower())
+    if surname.replace(" ", "") not in "".join(full_words):
+        return False
+    return any(w.startswith(initial) and w != surname for w in full_words) or len(full_words) == 1
+
+
+def _person_parts(name: str) -> tuple[str, str]:
+    """(first, last) of a normalized person name; "Last, First" turned around
+    (the odds-scraper's entities._person_parts, same rule)."""
+    s = (name or "").strip()
+    if "," in s:
+        last, _, first = s.partition(",")
+        if first.strip() and last.strip():
+            s = f"{first.strip()} {last.strip()}"
+    parts = normalize_name(s).split()
+    if not parts:
+        return "", ""
+    return ("", parts[0]) if len(parts) == 1 else (parts[0], parts[-1])
+
+
+def person_names_match(a: str, b: str) -> bool:
+    """Two spellings of one player: the "Surname F." form either way round, or
+    the odds-scraper's person_match (same last name, and the first initials
+    agree when both have one: "M. Andreeva" / "Mirra Andreeva")."""
+    if surname_initial_matches(a, b) or surname_initial_matches(b, a):
+        return True
+    fa, la = _person_parts(a)
+    fb, lb = _person_parts(b)
+    if not la or la != lb:
+        return False
+    if not fa or not fb:
+        return True
+    return fa[0] == fb[0]
+
+
+_SIDE_STRENGTH = {"exact": 0, "abbr": 1, "contain": 2}
+
+
+def match_team_pair(home: str, away: str, game, person: bool = False) -> tuple[str, bool] | None:
+    """(method, reversed) when (home, away) names `game`, else None. Tried in
+    the stated orientation first, then swapped (reversed=True: the given home
+    is the game's away). method: the weaker side of 'exact' | 'abbr' |
+    'contain', else 'words' (word sets per side), or 'person' when `person`
+    (tennis) and both players match by name."""
+    for rev in (False, True):
+        h, a = (away, home) if rev else (home, away)
+        if person:
+            if person_names_match(h, game.home_team_name) and person_names_match(a, game.away_team_name):
+                return "person", rev
+            continue
+        hm = team_side_match(normalize_team_name(h), game.home_team_name, game.home_abbr)
+        am = team_side_match(normalize_team_name(a), game.away_team_name, game.away_abbr)
+        if hm and am:
+            return max(hm, am, key=_SIDE_STRENGTH.__getitem__), rev
+    if person:
+        return None
+    for rev in (False, True):
+        h, a = (away, home) if rev else (home, away)
+        if team_words_match(h, game.home_team_name) and team_words_match(a, game.away_team_name):
+            return "words", rev
+    return None
 
 
 # ---------------------------------------------------------------------------

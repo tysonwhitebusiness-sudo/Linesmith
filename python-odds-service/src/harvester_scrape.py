@@ -282,9 +282,10 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
 # than keep a weaker second one. Imported under the original private names
 # so every call site below is untouched.
 from entity_resolution import (  # noqa: E402
-    MIN_CONTAINMENT_LEN as _MIN_CONTAINMENT_LEN,
     normalize_team_name as _norm,
-    team_name_words as _norm_words,
+    surname_initial_matches as _player_name_matches,
+    team_side_match,
+    team_words_match,
 )
 
 
@@ -311,30 +312,18 @@ def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | Non
     side to match the same way - each side picks whichever check succeeds
     first.
     """
+    # The per-side test and the word-set test live in entity_resolution
+    # (P3, 2026-09-24) so the scraper bridge's matcher is the same code.
     def side_matches(raw_norm: str, game_full_name: str, game_abbr: str) -> bool:
-        game_n = _norm(game_full_name)
-        if raw_norm == game_n:
-            return True
-        # Abbreviation match: safe and precise on its own, independent of
-        # _MIN_CONTAINMENT_LEN, since ESPN's abbr codes are already unique,
-        # official per-team identifiers (e.g. "TCU Horned Frogs" carries
-        # abbr "TCU") - not a coincidental short substring the way a raw
-        # 3-char containment check would risk.
-        abbr_n = re.sub(r"[^a-z]", "", game_abbr.lower())
-        if abbr_n and raw_norm == abbr_n:
-            return True
-        if len(raw_norm) < _MIN_CONTAINMENT_LEN or len(game_n) < _MIN_CONTAINMENT_LEN:
-            return False
-        return raw_norm in game_n or game_n in raw_norm
+        return team_side_match(raw_norm, game_full_name, game_abbr) is not None
 
     home_n, away_n = _norm(home_team), _norm(away_team)
     for g in games:
         if side_matches(home_n, g.home_team_name, g.home_abbr) and side_matches(away_n, g.away_team_name, g.away_abbr):
             return g
 
-    home_w, away_w = _norm_words(home_team), _norm_words(away_team)
     for g in games:
-        if _norm_words(g.home_team_name) == home_w and _norm_words(g.away_team_name) == away_w:
+        if team_words_match(home_team, g.home_team_name) and team_words_match(away_team, g.away_team_name):
             return g
 
     for g in games:
@@ -354,18 +343,7 @@ def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | Non
 # _norm_words entirely (its len<3 guard), so "Djokovic N." reduces to just
 # {"djokovic"} while "Novak Djokovic" reduces to {"novak", "djokovic"} —
 # never equal. Needs its own real parse, not a looser generic heuristic.
-_SURNAME_INITIAL_RE = re.compile(r"^(.+?)\s+([A-Za-z])\.?$")
-
-
-def _player_name_matches(oddsportal_name: str, full_name: str) -> bool:
-    m = _SURNAME_INITIAL_RE.match(oddsportal_name.strip())
-    if not m:
-        return _norm(oddsportal_name) == _norm(full_name)  # non-tennis or already full-form input
-    surname, initial = m.group(1).lower(), m.group(2).lower()
-    full_words = re.findall(r"[a-z]+", full_name.lower())
-    if surname.replace(" ", "") not in "".join(full_words):
-        return False
-    return any(w.startswith(initial) and w != surname for w in full_words) or len(full_words) == 1
+# _player_name_matches is entity_resolution.surname_initial_matches (P3), imported above.
 
 
 # ---------------------------------------------------------------------------

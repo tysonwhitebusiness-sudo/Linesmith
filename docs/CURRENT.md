@@ -50,8 +50,8 @@ Read it next. In short:
    | P0 keep data flowing | **DONE 21:20 UTC** — odds-scraper `52ae6b4`, `8afa4d8` (that repo has no remote: local commits only). Freshness watchdog, stall dump, backup of both archived days verified. See P0 → Result |
    | P1 fix what is broken | **DONE 21:55 UTC** — `4d64071`, deployed (see Deploys). Game line on every sport's player page, one market-label and one book registry, game-line history logs line moves (proved live). See P1 → Result |
    | P2 names | **DONE 22:25 UTC** — `08fa35e`. `scraper_markets.py` (scraper labels → app keys), verify list decided, 28 keys and 49 books in both alias maps; coverage 99.9% props / 96.5% game markets. See P2 → Result |
-| P3 matching | in progress |
-| P4 storage measurement | waiting |
+| P3 matching | **DONE 23:15 UTC** — scraper games and players → app ids in `bridge.db`; zero wrong links in the 170-game / 215-player hand check; MLB 98.3% of player rows (after the StatsAPI roster fallback), NFL 99.6%, CFB 89.4%, MLS 95.8%. See P3 → Result |
+| P4 storage measurement | in progress |
    | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
    | the six spec corrections (HANDOFF §"Known spec corrections") | after P4 |
 
@@ -60,6 +60,9 @@ Read it next. In short:
      300 s. Read `odds-scraper\data\watchdog.log`: any `stalled` line is a
      freeze. If one appears, `data\stalls\stall-*.txt` holds the writer's
      stack, which names the cause; fix it and record it in P0 → Result.
+   - **P3, daily for 7 days:** `OddsBridgeMatchReport` at 05:15 local →
+     `odds-scraper\data\match_report.log`. Investigate a sport whose linked
+     share drops more than 5 points. Delete the task after 2026-10-01.
    - **P0, daily:** `OddsScraperBackup` at 04:30 local. `data\backup.log`
      should show a new day uploaded and `mismatches: 0`.
 
