@@ -73,6 +73,32 @@ pre-game). Not app-breaking; routed to §5.
 | B5 | Pages: display names / order for the new books; a shorter chart window so minute-level movement is visible | rendered on each sport's player + game page |
 | B6 | Expiring history: run `backfill_comparenbet_history.py` (`line_history` has 0 rows); pull theoddsgap's 45-day props export daily; stop discarding betmonitor's 24 h charts and oddstrader's openers | rows landing daily |
 
+## 3b. T0 — timing audit (before any edge renders)
+
+Time is the biggest factor in edge, and **fetch time is not price time**.
+Measured 2026-09-23 from each source's newest raw page:
+
+| source | timestamp in raw | real? |
+|---|---|---|
+| 4codds | per price | YES (9,578 distinct in 20,357). Mean age at fetch: Pinnacle 18 min, Novig 15, ProphetX 4, Kalshi 3, DraftKings 2 h, bet365 5.8 h. Ambiguous whether it means "last changed" or "last confirmed" |
+| theoddsgap | feed-level `last_updated` only | YES — the feed was 43 min old at fetch |
+| comparenbet | per-book `last_update` | **NO** — 9 distinct values across 8,116 stamps, all 0–3 s old: the upstream's fetch time. Never use it |
+| bestfightodds, proboxingodds | "N min ago" per line | probably (fights only) |
+| all others | none | — |
+
+Also found: **betmonitor has returned empty pages since 04:13 UTC 2026-09-23**,
+reporting status ok on every poll — the parser-drift check did not catch it.
+
+T0 steps: (1) keep every REAL timestamp (4codds, theoddsgap feed stamp, fight
+sites' ages, the paid feeds' own stamps if their APIs carry them — unchecked);
+(2) after B1, measure each source's real lag directly: when Pinnacle's price
+for one game moves in one source, time how long each other source takes to
+show it; (3) only sources with a proven-short lag may act as the sharp
+reference, and the freshness gate uses measured lag, not fetch time; each edge
+shows its prices' age; (4) fix betmonitor and the drift check's blind spot.
+Timing confidence 2026-09-23: 4/10 now, ~7/10 for game lines once T0 is done;
+overall edge confidence revised from 7/10 to ~5/10 until T0.
+
 ## 4. Edge phases (after the bridge)
 
 **Calculation** (existing `edge_sharp_vs_soft`, probability points; show EV too):
