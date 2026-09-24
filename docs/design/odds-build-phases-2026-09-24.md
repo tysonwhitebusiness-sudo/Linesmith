@@ -63,47 +63,372 @@ brackets.
 
 ## 2. The build phases, in order
 
-The order follows three rules: keep the data flowing first, never write to
-Supabase before the storage decision, and build UI that has something to
-render. **Two lanes run in parallel** after P1: the data lane (P2–P7, P10,
-P11) and the UI lane (P8). Where a phase needs the other lane, it says so.
+### The time rule (operator, 2026-09-24)
 
-| phase | what | where | needs | done when |
-|---|---|---|---|---|
-| **P0 Stabilise collection** | (1) Restart the scraper (**operator**, see below). (2) Find why the collector hung with 28 writes pending; fix it. (3) Watchdog checks `last_poll_at` freshness, not just the port — a stall restarts it within minutes. (4) **S3**: back up the laptop Parquet history to Supabase Storage (the only full copy). | laptop | — | a stall is restarted automatically; backup verified by a restore of one day |
-| **P1 Fix what is broken now** | O0 (player page "No game line yet", raw market keys, book names, best price without a book) + **F5** (game-line history logs a point change too). | TS + Python (deploy ⚑) | — | each bug reproduced before, gone after, on each sport |
-| **P2 Names (B0)** | Label map seeded from `STAT_MAP`, every sport's markets; book registry (key, display name, group D18, order, logo domain); both alias maps + `config-drift`. Pages read display names from the registry. | Python + TS | — | both-mapped ≥ ~90% of scraper rows; no raw key or duplicate name on any page |
-| **P3 Matching (B1, B2)** | Scraper games → game ids; players → ESPN athlete ids. Match-rate report per sport, hand-checked sample. | laptop | P2 | match rates per sport accepted by the operator |
-| **P4 Storage decision (L0)** ⚑ | Measure matched, de-flapped, pre-game changes per day, split first-hand vs relayed vs duplicate-of-first-hand; project Supabase size at 10 days. Bring the options with their cost (examples: bridge first-hand sources plus relays only for books with no first-hand source; a shorter hot window for relays; disk growth on the Supabase plan). The laptop keeps everything whatever is chosen (D14). | laptop + DB | P3 | the operator picks the policy; written into the plan |
-| **P5 Schema + writers** | Additive migrations, applied by hand before deploy: `prop_odds` + history get per-row observed time and **changed_at** (since, D23); game lines gain **period** and **point in the key** (alternates) and team totals; **pull** rows in history (G8); **openers** table; **splits / volume / depth** tables (V1–V2); RLS + ownership rows (F9). Writers accept source times. Reader rule **F6**: first-hand over relay per book, then freshest *since*. | Python + TS + DB (deploy ⚑) | P4 | existing writers unchanged in behaviour; a test row with source times round-trips |
-| **P6 Bridge (B4)** | Laptop job: forwards de-flapped matched changes under the P4 policy, sharp sources first, both times, opener sanity check (D21), unmatched kept, heartbeat via the `check_harvester_scrapes` pattern (F10), 1–2 connections (F13), starts at boot, restarts on crash. | laptop | P5 | two days unattended, heartbeat green, growth inside the P4 projection |
-| **P7 Timing (T0)** | Keep real timestamps; measure each source's lag behind Pinnacle; the proven-fast list; the latency-badge table; edge half-life. Can start on scraper data alone once P3 is done. | laptop / Python | P3 (runs beside P5–P6) | lag per source per sport, published as a table |
-| **P8 Odds sections (UI lane)** | **O1** kit components + live pieces on `/kit`, then **O2** player, **O3** game (periods and ladder fill once P5 lands), **O4** Slate + Scan columns (D22; decide F12). They render today's data and fill as P6 lands. | TS | O1 after P1; O3's periods after P5 | each surface matches the approved mockup at 1440 and 400, on every sport, in a fresh tab |
-| **P9 Live** | **O5**: direct-read odds endpoint (F8), 30–60 s refresh, the live layer on (dots, flashes, trails, pulls, heartbeat, "since you opened"), noise rules. | TS | P6, P8 | a real price change shows within a minute, flashes once, no flap noise |
-| **P10 Money** | **O7**: where the money is, game lines and props, from the P5 tables. | TS | P5 tables filled by P6 | every row labelled by source |
-| **P11 Edge** | **E1**: gates in Python on "since", outlier rule, edge log table, **flags table + kill switch** (F7), self-check, gate-1 coverage report (F11); must reproduce the two hand-found edges. **O6**: edge card + Scan edge column; lift D6 in CLAUDE.md and `scan-no-edge.test.ts`. | Python + TS (deploy ⚑) | P6, P7, P8 | the two known edges reproduce; the self-check trips on an injected bad price |
-| **P12 Alerts, slip, flags** | **O8**: Your-lines alerts (read-time, from history against `tracked_lines`, which stays TypeScript-owned), bet slip best book + "open at book" (B5 links), odds research flags as `slate_rankings` rows. | TS + Python | P8, P9 | each alert fires on a replayed real event |
-| **P13 Closing-line test (E3)** | ~2 weeks after P11: do soft books move to our fair price by the start; edge half-life; retune the gates. | Python | P11 + 2 weeks | measured numbers replace the confidence estimates |
+**No phase waits on elapsed time.** A test that needs time to pass (a two-day
+soak, a two-week measurement, a gate review at day 3–5) is started at the end
+of its phase and runs **in the background** while the next phase is built.
+Its result is reviewed when it lands, and anything it finds is fixed in place.
+The next phase starts as soon as the current phase's **build tests** pass.
 
-**The scraper lane runs beside this, any time after P4** (each adds volume,
-so it waits for the storage policy): G3 cadence, G7 coverage (Polymarket and
-Kalshi wider, DK milestones and scorers, FanDuel NBA/NHL tabs when those
-seasons open), G5/S4 raw pages, S5 less comparenbet, G4 in-game props ⚑, G1
-then G2 revisited at an evening peak.
+Each phase below lists:
+- **Build**: what gets built.
+- **Tests (gate the next phase)**: automated tests plus live checks, all runnable
+  the same day.
+- **Background checks (never gate)**: the timed ones.
+
+The order follows three rules: keep the data flowing first, write nothing new
+to Supabase before the storage decision, and build UI that has something to
+render. After P1 there are two lanes: data (P2–P7, P10, P11) and UI (P8).
+
+**Standing checks on every phase that touches the app:**
+- `npx tsc --noEmit`;
+- the full test suite;
+- `npm run build`;
+- render at 1440 and 400 in a fresh tab on every sport it touches;
+- the kit guards (`tests/ui-*`).
+
+Every Python change runs its own tests. Every Render deploy needs the
+operator's go and gets recorded in `docs/CURRENT.md`.
+
+---
+
+### P0 · Keep the data flowing *(laptop)*
+
+**Build**
+1. The operator restarts the stalled scraper (F1).
+2. Find why the collector hung at 17:38 UTC with 28 writes pending, and fix
+   the cause.
+3. The watchdog checks **`last_poll_at` freshness**, not just whether :8000
+   answers. It restarts a stalled collector and logs why.
+4. **S3**: a daily backup of the laptop Parquet history to Supabase Storage.
+
+**Tests (gate P1)**
+- Watchdog unit test: port up + `last_poll_at` older than the limit → treated
+  as stalled; port up + fresh → left alone; port down → restarted.
+- Stall test: freeze the collector in a test run → the watchdog restarts it
+  within the limit, and it is polling again afterwards.
+- The hang is reproduced in a test (or its cause is shown in the logs), and
+  it no longer happens with the fix.
+- Backup: one day uploaded, downloaded back, then byte-compared and
+  row-counted against the original.
+
+**Background checks (never gate):** 48 h with no stall longer than the
+watchdog limit; the daily backup lands each day.
+
+---
+
+### P1 · Fix what is broken *(TypeScript + Python, one Render deploy ⚑)*
+
+**Build**
+- O0: the player page's "No game line yet" when a line exists
+  (`PlayerDetail.tsx:1716`); raw market keys; book names (`parx parx`,
+  casing); a best price without a book.
+- F5: game-line history logs a point change even when the price did not move.
+
+**Tests (gate P2)**
+- For each sport: a player whose game has lines shows them on the player page
+  (a test of the data path, plus a render check).
+- No raw market key reaches a rendered label (a guard over the label
+  function).
+- No duplicate book display names; every best price has a book.
+- `write_game_odds_history` unit tests: point moves at the same price → logged;
+  price moves → logged; both unchanged → not logged; the `id DESC` tie rule
+  still holds.
+- After the deploy, a live spread move appears in `game_odds_history`.
+
+**Background checks:** none.
+
+---
+
+### P2 · Names: labels and book registry (B0) *(Python + TypeScript)*
+
+**Build**
+- The market label map, seeded from `STAT_MAP` and extended to every sport
+  and market the scraper stores, in both alias maps.
+- One book registry: key, display name, group (D18), order, logo domain.
+- Pages read display names from the registry.
+
+**Tests (gate P3)**
+- `tests/config-drift.test.ts`: the two maps are identical.
+- A coverage script over the scraper's live rows: ≥ ~90% map both market and
+  book. The unmapped remainder is listed.
+- Every registry book has a group, display name and order; two different
+  books never share a display name.
+- A render check: book names and market labels on the player, game and Slate
+  pages come from the registry.
+
+**Background checks:** none.
+
+---
+
+### P3 · Matching: games and players (B1, B2) *(laptop)*
+
+**Build**
+- Scraper games → Linesmith game ids, using comparenbet team ids and logos
+  as extra keys.
+- Scraper players → ESPN athlete ids through the roster index.
+
+**Tests (gate P4)**
+- A match-rate report per sport, for games and for players.
+- A hand-checked sample of 50 per sport: **zero wrong matches** (a miss is
+  acceptable, a wrong match is not).
+- Unit tests for the known hard cases: doubleheaders, neutral sites, "Jr."
+  and accents, two players with the same name, a team's abbreviation in
+  different sources.
+- The unmatched list is written out so it can be worked down.
+
+**Background checks:** match rates re-run daily for a week, to catch sources
+whose names drift.
+
+---
+
+### P4 · Storage decision (L0) ⚑ *(laptop + DB, a measurement and a decision)*
+
+**Build**
+- A script that counts matched real changes per day, split into:
+  - first-hand;
+  - relays of a book we read first-hand;
+  - relays of books we can only get relayed;
+  - pre-game vs in-game.
+- A 10-day projection for each option (A all, B one copy per book, C a
+  shorter relay window, D pre-game only, E a mix), using today's measured
+  ~270 bytes per history row.
+
+**Tests (gate P5)**
+- The classes add up to the total.
+- The bytes-per-row figure checks out against the live table.
+- **The operator picks the policy.** It is written into the master plan as a
+  numbered decision.
+
+**Background checks:** none. Growth is watched in P6.
+
+---
+
+### P5 · Schema and writers *(DB migrations + Python + TypeScript, one Render deploy ⚑)*
+
+**Build**
+- Additive migrations, applied by hand before the deploy:
+  - `prop_odds` and its history get a per-row observed time and **changed_at**
+    (D23);
+  - game lines get a **period** and the **point in the key** (alternates),
+    plus team totals;
+  - **pull** rows in history (G8);
+  - an **openers** table;
+  - **splits, volume and depth** tables;
+  - RLS on every new table and a row for each in `docs/table-ownership.md`.
+- Writers accept source times (and still default to now for existing callers).
+- The reader rule F6: first-hand beats a relay for the same book, then the
+  freshest *since* wins.
+
+**Tests (gate P6)**
+- Every existing Python writer test still passes, so existing callers behave
+  the same.
+- Round-trip tests:
+  - a row with source times;
+  - an alternate game line and a period line;
+  - a pull written when a rung disappears;
+  - an opener, and a failing opener marked "check".
+- RLS: each new table rejects what its pattern says it rejects.
+- F6 unit test: a relayed stale DraftKings price loses to a fresh direct one;
+  of two first-hand copies, the fresher *since* wins.
+- The table-ownership doc regenerates cleanly from the grep it describes.
+
+**Background checks:** none.
+
+---
+
+### P6 · The bridge (B4) *(laptop)*
+
+**Build**
+- A laptop job that forwards matched, de-flapped changes under the P4
+  policy:
+  - sharp sources first;
+  - both times on every row;
+  - the opener sanity check (D21);
+  - unmatched rows kept;
+  - 1–2 database connections, no long transactions (F13).
+- A heartbeat through the `check_harvester_scrapes` pattern (F10).
+- Starts at boot, restarts on crash.
+
+**Tests (gate P7–P9)**
+- Unit tests: the flap filter, the P4 policy filter, the time mapping, the
+  opener check.
+- Replay test: one recorded hour of scraper data run through the bridge into a
+  test target. Rows written = the rows expected under the policy, and the
+  times are preserved.
+- Stop the bridge → `health_check` flags it within its window; kill the
+  process → it restarts.
+- The connection count stays within budget under a full-speed replay.
+
+**Background checks (never gate):**
+- **Two days unattended** with the heartbeat green.
+- Supabase growth inside the P4 projection.
+- The paid-feed overlap check about 2 weeks in.
+
+---
+
+### P7 · Timing (T0) *(laptop / Python)*
+
+**Build**
+- Keep every real timestamp.
+- Measure each source's lag behind Pinnacle, per sport, from the matched data
+  already on the laptop (history since 09-22).
+- The proven-fast list, the latency-badge table, and edge half-life tracking.
+
+**Tests (gate P11's use of it)**
+- The lag calculation is right on synthetic sequences with known answers:
+  Pinnacle against itself is 0; a source delayed by a known amount reads
+  that amount.
+- The published table has a row for every source with enough data, and says
+  "not enough data" for the rest.
+
+**Background checks:** the lag estimates are re-computed daily as data
+builds up. They refine the numbers; they never hold anything.
+
+---
+
+### P8 · The odds sections (UI lane) *(TypeScript, starts right after P1)*
+
+**Build**
+- **O1**: the kit components and live pieces (`LiveDot`, `FlashValue`,
+  `DataTable` row states, chart live edge), every state on `/kit`.
+- **O2**: the player page.
+- **O3**: the game page. Its periods and ladder fill once P5 lands.
+- **O4**: the Slate and Scan, with the new columns (D22) and the F12 choice.
+
+Each renders today's data and fills in as P6 lands.
+
+**Tests (gate P9)**
+- Each surface matches the approved mockup at 1440 and 400, on every sport,
+  in a fresh tab.
+- A guard: no receipt pills in the odds components (Revision 4).
+- Headshots and team logos are present wherever the mockup has them (no
+  regression).
+- Zero vertical scroll traps.
+- The Scan hash and `ui-scope.ts` are updated deliberately in O4 (D22), and
+  `tests/slate-shell.test.ts` passes with the new hash.
+
+**Background checks:** none.
+
+---
+
+### P9 · Live *(TypeScript)*
+
+**Build**
+- A direct-read odds endpoint (CLAUDE.md pattern 2, F8).
+- 30–60 s refresh.
+- The live layer switched on, with the noise rules.
+
+**Tests (gate P10)**
+- The endpoint does no write on GET and uses no `cachedRoute`.
+- A real price change reaches the page within a minute and flashes once. A
+  flap does not flash.
+- The flash cap holds when many prices change at once.
+- Reduced motion shows static arrows only; a hidden tab pauses.
+- Load: several open tabs polling stay inside the connection budget.
+
+**Background checks:** none.
+
+---
+
+### P10 · Where the money is *(TypeScript)*
+
+**Build**: O7, game lines and props, from the P5 tables.
+
+**Tests (gate P11)**
+- Every row names its source and its age.
+- Props show "No data available" for money and bets %, with Sleeper pick
+  counts and Kalshi volume where they exist.
+- Nothing is labelled "the public" or presented as total handle (a text
+  guard).
+
+**Background checks:** none.
+
+---
+
+### P11 · Edge *(Python + TypeScript, one Render deploy ⚑)*
+
+**Build**
+- **E1**:
+  - the 11 gates, on "since";
+  - the outlier rule;
+  - the edge log table;
+  - a **flags table + kill switch** (F7);
+  - the self-check;
+  - the gate-1 coverage report (F11);
+  - the **E3 closing-line harness**, built now so nothing waits later.
+- **O6**:
+  - the edge card and the Scan edge column;
+  - D6 lifted in CLAUDE.md and `tests/scan-no-edge.test.ts`.
+
+**Tests (gate P12)**
+- One unit test per gate: each failing gate on its own blocks the edge.
+- **The two hand-found edges reproduce** from recorded fixtures (GB −4.5 at
+  BetMGM +1.0%; London receptions 5.5 over at Underdog +1.8%). The anytime-TD
+  mismatches do **not** produce an edge.
+- The self-check trips on injected bad prices and alerts through
+  `health_check`.
+- The kill switch hides the edge with no redeploy.
+- Every shown edge has an edge-log row.
+- The coverage report runs for every sport.
+
+**Background checks (never gate):** the gate reviews at days 3–5 and at 2
+weeks (D3); the E3 measurement (P13) starts collecting.
+
+---
+
+### P12 · Alerts, slip and flags *(TypeScript + Python)*
+
+**Build**
+- O8: Your-lines alerts (read-time, from history against `tracked_lines`,
+  which stays TypeScript-owned).
+- Bet slip best book + "open at book" (B5 links).
+- Odds research flags as `slate_rankings` rows.
+
+**Tests (the plan's last build gate)**
+- Each alert fires on a replayed real event: moved, better price, pulled,
+  steam.
+- No alert fires twice for one event.
+- No new writer on a user table.
+- The flags render through the existing flags path.
+
+**Background checks:** none.
+
+---
+
+### P13 · Closing-line test (E3) *(a background measurement, not a build)*
+
+Its harness ships in P11. It collects from the day edge goes live and reports
+at about 2 weeks:
+- do soft books move toward our fair price by the start;
+- edge half-life;
+- the gate retune.
+
+**It blocks nothing.** The build is complete at P12, and P13's result feeds
+the gate tuning.
+
+---
+
+### Scraper lane *(any time after P4, since each item adds volume)*
+
+G3 cadence, G7 coverage, G5/S4 raw pages, S5 less comparenbet, G4 in-game
+props ⚑, and G1 then G2 revisited at an evening peak.
+
+Each item has the same two tests:
+- its source stays healthy on the Sources page, at its new cadence or
+  coverage;
+- growth stays inside the P4 budget.
 
 **Later, outside this build:** L5 dropping-odds lists, L6 and V4 model
-inputs, the paid-feed overlap evaluation (~2 weeks after P6), and the routed
-findings (soccer injuries, `pick_history` bugs, `game_odds_history` corpus
-copy, SGO keys).
+inputs, and the routed findings (soccer injuries, `pick_history` bugs,
+`game_odds_history` corpus copy, SGO keys).
 
-## 3. The order that makes the most sense to start with
+## 3. Where to start
 
-1. **P0 now.** Every later phase assumes the scraper is collecting, and
-   right now it is not, while its only full history has no backup.
-2. **P1 and P2 together.** Both are independent, both make today's pages
-   better, and P2 is the first dependency of everything in the data lane.
-3. **P3, then P4.** P4 is a decision the operator makes from measured
-   numbers, and it is the one that decides what the bridge is allowed to
-   write.
-4. **O1 starts as soon as P1 is done**, beside P3–P6, so the UI is ready
-   when the bridge lands.
+1. **P0**, on the operator's green light. Nothing downstream works without
+   data, and the laptop history is the only full copy.
+2. **P1 and P2 together**, then **O1** beside P3.
+3. **P3 → P4** (the operator's storage call) **→ P5 → P6**, then P7, the rest
+   of P8, and P9–P12 in order. Soak tests and reviews run behind the build,
+   never in front of it.
