@@ -73,7 +73,20 @@ pre-game). Not app-breaking; routed to §5.
 | B5 | Pages: display names / order for the new books; a shorter chart window so minute-level movement is visible | rendered on each sport's player + game page |
 | B6 | Expiring history: run `backfill_comparenbet_history.py` (`line_history` has 0 rows); pull theoddsgap's 45-day props export daily; stop discarding betmonitor's 24 h charts and oddstrader's openers | rows landing daily |
 
-| B7 | **First-hand Kalshi + Polymarket** (operator, 2026-09-23). Both public APIs need no login (checked: Kalshi `trade-api/v2/markets`, Polymarket `gamma-api`); both are the exchanges themselves, so fetch time IS price time. Built the standard Python way (`fetch_kalshi`/`fetch_polymarket` in `providers.py`, a `ProviderSpec`, matched with the existing team/roster indexes), but run in its OWN small loop outside `SequentialQueue` — the worker runs one job at a time with a 10-min job budget (`job_queue.py`), so a 60 s job there would wait behind long jobs. That loop runs on the laptop beside the bridge (same uptime as the scraper). **No second Render worker for the foreseeable future (operator, 2026-09-23)** — do not propose one. Gate on bid/ask spread + liquidity — a sampled new Kalshi MLB market sat at 0.44/0.68 with zero liquidity | both feeds landing every ~60 s with bid/ask, matched to Linesmith games |
+| B7 | **First-hand sharp sources as three SCRAPER sources: Pinnacle, Kalshi, Polymarket** (operator, 2026-09-23 — supersedes an earlier draft that put Kalshi/Polymarket in Python). Pulled continuously, stored with the scraper's full history. All three verified reachable from the laptop with no login: Kalshi `trade-api/v2/markets` (bid/ask/liquidity), Polymarket `gamma-api`, Pinnacle `guest.api.arcadia.pinnacle.com/0.1` (see B7 notes below). **Requirements:** (1) their OWN schedule inside the scraper, not the shared cycle (props already wait a 110 s median for it); (2) the bridge carries the scraper's fetch time and Pinnacle's `version` into Supabase and pushes these three first — the writer otherwise stamps write time; (3) each writes a last-fetched heartbeat read by `health_check` and by the edge self-check (no fresh reference → no edge from it); (4) gate exchanges on bid/ask spread + liquidity (a sampled new Kalshi MLB market sat at 0.44/0.68, zero liquidity) and Pinnacle on its stated limit. Start with REST polling (~30–60 s); push streams (Pinnacle MQTT, exchange WebSockets) later, auth needs unverified. **No second Render worker for the foreseeable future (operator)** — do not propose one | all three landing on their own cadence, heartbeats green, matched to Linesmith games |
+
+**B7 notes — Pinnacle direct (probed 2026-09-23, ~20 read-only requests, no key):**
+leagues MLB 246, NFL 889, NCAAF 880, NBA 487, NHL 1456, EPL 1980, MLS 2663,
+tennis per tournament (`/sports/{15,4,19,29,33}/leagues`). Per league:
+`/leagues/{id}/matchups` (games + `special` matchups = props, `isLive`,
+`startTime`) and `/leagues/{id}/markets/straight` (prices, `limits`
+`maxRiskStake`, `cutoffAt`, `version`). Priced player props: MLB 120, NFL 173
+(receptions, receiving/rushing/passing yards, TD passes, TDs); NCAAF and EPL 0;
+NBA/NHL no games yet (preseason — recheck in October). Limits: MLB spread
+median $2,500 (max $10k), total $1,875, moneyline $1,000, props $250–500.
+`version` changed on every price change (254 of 679 MLB markets over 1.9 min,
+0 price changes without a version change). Responses ~0.2 s. Sustained rate
+limit unknown.
 
 **Sequencing change (operator, 2026-09-23): edge does NOT wait for T0.** It
 ships right after the bridge with the STRICTEST gates, the cap, the self-check,
