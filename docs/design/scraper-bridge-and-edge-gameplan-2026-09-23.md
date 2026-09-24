@@ -9,9 +9,10 @@ instruction, 2026-09-23). Evidence for every number is in §9.
 - The source run (R0–R5) is done and closed (§4c).
 - The Track O mockups are approved (D17).
 - The operator's mockup answers are D18–D23.
-- §3 is the current build list.
-- Next: re-audit this plan and the Track O plan end to end, then write the
-  detailed build phases. Nothing in B0 onward is built yet.
+- Re-audited end to end the same day: **the build order is
+  `docs/design/odds-build-phases-2026-09-24.md` (P0–P13)**, with 14 findings
+  that change the bridge, the schema and the storage plan. Nothing from B0
+  onward is built yet.
 
 The scraper is a separate project: `C:\Users\occy3\Documents\odds-scraper`
 (FastAPI on 127.0.0.1:8000; SQLite `data/scraper.db` holds the recent days;
@@ -61,6 +62,8 @@ The app already takes the newest price per book across providers
 show more books.
 
 ## 3. Build order — the build list (rewritten 2026-09-24 after D17)
+
+**SUPERSEDED by `docs/design/odds-build-phases-2026-09-24.md`** (the end-to-end re-audit, same day): phases P0–P13 in the required order, plus 14 audit findings (F1–F14) that change the bridge, the schema and the storage plan. The lanes below are kept for reference.
 
 **Done:** the source run R0–R5 (B3's scraper half, B6's grabs, B7–B10, Track V
 sources, S1, S2; §4c) and Track O phase OM (the approved mockups).
@@ -496,10 +499,10 @@ version counter we can timestamp to the poll.
 | phase | what |
 |---|---|
 | L0 | **Measure before writing.** Pre-game, de-flapped, matched moves per day per source — comparenbet alone showed ~64k distinct-price moves/hour including live games, well above the earlier snapshot-based estimate (0.49–0.59M history rows/day). Decide from the number: all changes to Supabase, pre-game only, or live moves kept on the laptop only. Re-check DB headroom (5.42 of 8 GB; ~6.7 GB was the snapshot-based estimate) |
-| L1 | Chart resolution: shorter windows (e.g. 2 h / 6 h / 12 h) so minute and 5-min buckets are reachable (`BUCKET_LADDER_SECONDS` starts at 300 s, `MAX_BUCKETS` 160, `lineHistory.ts:106`); price age shown |
+| L1 | Chart resolution: shorter windows (e.g. 2 h / 6 h / 12 h) so minute and 5-min buckets are reachable (`BUCKET_LADDER_SECONDS` starts at 300 s, `MAX_BUCKETS` 160, `lib/odds/props/lineHistory.ts`); price age shown |
 | L2 | Pulled lines drawn on the chart (needs B3; today "withdrawn" and "unchanged" both look like silence, `LineMovementCard.tsx:52`) |
 | L3 | **True openers**: theoddsgap's sharp opener with `first_listed_at`, 4codds' openers, oddstrader's, and our own first-seen for Pinnacle — "opened X, now Y" on props and game lines |
-| L4 | **Movers and steam** at minute resolution: steam = 3 books same direction within 30 min (`marketMoves.ts:99`) — barely detectable at 20-min polling, detectable and timestamped at ~1 min. Retune thresholds on real data |
+| L4 | **Movers and steam** at minute resolution: steam = 3 books same direction within 30 min (`lib/slate/marketMoves.ts`) — barely detectable at 20-min polling, detectable and timestamped at ~1 min. Retune thresholds on real data |
 | L5 | **Dropping odds** lists (livesportsodds, oddsrun: opening → current, % change across 70–100 books; mostly soccer) and betmonitor's 24 h per-outcome charts for late-watched games; pulled-line alerts |
 | L6 | Model inputs: line-movement features from the dense history; props CLV for the models using Pinnacle/fair closing prices (today model CLV covers MLB moneyline + totals only, `jobs.py:1301`) |
 
@@ -556,7 +559,7 @@ book. Only ~500 used a sharp reference, and those carry the `pick_history` bug
 4. Settled: passed the flap filter; not pulled; comparenbet fair prices only
    where `fair_odds_available` is true.
 5. Pre-game only.
-6. Conservative: de-vig with every method in `odds_math.py`; show the SMALLEST.
+6. Conservative: de-vig with every method in `predict/odds_math.py` (two-way, power, Shin, worst case); show the SMALLEST.
 7. One book via several providers: freshest wins; if two disagree beyond a
    small tolerance at nearly the same time, no edge.
 8. Cap: a single edge above ~8–10% hidden as a probable data error. Plus the

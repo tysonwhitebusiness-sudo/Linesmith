@@ -41,10 +41,18 @@ Read it next. In short:
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
 7. **Track O — odds section rebuild (2026-09-24): MOCKUPS APPROVED** (D17).
-   The operator's answers are D18–D23 in the parent plan. **The build list
-   is the parent plan's §3** (lanes A / O / S). **Next: re-audit both plans
-   end to end, then write the detailed build phases.** Each phase still needs
-   the operator's go.
+   The operator's answers are D18–D23 in the parent plan. **Re-audit done:
+   `docs/design/odds-build-phases-2026-09-24.md` is the build order (P0–P13)
+   and holds 14 findings.** The headline findings:
+   - the scraper stalled at 17:38 UTC on 09-24 and the watchdog cannot see
+     it;
+   - the scraper makes ~7M changes a day against a DB at 65% of 8 GB, so the
+     storage decision (P4) must come before the bridge;
+   - the writers stamp write time with one time per price;
+   - game-line tables have no period and no alternate lines;
+   - live bug: game-line history misses line moves.
+
+   Next is P0, then P1 + P2, each on the operator's go.
    **Resume prompt for the whole workstream: `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.**
    Read `docs/design/odds-rebuild/HANDOFF-OM.md` first. It covers how to view
    and regenerate the mockups and the four review rounds so far. Round 4
