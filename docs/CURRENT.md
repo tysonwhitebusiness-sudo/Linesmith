@@ -41,6 +41,7 @@ Read it next. In short:
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
 7. **Track O — odds section rebuild (2026-09-24): MOCKUP REVIEW IN PROGRESS.**
+   **Resume prompt for the whole workstream: `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.**
    Read `docs/design/odds-rebuild/HANDOFF-OM.md` first — it has how to view
    and regenerate the mockups, the three review rounds so far, and the
    operator's two design notes NOT yet applied (no pill "bubbles" as receipts
