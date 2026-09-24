@@ -139,6 +139,31 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
 
 ### 4c. Source run — build order (the checklist)
 
+**STATUS 2026-09-24 (UTC): R0 and R1 DONE and live. Operator: STOP after R1 —
+R2 (DraftKings, FanDuel, BetMGM, BetRivers) waits for a go.** Scraper commits
+(odds-scraper repo, local git, created in R0): baseline `75e8f2e`, R0
+`dee6f4e` + fixes `5e9db9f` (aging) `09d9c40` (writer throughput), R1
+`5d55b38`. Runs as scheduled task `OddsScraper` (logon + 5-min watchdog).
+Measured along the way:
+- raw store (zstd delta vs keyframe as long-window prefix): 58x vs gzip's 9x
+  on real pages; byte-exact.
+- health now catches silent outages: betmonitor "0 rows; typically ~875",
+  oddsrun empty since 02:11 UTC 09-24, 4codds props0 HTTP 404 (R5 items).
+- strict priority starved low-rank aggregators on the first live run -> aging
+  (1 rank per 10 s overdue; never-polled = overdue since start).
+- writer was the bottleneck (comparenbet ~3.5-4 s per store): group commit
+  (8 results/transaction), tuple dedup keys -> ~1.8-2 s; flaps now COUNTED on
+  snapshots (one event per flap was ~15k rows/min from comparenbet — derivable
+  from offers anyway); aggregator cadence set to what they achieve (board 45 s,
+  props 90 s).
+- R1 live fetch tests: Pinnacle 115 games / 9,191 prices / 173 props (14
+  requests); Kalshi 12,155 game + 5,701 prop prices (34 requests; per-market
+  `updated_time`); Polymarket 396 games / 10,300 prices (30 requests; CLOB
+  books timestamped, 500 per call; scope ml/spreads/totals, next 7 days — the
+  series carry 66,474 books in all).
+- Kalshi `occurrence_datetime` = start + ~3 h (NFL/MLB); MLB tickers carry
+  HHMM ET. Windows has no tz database: US Eastern DST applied explicitly.
+
 Each step ends with its sources visible on the scraper's Sources page with
 non-zero counts and a green heartbeat before the next starts. The open research
 items (DeepSeek §C–E) are answered inside the step that needs them.

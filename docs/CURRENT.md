@@ -29,11 +29,12 @@ Read it next. In short:
    `/diagnostics`.
 6. **Scraper bridge, line movement + market edge (new workstream, 2026-09-23):**
    `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
-   are settled (§1: scraper as a third writer, bridge first, gated edge on
-   pages including the Scan table, closing-line test ~2 weeks after). NOTHING
-   is built — **wait for the operator's go** before B0. Done that day: user
-   CLV removed (`709d807`), `prop_odds_history` window 14 → 10 days
-   (`2331a56`).**
+   are settled (§1). **Source run: R0 + R1 are built and live in the
+   odds-scraper repo** (§4c STATUS; scraper's own `HANDOFF.md` top section).
+   **Operator said STOP after R1 — R2 (DraftKings, FanDuel, BetMGM,
+   BetRivers) waits for a go.** Nothing in line-buddy/Supabase changed for the
+   source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
+   window 14 → 10 days (`2331a56`).**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
