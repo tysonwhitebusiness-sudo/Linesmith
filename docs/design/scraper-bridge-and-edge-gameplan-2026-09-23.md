@@ -86,6 +86,19 @@ Measured 2026-09-23 from each source's newest raw page:
 | bestfightodds, proboxingodds | "N min ago" per line | probably (fights only) |
 | all others | none | — |
 
+**comparenbet in full** (every field of all 18 endpoints read 2026-09-23): it is
+SportsGameOdds (`_provider`) relayed through a once-a-minute cache
+(`_mode: CACHE_ONLY`); `_updatedAt` and per-book `last_update` are that relay's
+time. SportsGameOdds itself carries a real per-book `lastUpdatedAt`
+(`providers.py:1115` reads it), but Linesmith's own SGO feed wrote 0 rows —
+"every key in the pool is at its monthly cap (2000)". Fields our parser drops
+that matter: **`fair_odds_available`** (fair prices are stored without it —
+must gate on it), `_links` (deep links to 40+ books), team ids + ESPN logo URLs
+(helps B1), live state (`status`, `scores`, `_staleStart`, `_likelyComplete`),
+`_note` (its own coverage gaps). Caveat on §2's 70% flap figure: it was
+measured while MLB games were live and comparenbet mixes in-play prices — T0
+must split pregame from live before judging the source.
+
 Also found: **betmonitor has returned empty pages since 04:13 UTC 2026-09-23**,
 reporting status ok on every poll — the parser-drift check did not catch it.
 
