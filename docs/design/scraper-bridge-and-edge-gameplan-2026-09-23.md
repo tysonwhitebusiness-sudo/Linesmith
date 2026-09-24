@@ -30,6 +30,7 @@ kept 48 h). Its own resume notes: `HANDOFF.md`, `SOURCE_HANDOFF.md`.
 | D11 | Done in-session: user CLV removed (`709d807`); `prop_odds_history` hot window 14 → 10 days (`2331a56`), sized for the game page's pre-game prop prices; older rows stay in the Parquet corpus. |
 | D12 | Never mention licences, terms or resale for any source (standing preference). |
 | D13 | **Pinnacle's CDN-cached prices (up to ~15 min old, `max-age=905`) are acceptable** — accounted for, not rejected. Price time = `Last-Modified` (or fetch time − `Age`). The edge compares Pinnacle with the soft book's price **at that same instant** (from the soft book's minute-level history), then shows it only if neither the soft price nor the fast sharp sources (Kalshi ~15 s, Novig/ProphetX) have moved since. The page shows the reference's age ("Pinnacle as of 13 min ago"). |
+| D14 | **Never discard useful data; keep it as fresh as it is useful; track every useful movement for everything we can** (operator, 2026-09-24). Every price change, pull, return, split and timestamp is kept — the laptop Parquet history forever, Supabase in its hot window with older rows moved to the corpus (moved, never deleted). Nothing is thinned, sampled or dropped to save space or effort without the operator's say; where a cadence or storage limit is a trade-off, it is written down with its cost and the operator decides. Freshness problems (writer lag, slow tiers, cached copies) are measured and shown, not hidden. |
 
 ## 2. The three systems today
 
