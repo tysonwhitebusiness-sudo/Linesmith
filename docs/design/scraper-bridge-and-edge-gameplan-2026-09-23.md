@@ -109,11 +109,31 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
    (≤ ~60/min per book), so: ramp up (lines first, props a day later), jitter,
    honour `Retry-After`, and a per-source circuit breaker that stops a source
    for an hour on 403/429/captcha and flags it on the Sources page.
+   **Revised by the operator (same day): no ramp-up; each source's next poll
+   lands at a random point 60–75 s after its last; always honour
+   `Retry-After`.** The breaker classifies before it acts: 429 or
+   `Retry-After` → wait as told; 403/503 with a known challenge signature
+   (Cloudflare `cf-mitigated` / "Just a moment", PerimeterX `px-captcha`,
+   Akamai "Access Denied … Reference #") → bot protection, stop 1 h, red;
+   bare 403 → blocked-unknown, stop 1 h, amber; 5xx/timeouts → normal
+   backoff, no breaker; HTTP 200 with empty or far-below-normal rows →
+   possible soft block or broken parser (betmonitor's failure looked exactly
+   like this), flag, stop if it persists.
 6. **B3 in this run** (operator): record line pulls in the scraper; flaps are
    FLAGGED, not deleted (raw changes kept; the bridge filters). The Linesmith
    writer half of B3 lands with the bridge.
 7. S2 uptime (start at boot, restart on crash, no sleep on power) so the run
    has no gaps.
+8. **Raw-page storage** (they are a self-deleting 48 h buffer, never sent to
+   Supabase; the permanent record is the parsed Parquet archive, ~135 MB/day
+   today). Measured on 30 min of real pages: gzip-6 12×, zstd-9 17×, **zstd
+   storing each page as a delta against the previous copy 30×** (comparenbet
+   16× → 44×, bestfightodds 27× → 125×); exact repeats were 54% of files / 23%
+   of bytes (steezanomics 97%, ScoresAndOdds 92%). Switch raw writes to zstd
+   delta with a full keyframe every hour. Today's 14 sources write ~6 GB/day
+   gzipped (525 MB per 2 h) → ~2.4 GB/day; with the new sources ~4 GB/day →
+   ~8 GB steady on disk at 48 h (24 h retention halves it). L0 measures the
+   parsed-archive growth from the new sources.
 
 **Edge coverage reality check (measured, NFL, 2026-09-23):** of DraftKings' 262
 over/under player props, Pinnacle prices the same player + stat for 152 (58%)
