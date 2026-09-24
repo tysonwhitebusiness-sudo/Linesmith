@@ -139,8 +139,10 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
 
 ### 4c. Source run — build order (the checklist)
 
-**STATUS 2026-09-24 (UTC): the source run R0–R5 is DONE and live** (the
-operator ran R3–R5 in one unattended pass). Next: B0–B2 matching, then the B4
+**STATUS 2026-09-24 (UTC): the source run R0–R5 is DONE, live and CLOSED by
+the operator** (R3–R5 ran in one unattended pass; the writer-headroom fixes —
+bigger `WRITE_BATCH`, rarer Sleeper pick counts — were declined for now: the
+lag lands on the lowest-ranked aggregators, 1.1–1.6x their schedule). Next: B0–B2 matching, then the B4
 bridge — needs a go. Scraper commits (odds-scraper repo, local git): baseline
 `75e8f2e`, R0 `dee6f4e` + `5e9db9f` `09d9c40`, R1 `5d55b38` + `4f48d87`, R2
 `3779047`, comparenbet key/fair fix `eda615d`, R3 `898074c`, header fixes

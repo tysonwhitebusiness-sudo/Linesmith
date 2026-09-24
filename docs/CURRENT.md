@@ -29,7 +29,7 @@ Read it next. In short:
    `/diagnostics`.
 6. **Scraper bridge, line movement + market edge (new workstream, 2026-09-23):**
    `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
-   are settled (§1). **Source run R0–R5 is DONE and live in the odds-scraper
+   are settled (§1). **Source run R0–R5 is DONE, live and CLOSED (operator, 2026-09-24) in the odds-scraper
    repo (29 sources; plan §4c STATUS; the scraper's `HANDOFF.md` top section
    is the operating guide). Next: B0–B2 matching, then the B4 bridge — waits
    for the operator's go.** New data types landed: `splits` (DraftKings and
