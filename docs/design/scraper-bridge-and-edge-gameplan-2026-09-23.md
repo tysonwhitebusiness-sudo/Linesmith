@@ -132,8 +132,10 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
    of bytes (steezanomics 97%, ScoresAndOdds 92%). Switch raw writes to zstd
    delta with a full keyframe every hour. Today's 14 sources write ~6 GB/day
    gzipped (525 MB per 2 h) → ~2.4 GB/day; with the new sources ~4 GB/day →
-   ~8 GB steady on disk at 48 h (24 h retention halves it). L0 measures the
-   parsed-archive growth from the new sources.
+   ~8 GB steady on disk at 48 h (24 h retention halves it). **Operator: keep
+   48 h; ~8 GB steady is fine.** Raw never accumulates — the only growing
+   store is the parsed Parquet archive (~50 GB/yr today + the new sources'
+   share, measured in L0), which is also what S3 backs up.
 
 **Edge coverage reality check (measured, NFL, 2026-09-23):** of DraftKings' 262
 over/under player props, Pinnacle prices the same player + stat for 152 (58%)
