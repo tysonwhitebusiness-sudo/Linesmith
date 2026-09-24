@@ -1,5 +1,9 @@
 # Odds section rebuild — gameplan (Track O)
 
+**STATUS 2026-09-24: phase OM mockups BUILT, awaiting the operator's review** —
+`docs/design/odds-rebuild-mockup-2026-09-24.html` (serve with `design-mockups`,
+:8125). Decisions the mockups raised are in §8.
+
 **Written 2026-09-24; revised the same day with the operator's answers.**
 Nothing here is built. **No UI is built before 1:1 detailed mockups with real
 data are approved by the operator (D16, phase OM)** — this plan is not
@@ -312,11 +316,11 @@ day):
 | Line movement, first mover, pulls, openers | yes (scraper history since 09-22/24) | as designed |
 | Where the money is — GAME lines: DraftKings and Circa % money / % bets, ScoresAndOdds, Covers picks, Action Network bet counts, Kalshi/Polymarket volume | yes | as designed |
 | Where the money is — PROPS | only Sleeper pick counts and Kalshi's volume on its own prop markets | only those two; no money/bets % on props |
-| Exchange order book | TOP of book only: best bid/ask and their sizes, last, liquidity, open interest, volume — no depth ladder | top of book; a full ladder needs the scraper to store depth (added to §4d G7 of the parent plan) |
+| Exchange order book | top 10 levels each side since 2026-09-24 12:45 PM ET (odds-scraper `5533251`; Kalshi batch order books, Polymarket bids/asks), stored on each contract's next change | the ladder, with its contract and "price since" |
 | Latency badges | raw data yes; T0 not run | example values computed the T0 way |
 | Edge | the inputs yes; E1 not built | example values from real-shaped prices, gates applied by hand |
 | Circa on props | no (VSiN has no props; ~6 relayed prices) | not shown on props |
-| PrizePicks | no (blocked) | not shown |
+| PrizePicks | lines only, relayed by comparenbet (no price) | a pick'em row marked "line only" |
 
 | phase | what | depends on |
 |---|---|---|
@@ -336,3 +340,45 @@ data and fill up as B4 lands. O6 waits for E1. Every phase ends with the
 standing checks: render at 1440 and 400 on every sport (a fresh tab), the kit
 guards, and `tests/scan-no-edge.test.ts` / `tests/slate-shell.test.ts`
 changed only where D5/D6 say.
+
+## 8. What the OM mockups surfaced (for the operator)
+
+Built 2026-09-24 on a frozen snapshot (1:18 PM ET): ATL @ GB and Drake London
+props for the player, game and team pages; the 12-game MLB slate for the
+Slate; TOR @ BAL (Sep 23, BAL 4–2) for the finished-game page. Files:
+`odds-rebuild-mockup-2026-09-24.html`, `odds-rebuild/om-data.js` (data),
+`odds-rebuild/om-mock.js` (renderer), `odds-rebuild/tools/` (extract + build;
+re-run against the scraper DB to refresh the snapshot).
+
+Decisions the mockups need from the operator:
+
+1. **Two book groups the plan did not have**: *Offshore* (Bovada, BetOnline,
+   MyBookie, Bookmaker, LowVig …) and *International* (~30 books relayed by
+   comparenbet: Unibet, Ladbrokes, Betsson …). Shown after Nevada, collapsed
+   behind a "+ N books" button by default.
+2. **Scan columns.** D5 unfreezes Scan for Edge only; the mockup also adds
+   Sharp, Books, Checked, Open → now and the pulled marker (highlighted in the
+   mockup). Those need a yes to join the frozen table.
+3. **An outlier rule** (the mockup's "check" chip): a price whose implied
+   probability is < 0.6× or > 1.6× the median at that line is kept and shown
+   but never used as "best". Found on real data: FanDuel/bet365 anytime-TD
+   prices of +2500/+475 against Pinnacle +615/+193 — a different market
+   relayed under the same key. It is edge gate 8's job for the board too.
+4. **Negative hold at best prices** (ATL @ GB spread: −0.8%, BetMGM −105 +
+   Polymarket +108) is shown as a fact, never labelled an opportunity. Confirm.
+5. **Two times per price**: "checked" (we confirmed it) and "since" (when it
+   last changed). The data has both; the board shows both.
+6. **Openers are "first seen"** (scraper history starts Sep 22) except the
+   Nevada books, which use VSiN's OPEN row. One VSiN opener is wrong (BetMGM
+   NV ATL −2, 52.5): the bridge needs an opener sanity check; the mockup shows
+   it with a "check" chip rather than hiding it.
+7. **Real edges found while building** (gates applied by hand): GB −4.5 at
+   BetMGM −105 vs Pinnacle −113/+102 (EV +1.0%, three sources agree), and
+   London receptions 5.5 over at Underdog (implied +110) vs Pinnacle
+   −103/−117 with Novig agreeing (EV +1.8%). Both are small, as the plan
+   predicts. The same scan found 85–250% "edges" on anytime TD — all market
+   mismatches, which is what gate 8 exists for.
+8. **Relay staleness.** comparenbet re-confirms every few seconds, but some
+   of its books' prices have not changed in 11+ hours (Circa, Kalshi ML via
+   comparenbet). "Checked 9 s ago · since 2:25 AM" makes that visible; the edge
+   gates must use "since", not "checked", for relayed books.
