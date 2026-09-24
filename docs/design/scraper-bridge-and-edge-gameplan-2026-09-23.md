@@ -163,6 +163,13 @@ Measured along the way:
   series carry 66,474 books in all).
 - Kalshi `occurrence_datetime` = start + ~3 h (NFL/MLB); MLB tickers carry
   HHMM ET. Windows has no tz database: US Eastern DST applied explicitly.
+- R1 verified live (`4f48d87`, steady state 04:35-04:42 UTC 09-24): polls/min vs
+  schedule — Pinnacle 6.2/6.2, Kalshi 28.3/29.3, Polymarket 5.9/6.2; direct
+  sources every 71 s median (p90 80 s); aggregators board 50 s, props 99 s.
+  The first run missed schedule (103 s) because the per-source cap counted an
+  endpoint until its result was WRITTEN; workers were never the limit (busy 3.1
+  of 10). Fixed: cap counts running fetches; 12 workers as headroom; Polymarket
+  discovery timeout 90 s. Pinnacle CDN copies averaged ~11 min old (D13).
 
 Each step ends with its sources visible on the scraper's Sources page with
 non-zero counts and a green heartbeat before the next starts. The open research
