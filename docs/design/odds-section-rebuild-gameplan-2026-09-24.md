@@ -301,6 +301,23 @@ approved 1:1 detailed mockups — the real page layouts, at desktop and phone
 widths, filled with REAL data (a frozen snapshot of tonight's games from the
 scraper and the app) — and changes are made on the mockups, not in the build.
 
+**Mockup data rule (operator, 2026-09-24).** Mockups may use EXAMPLE values,
+but every field shown must be data we actually collect today — no invented
+data types. What that means for OM (checked against the scraper DB the same
+day):
+
+| component | we have it | mockup shows |
+|---|---|---|
+| Prices from ~20 books, alternates, sharp strip (Pinnacle props + game lines; Circa game lines), hold meter, best price, coverage map | yes | as designed |
+| Line movement, first mover, pulls, openers | yes (scraper history since 09-22/24) | as designed |
+| Where the money is — GAME lines: DraftKings and Circa % money / % bets, ScoresAndOdds, Covers picks, Action Network bet counts, Kalshi/Polymarket volume | yes | as designed |
+| Where the money is — PROPS | only Sleeper pick counts and Kalshi's volume on its own prop markets | only those two; no money/bets % on props |
+| Exchange order book | TOP of book only: best bid/ask and their sizes, last, liquidity, open interest, volume — no depth ladder | top of book; a full ladder needs the scraper to store depth (added to §4d G7 of the parent plan) |
+| Latency badges | raw data yes; T0 not run | example values computed the T0 way |
+| Edge | the inputs yes; E1 not built | example values from real-shaped prices, gates applied by hand |
+| Circa on props | no (VSiN has no props; ~6 relayed prices) | not shown on props |
+| PrizePicks | no (blocked) | not shown |
+
 | phase | what | depends on |
 |---|---|---|
 | **OM** | **1:1 detailed mockups with real data**: the player page odds section, the game page Lines, the Slate (Games cards, Movers, Market hub, Props/Scan columns), phone widths; interactive where the design is (market tabs, line stepper, book picker, period tabs, All lines). Operator reviews, changes are made on the mockups, then approves — and only then is this plan approved | nothing |
