@@ -16,15 +16,18 @@ green light **per item**. Each item ends with the same two checks:
   `TIERS = ((6.0, 60.0), (24.0, 180.0), (72.0, 600.0), (168.0, 1800.0))`.
   Hours to start → seconds; nothing beyond 7 days; NCAAF 5× slower
   (`game_interval`).
-- **Change** (the plan's recommendation):
-  `TIERS = ((6.0, 60.0), (72.0, 300.0), (168.0, 900.0))`, i.e. 5 min to 3
-  days out and 15 min to 7 days. NCAAF's factor stays 5.
+- **Change** (the plan's recommendation, revised 2026-09-24):
+  `TIERS = ((6.0, 60.0), (72.0, 300.0), (168.0, 900.0), (float("inf"), 3600.0))`,
+  i.e. 1 min inside 6 h, 5 min to 3 days out, 15 min to 7 days, and **every
+  60 min beyond 7 days** (D15: keep every movement, so a game more than a
+  week out is still polled, not dropped). NCAAF's factor stays 5.
 - **Measure before and after:** requests/min per book (Sources page) and
   `pending_writes` at the evening peak.
 - **Revert if** any book shows a refusal (403/429/challenge) or the writer's
   queue stays > 20 for 10 min.
 - **Test:** `test_infra.py` group `r2` gains `tiers_s_g3`, checking
-  `game_interval` at 5 h, 30 h, 100 h and 200 h for NFL and NCAAF.
+  `game_interval` at 5 h, 30 h, 100 h, 200 h and 400 h for NFL and NCAAF.
+  200 h and 400 h return 3600 s (× 5 for NCAAF), never "not polled".
 
 ## S-G7 · Coverage
 
@@ -114,3 +117,11 @@ When revisited at an evening peak:
 2. Only if the queue stays below 10: set `PICK_STATS_SECONDS`
    (`sources/sleeper.py:42`) to 0, so every pick-count change is written.
    Measure the splits rows/hour.
+
+## Changelog
+
+- **2026-09-24 — S-G3 polls beyond 7 days** (`HANDOFF-P0-P4.md`
+  correction 6). The first draft left games more than 7 days out unpolled,
+  as today's tiers do. D15 keeps every movement, so a fourth tier polls them
+  every 60 min: `((6, 60), (72, 300), (168, 900), (∞, 3600))`. The test
+  checks 200 h and 400 h.
