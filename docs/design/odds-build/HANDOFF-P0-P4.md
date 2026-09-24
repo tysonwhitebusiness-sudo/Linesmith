@@ -8,9 +8,11 @@
   reason inline; keep it there when you build.
 - **Unattended run P0 → P4**, testing between phases per each spec's "Tests
   (these gate …)". Background checks start and run behind; they never gate.
-- **P1's single Render deploy** of `line-buddy-odds-worker` is authorised
-  *only if the resume prompt says so*. Record it in `docs/CURRENT.md` →
-  Deploys.
+- **P1's Render deploy of `line-buddy-odds-worker` is AUTHORISED** (operator,
+  2026-09-24). The session triggers it itself through the Render API. Then
+  it confirms the deploy went live and the worker's next job runs are green,
+  and records it in `docs/CURRENT.md` → Deploys. **Only P1's deploy is
+  covered**; nothing in P2–P4 deploys.
 - **P4 ends at the operator's decision D24.** Measure, write the options and a
   recommendation into `P4-storage-decision.md` → Result, then stop. Do not
   pick D24.
