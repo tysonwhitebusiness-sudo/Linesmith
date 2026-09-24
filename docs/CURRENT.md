@@ -52,7 +52,13 @@ Read it next. In short:
    - game-line tables have no period and no alternate lines;
    - live bug: game-line history misses line moves.
 
-   Next is P0, then P1 + P2, each on the operator's go.
+   **Detailed build specs, one per phase:** `docs/design/odds-build/`
+   (README + P0…P13). **P0–P7 are written and committed; P8–P13 are in
+   progress.** P2's vocabulary data and generator are in
+   `docs/design/odds-build/data/`. Nothing is built. **P0 waits on the
+   operator's green light.** P0's first step is the operator's: restart the
+   stalled scraper. The builder's process stop was refused by the
+   permission system.
    **Resume prompt for the whole workstream: `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.**
    Read `docs/design/odds-rebuild/HANDOFF-OM.md` first. It covers how to view
    and regenerate the mockups and the four review rounds so far. Round 4
