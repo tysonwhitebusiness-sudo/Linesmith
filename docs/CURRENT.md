@@ -26,7 +26,14 @@ Read it next. In short:
    golf prediction tables, which the sandbox refused. **Phase 1 (no-odds
    ranking system, every priced market) is next.**
 5. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
-   `/diagnostics`.**
+   `/diagnostics`.
+6. **Scraper bridge + market edge (new workstream, 2026-09-23):**
+   `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
+   are settled (§1: scraper as a third writer, bridge first, gated edge on
+   pages including the Scan table, closing-line test ~2 weeks after). NOTHING
+   is built — **wait for the operator's go** before B0. Done that day: user
+   CLV removed (`709d807`), `prop_odds_history` window 14 → 10 days
+   (`2331a56`).**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
