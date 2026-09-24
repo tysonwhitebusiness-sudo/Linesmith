@@ -49,7 +49,7 @@ show more books.
 2. **L0** measure minute-level move volume (decides storage before the bridge writes)
 3. **B3** flap filter + line-pull recording
 4. **B4** bridge (forwards individual changes with their scrape time)
-5. **B7** Pinnacle, Kalshi, Polymarket + **B8** VSiN (Circa, Vegas books, openers, splits) + **B9** DraftKings, FanDuel, BetRivers, Sleeper — each on its own schedule
+5. **B7** Pinnacle, Kalshi, Polymarket + **B8** VSiN (Circa, Vegas books, openers, splits) + **B9** DraftKings, FanDuel, BetRivers, Sleeper + **B10** BetMGM, Underdog + Track V splits sources — each on its own schedule
 6. **S1–S3** scraper reliability + backups (in parallel with B4/B7)
 7. **L1–L5** line movement on the pages; **V1–V3** splits + exchange volume
 8. **B5/B6** page touches + expiring history grab (B6's grab is time-sensitive — can run any time)
@@ -88,7 +88,7 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
    with its own interval, request budget, backoff and circuit breaker — a slow
    source delays only itself. Where they share resources (HTTP workers, the
    single SQLite writer) priority is: **(a) direct books and sites** —
-   Pinnacle, DraftKings, FanDuel, BetRivers, Kalshi, Polymarket, Sleeper, then
+   Pinnacle, DraftKings, FanDuel, BetMGM, BetRivers, Kalshi, Polymarket, Sleeper, Underdog, then
    VSiN; **(b) aggregators, most used first** by stored rows (24 h to
    2026-09-23): comparenbet 18.2M, steezanomics 411k, bestfightodds 328k,
    theoddsgap 314k, betexplorer 189k, 4codds 181k, oddstrader 156k, betmonitor
@@ -149,6 +149,23 @@ later: other sharp sources at the book's own line (Novig, ProphetX, Kalshi), or
 a line-shift method (a model step — its own, lower-confidence tier; operator's
 call, not planned).
 
+| B10 | **BetMGM + Underdog** (found by DeepSeek, re-verified by Claude 2026-09-23). **BetMGM**: `www.nj.betmgm.com/cds-api/bettingoffer/fixtures` (lines; NFL `sportIds=11`) and `/cds-api/bettingoffer/fixture-view?fixtureIds={id}` (per game: 533 option markets incl. player props — rushing/receiving yards, receptions, TD scorer, alt lines); needs the constant `x-bwin-accessid` from the site JS (`ZTllNjllODUtOWQwNS00YmU4LWE4NTEtZGZjOTkzMGM5OWU4`), no cookies; `max-age=15` (+60 s stale) / fixture-view `max-age=12`; no per-price timestamps; fixtures list is 3.6 MB for 10 games — take small pages. **Underdog** pick'em: `api.underdogfantasy.com/v1/over_under_lines` with headers `client-type: web` + `client-device-id: <uuid>` (old `/beta/v6` → 426); 8,845 player props, `updated_at` per line, `max-age=10`; **24 MB per response** — poll with `If-None-Match` (it sends an `ETag`) so unchanged payloads cost nothing | both landing on their own cadence, matched |
+
+**DeepSeek probe, sections A–B (2026-09-23; results in
+`docs/design/source-probe-results-deepseek-2026-09-23.md`):** DraftKings and
+FanDuel prices are **identical NJ vs PA** (DK 192/192 selections, FD 347/347
+runner prices) — one state is enough. FanDuel props per game via
+`event-page?tab=` (NFL `receiving-props` = 70 markets); the MLB/NBA/NHL prop tab
+slugs are not pinned yet. **Blocked or unavailable — stay on the paid feeds:**
+Fanatics (app-only; its web page is marketing plus an Oddschecker widget),
+Caesars (AWS WAF captcha), Hard Rock (Cloudflare challenge), bet365 (odds
+filled by a protected client API; cells render as 0), theScore (Cloudflare),
+ESPN BET (no valid TLS cert for its hostname), PrizePicks (DataDome). Sections
+C–E (Pinnacle TTL + live feed, Polymarket CLOB, Kalshi props, VSiN's book,
+DK Network splits structure, Action Network book ids, ScoresAndOdds' source,
+VegasInsider, 4codds `volume`, comparenbet `fair_odds_available`) were not run
+— still open.
+
 ## 5b. Track V — betting volume and splits (new data type)
 
 **Question (operator):** total and per-book betting volume per game, team and
@@ -183,6 +200,20 @@ player, and who has been bet on more, as a %. **Measured 2026-09-23:**
 **Decided (operator, 2026-09-23): implement all three alternatives** — VSiN
 splits (one book's bets % vs money %), Kalshi volume, Polymarket volume. Each
 is shown labelled by its source; none is presented as all-book handle.
+
+**Added (operator, 2026-09-23) — the public betting % sources, all in the
+source run:**
+
+| source | what | cadence / notes |
+|---|---|---|
+| **DraftKings Network splits** (`dknetwork.draftkings.com/draftkings-sportsbook-betting-splits/`) | DraftKings' own % handle and % bets per market; NFL, NCAA, MLB, NHL, EPL, UCL, MLS; up to 30 days ahead | every ~5–10 min; a game's split disappears at start, so the final pre-game split exists only if snapshotted |
+| **Sleeper pick counts** (`pick_stats` in B9) | users' over/under pick counts per player prop + a `popularity` score (formula undisclosed; not total/max) | counts move slowly (a few picks per 10 min) — every ~15 min is enough |
+| **ScoresAndOdds consensus** (`/nfl/consensus-picks`, same site as an existing source) | % bets and % money per side; source unstated | every ~15 min |
+| **Covers consensus** | contest players' picks % — handicapper consensus, NOT money | hourly; label as picks, never as bets |
+| **SportsBettingDime** | weekly public-betting report articles + small tables | daily; lowest priority |
+| **Action Network** | % fields empty without paid access; per-book `inserted` times | for T0 timing only |
+
+VSiN (B8) stays; which book its splits come from is still open.
 
 | phase | what |
 |---|---|
