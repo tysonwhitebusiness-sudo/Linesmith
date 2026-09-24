@@ -53,7 +53,7 @@ Read it next. In short:
 | P3 matching | **DONE 23:15 UTC** — scraper games and players → app ids in `bridge.db`; zero wrong links in the 170-game / 215-player hand check; MLB 98.3% of player rows (after the StatsAPI roster fallback), NFL 99.6%, CFB 89.4%, MLS 95.8%. See P3 → Result |
 | P4 storage measurement | in progress |
    | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
-   | the six spec corrections (HANDOFF §"Known spec corrections") | after P4 |
+   | the six spec corrections (HANDOFF §"Known spec corrections") | **DONE** — P11 gate 2 = D13 (`3a1ac92`), P6 `scraper_unmatched_prices` (`9a1ec62`), P8 line movement + L5 dropping odds (`1680556`), P7 T0.4 (`ab73734`), S-G3 beyond 7 days (`eec6bba`). Each spec has a Changelog line |
 
    **Background checks running (never gate):**
    - **P0, 48 h from 2026-09-24 21:14 UTC:** no gap in `last_poll_at` over
