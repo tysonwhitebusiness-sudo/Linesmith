@@ -73,6 +73,60 @@ show more books.
 
 | B9 | **US books direct, as four scraper sources** (operator, 2026-09-23 — all four that passed the probe, not two): **DraftKings** (`sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/leagues/{id}` for game lines + `/categories/{catId}` per prop category; NFL 88808; one Receiving Props call = 79 markets / 959 prices; display + true odds; `max-age=1`); **FanDuel** (`sbapi.nj.sportsbook.fanduel.com/api/content-managed-page` for lines + `/api/event-page?eventId=&tab=` per game for props; each runner carries `previousWinRunnerOdds`; CloudFront `max-age=30` + 60 s stale, record `Age`); **BetRivers** (Kambi `eu-offering-api.kambicdn.com/offering/v2018/rsiusnj/listView/...`; real `changedDate` per price; props via the per-event endpoint — to confirm); **Sleeper** pick'em (`api.sleeper.app/lines/available`; 2,393 lines across CFB/NFL/MLB/tennis/golf/MLS/MMA; `updated_at` per line; payout multipliers; `pick_stats` over/under counts feed Track V). Requirements: each on its OWN cadence, set per source from its cache rule (DK ~30–60 s, FanDuel ≥30 s, Kambi ~30–60 s, Sleeper ≥30 s); price time = fetch − `Age` (or `changedDate`/`updated_at` where given); one state per book to start (NJ) — whether prices differ by state is a DeepSeek check; props fetched per category/event, so request counts per cycle must be budgeted per league; heartbeats like B7. These replace the paid feeds' relayed ~20-min copies of the same books for freshness; the paid feeds stay (D1) | all four landing on their own cadence with props, heartbeats green, matched |
 
+## 4b. Source run first (operator, 2026-09-23)
+
+**Build B7 + B8 + B9 into the scraper and let them run while the other phases
+are built** — early data feeds T0, L0 and the splits history. Nothing in
+Linesmith or Supabase changes during this run. Bundled prerequisites:
+
+1. **Git for `odds-scraper`** (it has none — only a manual `backup_20260923/`).
+   Commit the current code first.
+2. **Scheduler rebuilt for priority** (operator): today `collector.py:228`
+   gathers every due endpoint, runs them 6 at a time, waits for the SLOWEST
+   before storing, then waits 15 s; cadence has only two classes by endpoint
+   name (board 15 s, props 60 s). New design: each source runs on its OWN loop
+   with its own interval, request budget, backoff and circuit breaker — a slow
+   source delays only itself. Where they share resources (HTTP workers, the
+   single SQLite writer) priority is: **(a) direct books and sites** —
+   Pinnacle, DraftKings, FanDuel, BetRivers, Kalshi, Polymarket, Sleeper, then
+   VSiN; **(b) aggregators, most used first** by stored rows (24 h to
+   2026-09-23): comparenbet 18.2M, steezanomics 411k, bestfightodds 328k,
+   theoddsgap 314k, betexplorer 189k, 4codds 181k, oddstrader 156k, betmonitor
+   116k (broken), scoresandodds 34k, oddsrun 15k, livesportsodds 10k,
+   proboxingodds 4.7k, mbodds 3.5k, oddsmeter 1.5k. Within a source, per-event
+   endpoints go soonest-start first; far-off games are polled less often.
+3. **Record `Age` / `Last-Modified`** per fetch (`base.py:35` returns text only).
+4. **Monitoring**: fix betmonitor and the drift check (S1); a source returning
+   nothing shows as a problem on the Sources page (which lists registered
+   sources automatically via `SOURCE_MANIFEST`).
+5. **60-second polling** for the direct books (operator accepts the home-IP
+   risk). Safety research 2026-09-23: no public limits and no rate-limit
+   headers from DraftKings, FanDuel, Pinnacle, Kambi, Sleeper or Kalshi; a
+   6-minute trial at 60 s (36 requests) returned 36/36 HTTP 200 with steady
+   0.2–0.35 s latency. CDN ages seen: FanDuel 27–86 s, Sleeper 55–59 s,
+   Pinnacle NFL 777 → 896 → 50 s (refreshes ~every 15 min). That trial was
+   low volume; the full run is ~100–150 requests/min across ~10 domains
+   (≤ ~60/min per book), so: ramp up (lines first, props a day later), jitter,
+   honour `Retry-After`, and a per-source circuit breaker that stops a source
+   for an hour on 403/429/captcha and flags it on the Sources page.
+6. **B3 in this run** (operator): record line pulls in the scraper; flaps are
+   FLAGGED, not deleted (raw changes kept; the bridge filters). The Linesmith
+   writer half of B3 lands with the bridge.
+7. S2 uptime (start at boot, restart on crash, no sleep on power) so the run
+   has no gaps.
+
+**Edge coverage reality check (measured, NFL, 2026-09-23):** of DraftKings' 262
+over/under player props, Pinnacle prices the same player + stat for 152 (58%)
+but at the SAME line for only 90 (34%): receptions 44/80, TD passes 15/28,
+receiving yards 16/80, rushing yards 12/46, passing yards 3/28 — yardage lines
+usually differ by 1–2 yards. DraftKings also has many markets Pinnacle does not
+offer at all (yardage milestones 25+/50+…, TD scorers, longest reception,
+1st-quarter props), and Pinnacle has no NCAAF or EPL props. Game lines match far
+better (Pinnacle carries alternate spreads/totals). Ways to widen prop edge
+later: other sharp sources at the book's own line (Novig, ProphetX, Kalshi), or
+a line-shift method (a model step — its own, lower-confidence tier; operator's
+call, not planned).
+
 ## 5b. Track V — betting volume and splits (new data type)
 
 **Question (operator):** total and per-book betting volume per game, team and
