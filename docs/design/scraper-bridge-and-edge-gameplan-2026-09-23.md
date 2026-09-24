@@ -137,6 +137,34 @@ not in page HTML — needs a browser network capture; the built-in browser
 refuses sportsbook sites); bet365 (script-only shell); theScore/ESPN not
 probed. Wrong Kambi brand code tried first (`ubusnj`) — BetRivers is `rsiusnj`.
 
+**Claude in Chrome check (2026-09-23):** BetMGM refused by the extension
+("not allowed due to safety restrictions") — same as the built-in browser;
+verifying it needs the operator's own devtools. Fanatics: the sportsbook
+domain redirects to a `betfanatics.com` promo page and the league path 404s —
+no public web odds found; stays on the paid feeds.
+
+**First-hand = self-timestamped, minus the CDN's age.** A book's OWN endpoint
+returns its current price, so our fetch time is the price time — except where
+a CDN serves a cached copy. Measured response headers:
+
+| source | cache rule | age of the copy we got |
+|---|---|---|
+| DraftKings | `max-age=1` | ≤1 s |
+| BetRivers/Kambi | none (CloudFront miss) | fresh |
+| Kalshi | `max-age=15` | ≤15 s |
+| Sleeper | `s-maxage=30`, +30 s stale | ≤~60 s |
+| FanDuel | `max-age=30`, +60 s stale | 24 s (up to ~90 s) |
+| Polymarket `gamma-api` | `max-age=300` | 239 s — use the CLOB API for prices instead |
+| **Pinnacle** `/leagues/889/markets/straight` | **`max-age=905`** (Cloudflare) | **765 s** (last-modified 12.8 min earlier) |
+
+Rules that follow: (1) record every response's `Age` / `Last-Modified` and set
+price time = fetch time − Age (never fetch time alone); (2) Pinnacle's cached
+league endpoint cannot be the live sharp reference as-is — measure its TTL by
+league and time-to-start (the earlier MLB re-read saw 254 of 679 markets change
+in 1.9 min, so TTL likely varies), and move to the live feed its own site uses
+(the MQTT push pinnodds describes) for near-start games; (3) Polymarket prices
+from `clob.polymarket.com`, not `gamma-api`. These feed T0.
+
 **Public betting % targets:**
 
 | target | what | status |
