@@ -261,6 +261,25 @@ for g in mlb:
         if hit:
             kp["head"] = hit["head"]; kp["team"] = hit["team"]
 
+# ---------------------------------------------------------------- finished game: props vs the box score
+fp = json.load(open(os.path.join(SP, "om_final_props_raw.json")))
+fcl = collections.defaultdict(list)
+for name, mk, line, side, b, price, at, src in fp["close"]:
+    b = canon(src, b) if src not in DIRECT else src
+    if b in NOT_A_BOOK or not b:
+        continue
+    used_books.add(b)
+    fcl[(name, mk)].append([b, side, line, price, at, src])
+final_props = []
+for p in fp["players"]:
+    for (name, mk), qs in fcl.items():
+        if name != p["name"]:
+            continue
+        final_props.append({"name": name, "mk": mk, "q": qs})
+mlb_final = next(g for g in mlb if g["final"])
+mlb_final["props"] = {"players": fp["players"], "markets": final_props}
+print("final props:", len(final_props), "player-markets")
+
 books = {k: {"n": v[0], "g": v[1], "d": v[2]} for k, v in BOOKS.items() if k in used_books}
 for k in used_books - set(BOOKS):
     books[k] = {"n": k, "g": G_INTL, "d": None}

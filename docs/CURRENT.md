@@ -40,15 +40,15 @@ Read it next. In short:
    oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
-7. **Track O — odds section rebuild (2026-09-24):**
-   `docs/design/odds-section-rebuild-gameplan-2026-09-24.md`. **Phase OM
-   mockups are BUILT and waiting on the operator's review**:
-   `docs/design/odds-rebuild-mockup-2026-09-24.html` (serve with the
-   `design-mockups` preview on :8125). Six surfaces (player, game, finished
-   game, team, Slate, alerts/slip/flags), desktop + phone, on a frozen
-   snapshot of real scraper rows (`odds-rebuild/om-data.js`; regenerate with
-   `odds-rebuild/tools/`). The plan's §8 lists the decisions the mockups
-   surfaced. **Nothing in Track O is built until the operator approves (D16).**
+7. **Track O — odds section rebuild (2026-09-24): MOCKUP REVIEW IN PROGRESS.**
+   Read `docs/design/odds-rebuild/HANDOFF-OM.md` first — it has how to view
+   and regenerate the mockups, the three review rounds so far, and the
+   operator's two design notes NOT yet applied (no pill "bubbles" as receipts
+   anywhere; the SHARP pill → a normal header with a green live dot +
+   "updated X ago"), plus v3 (final-game props results) still to verify on
+   screen. Plan: `docs/design/odds-section-rebuild-gameplan-2026-09-24.md`
+   (§8 = decisions + revision log). **Nothing in Track O is built until the
+   operator approves (D16).**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current

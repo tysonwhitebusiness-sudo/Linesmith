@@ -273,6 +273,27 @@ svg text{font-family:inherit}
 .lb-bar i{position:absolute;left:0;top:0;bottom:0;opacity:.85;border-radius:6px}
 .lb-bar b{position:absolute;right:8px;top:2px;font-size:13px}
 .lb-x{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+/* v3: finished-game props results */
+.fr-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.frt{background:var(--sunk);border-radius:10px;padding:10px 12px;min-width:0}
+.frt-v{font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.15;margin:2px 0 6px;display:flex;align-items:center;gap:6px}
+.frt-v span{font-size:14px;font-weight:500;color:var(--ink3)}
+.frt-v.sm{font-size:22px}
+.frm>div{display:grid;grid-template-columns:minmax(0,1fr) 60px 34px;gap:6px;align-items:center;font-size:12px;margin-top:3px}
+.frm span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frm-b{height:6px;border-radius:3px;background:var(--line-soft);overflow:hidden}
+.frm-b i{display:block;height:100%;background:var(--good)}
+.frm b{text-align:right}
+.rchip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;border-radius:5px;padding:2px 6px;white-space:nowrap}
+.rchip.over{background:var(--good);color:var(--good-on)}
+.rchip.under{background:oklch(90% .01 260);color:var(--ink)}
+.rchip.push{background:var(--warn-tint);color:var(--warn-ink)}
+.rchip.dnp{background:var(--sunk);color:var(--ink3);border:1px solid var(--line)}
+.rtrack{position:relative;display:inline-block;width:64px;height:12px;vertical-align:middle}
+.rtrack::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:1px;background:var(--line)}
+.rt-l{position:absolute;top:0;width:2px;height:12px;background:var(--ink2);border-radius:1px}
+.rt-d{position:absolute;top:2px;width:8px;height:8px;margin-left:-4px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+.rt-d.over{background:var(--good)}.rt-d.under{background:var(--ink3)}.rt-d.push{background:var(--warn)}
 /* phone */
 @container f (max-width:640px){
   .grid2,.grid3,.g-mv{grid-template-columns:minmax(0,1fr)}
@@ -289,6 +310,7 @@ svg text{font-family:inherit}
   .cb{padding:12px}
   .mtab{min-width:132px}
   .s2-grid{grid-template-columns:minmax(0,1fr)}
+  .fr-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pcards{grid-template-columns:minmax(0,1fr);padding:12px}
   .lb-r{grid-template-columns:18px 30px minmax(0,1fr) auto;row-gap:4px}
   .lb-bar{grid-column:3/5}

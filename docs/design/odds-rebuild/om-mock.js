@@ -44,7 +44,7 @@ const EX = '<span class="ex">example</span>', REAL = '<span class="real">real</s
 
 // ------------------------------------------------------------------ state
 const S = { surf: 'player', w: 'desk', notes: true, pm: 'rec_yds', pline: null, all: false, gper: 'fg', gmk: 'sp', gline: null, gall: false,
-  win: 'open', sel: null, metric: null, hub: 'edges', slateSec: 'games', pf: { team: 'all', pos: 'all', mk: 'all', sort: 'books', view: 'players' }, pfMore: false };
+  win: 'open', sel: null, metric: null, hub: 'edges', slateSec: 'games', pf: { team: 'all', pos: 'all', mk: 'all', sort: 'books', view: 'players' }, pfMore: false, fp: { team: 'all', res: 'all', mk: 'all', view: 'players' }, fpMore: false };
 
 // ------------------------------------------------------------------ market model
 const PROPS = [['rec_yds', 'Receiving yards', 'receiving_yards'], ['receptions', 'Receptions', 'receptions'], ['longest_rec', 'Longest reception', 'longest_reception'],
@@ -788,6 +788,83 @@ function propsCard() {
   return `<section class="card">${cardH('Player props', `${nPl} players · ${rows.length} markets · every source`)}<div class="pf-wrap">${ctl}</div>${rows.length ? body : '<div class="cb small muted">No props match these filters.</div>'}</section>`;
 }
 
+// finished game: player props against the box score
+const FMK = { hits: 'Hits', total_bases: 'Total bases', home_runs: 'Home run', rbis: 'RBIs', runs: 'Runs', walks: 'Walks', singles: 'Singles',
+  doubles: 'Doubles', triples: 'Triples', hrr: 'Hits + runs + RBIs', runs_rbi: 'Runs + RBIs', stolen_bases: 'Stolen bases',
+  p_hits: 'Hits allowed', p_walks: 'Walks allowed', p_outs: 'Outs recorded' };
+const FTEAM = { TOR: { color: '#134a8e', logo: 'https://a.espncdn.com/i/teamlogos/mlb/500/scoreboard/tor.png' }, BAL: { color: '#df4601', logo: 'https://a.espncdn.com/i/teamlogos/mlb/500/scoreboard/bal.png' } };
+const mlbHead = id => id ? `https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto:best/v1/people/${id}/headshot/67/current` : '';
+function finalRows(g) {
+  const pl = Object.fromEntries(g.props.players.map(p => [p.name, p]));
+  const out = [];
+  for (const fm of g.props.markets) {
+    const p = pl[fm.name]; if (!p) continue;
+    if (!p.played && fm.q.length < 6) continue;          // a priced name that never appears in this game's box: not shown
+    const cnt = {}; for (const q of fm.q) if (q[1] === 'over') cnt[q[2]] = (cnt[q[2]] || 0) + 1;
+    const L = +Object.entries(cnt).sort((a, b) => b[1] - a[1] || Math.abs(a[0] - 0.5) - Math.abs(b[0] - 0.5))[0]?.[0];
+    if (isNaN(L)) continue;
+    const at = fm.q.filter(q => q[2] === L);
+    const best = side => at.filter(q => q[1] === side && q[0] !== 'prizepicks').sort((a, b) => dec(b[3]) - dec(a[3]))[0];
+    const pin = ['over', 'under'].map(sd => at.find(q => q[0] === 'pinnacle' && q[1] === sd));
+    const r = p.played ? p.res[fm.mk] : null;
+    const out1 = !p.played || r == null ? 'dnp' : r > L ? 'over' : r < L ? 'under' : 'push';
+    out.push({ name: p.name, id: p.id, team: p.team, pos: p.pos, box: p.line, mk: fm.mk, L, r, res: out1, bo: best('over'), bu: best('under'),
+      pin: pin[0] && pin[1] ? pin : null, n: new Set(at.map(q => q[0])).size });
+  }
+  return out;
+}
+function resTrack(r) {
+  if (r.res === 'dnp') return '<span class="muted small">—</span>';
+  const max = Math.max(r.L * 2, r.r + 1, 2), X = v => (100 * v / max).toFixed(1);
+  return `<span class="rtrack"><i class="rt-l" style="left:${X(r.L)}%"></i><i class="rt-d ${r.res}" style="left:${X(r.r)}%"></i></span>`;
+}
+const resChip = r => r.res === 'over' ? `<span class="rchip over">OVER ✓</span>` : r.res === 'under' ? `<span class="rchip under">UNDER ✓</span>` : r.res === 'push' ? '<span class="rchip push">PUSH</span>' : '<span class="rchip dnp">DID NOT PLAY</span>';
+function finalPropsCard(g) {
+  const all = finalRows(g), F = S.fp;
+  let rows = all.filter(r => (F.team === 'all' || r.team === F.team) && (F.res === 'all' || r.res === F.res));
+  const mkCount = {}; for (const r of rows) mkCount[r.mk] = (mkCount[r.mk] || 0) + 1;
+  if (F.mk !== 'all') rows = rows.filter(r => r.mk === F.mk);
+  const played = all.filter(r => r.res !== 'dnp');
+  const overs = played.filter(r => r.res === 'over').length, unders = played.filter(r => r.res === 'under').length;
+  const longest = played.filter(r => r.res === 'over' && r.bo).sort((a, b) => b.bo[3] - a.bo[3])[0];
+  const byMk = {}; for (const r of played) { const b = byMk[r.mk] = byMk[r.mk] || [0, 0]; b[0]++; if (r.res === 'over') b[1]++; }
+  const pinRows = played.filter(r => r.pin);
+  const pinRight = pinRows.filter(r => (devig(r.pin[0][3], r.pin[1][3]) > 0.5) === (r.res === 'over')).length;
+  const tiles = `<div class="fr-tiles">
+    <div class="frt"><div class="ov">Overs that hit</div><div class="frt-v">${overs}<span>/ ${played.length}</span></div>${fairBar(overs / Math.max(1, overs + unders), ['Over', 'Under'], ['var(--good)', 'oklch(80% .01 260)'])}</div>
+    <div class="frt"><div class="ov">Longest price that hit</div>${longest ? `<div class="frt-v sm">${fa(longest.bo[3])} ${logo(longest.bo[0], 16)}</div><div class="small">${esc(longest.name)} · ${FMK[longest.mk]} over ${fln(longest.L)}</div>` : '—'}</div>
+    <div class="frt"><div class="ov">Pinnacle's favourite side</div><div class="frt-v">${pinRight}<span>/ ${pinRows.length}</span></div><div class="small muted">markets where the side Pinnacle priced above 50% came in</div></div>
+    <div class="frt"><div class="ov">By market · overs hit</div><div class="frm">${Object.entries(byMk).sort((a, b) => b[1][0] - a[1][0]).slice(0, 5).map(([k, v]) => `<div><span>${FMK[k]}</span><span class="frm-b"><i style="width:${100 * v[1] / v[0]}%"></i></span><b>${v[1]}/${v[0]}</b></div>`).join('')}</div></div></div>`;
+  const tseg = `<div class="seg">${[['all', 'Both teams'], ['TOR', 'TOR'], ['BAL', 'BAL']].map(([k, n]) => `<button data-fpt="${k}" aria-pressed="${F.team === k}">${k !== 'all' ? `<img class="tlogo" src="${FTEAM[k].logo}" alt="">` : ''}${n}</button>`).join('')}</div>`;
+  const rseg = `<div class="seg">${[['all', 'All results'], ['over', 'Over hit'], ['under', 'Under hit'], ['dnp', 'Did not play']].map(([k, n]) => `<button data-fpr="${k}" aria-pressed="${F.res === k}">${n}</button>`).join('')}</div>`;
+  const vseg = `<div class="seg" style="margin-left:auto"><span class="seg-l">View</span>${[['players', 'Players'], ['table', 'Table']].map(([k, n]) => `<button data-fpv="${k}" aria-pressed="${F.view === k}">${n}</button>`).join('')}</div>`;
+  const chips = `<div class="mkchips"><button class="pk" data-fpm="all" aria-pressed="${F.mk === 'all'}">All markets <span class="ct">${Object.values(mkCount).reduce((a, b) => a + b, 0)}</span></button>${Object.keys(FMK).filter(k => mkCount[k]).map(k => `<button class="pk" data-fpm="${k}" aria-pressed="${F.mk === k}">${FMK[k]} <span class="ct">${mkCount[k]}</span></button>`).join('')}</div>`;
+  const pr = q => q ? `<span class="px" style="min-width:0">${fa(q[3])}</span> ${logo(q[0], 14)}` : '<span class="muted">—</span>';
+  let body;
+  if (F.view === 'players') {
+    const by = {}; for (const r of rows) (by[r.name] = by[r.name] || []).push(r);
+    const names = Object.keys(by).sort((a, b) => (by[a][0].res === 'dnp') - (by[b][0].res === 'dnp') || by[b].length - by[a].length);
+    body = `<div class="pcards">${names.slice(0, S.fpMore ? 99 : S.w === 'phone' ? 4 : 9).map(n => {
+      const rr = by[n].sort((a, b) => Object.keys(FMK).indexOf(a.mk) - Object.keys(FMK).indexOf(b.mk)), r0 = rr[0], T = FTEAM[r0.team] || { color: '#8a8f98', logo: '' };
+      const hit = rr.filter(r => r.res === 'over').length;
+      return `<div class="pc" style="--tc:${T.color}"><div class="pc-h">${head(mlbHead(r0.id), n, 44, T.color)}<div style="min-width:0"><b class="pc-n">${esc(n)}</b>
+        <div class="age">${T.logo ? `<img class="tlogo" src="${T.logo}" alt="">` : ''}${r0.team || '—'}${r0.pos ? ' · ' + r0.pos : ''} · <b style="color:var(--ink)">${esc(r0.box)}</b></div></div>
+        ${r0.res === 'dnp' ? '<span class="rchip dnp" style="margin-left:auto">DNP</span>' : `<span class="chip ${hit ? 'gt' : ''}" style="margin-left:auto">${hit}/${rr.length} overs</span>`}</div>
+        <table class="pc-t"><tbody>${rr.slice(0, 6).map(r => `<tr class="${r.res === 'dnp' ? 'dim' : ''}"><td><div class="small"><b>${FMK[r.mk]}</b> <span class="muted">${fln(r.L)}</span></div><div class="age">${r.n} books · over ${pr(r.bo)}</div></td>
+          <td class="r" style="width:74px">${resTrack(r)}</td><td class="r" style="width:54px"><b class="lnum">${r.r ?? '—'}</b></td><td class="r" style="width:96px">${resChip(r)}</td></tr>`).join('')}</tbody></table>
+        ${rr.length > 6 ? `<div class="pc-more">+ ${rr.length - 6} more markets</div>` : ''}</div>`;
+    }).join('')}</div>${names.length > (S.w === 'phone' ? 4 : 9) && !S.fpMore ? `<div style="padding:0 16px 14px"><button class="btn" data-fpmore="1">Show all ${names.length} players</button></div>` : ''}`;
+  } else {
+    body = `<div class="scrollx"><table class="t"><thead><tr><th>Player</th><th>Market</th><th class="r">Close</th><th class="r">Result</th><th></th><th class="r">Best over</th><th class="r">Best under</th><th class="r hide-ph">Pinnacle</th><th class="r hide-ph">Books</th></tr></thead><tbody>
+      ${rows.slice(0, S.fpMore ? 500 : 40).map(r => { const T = FTEAM[r.team] || {}; return `<tr class="${r.res === 'dnp' ? 'dim' : ''}"><td><span class="bk">${head(mlbHead(r.id), r.name, 24, T.color)}<b class="small">${esc(r.name)}</b>${T.logo ? `<img class="tlogo" src="${T.logo}" alt="">` : ''}</span></td>
+        <td class="small">${FMK[r.mk]}</td><td class="r"><b>${fln(r.L)}</b></td><td class="r"><b>${r.r ?? '—'}</b></td><td>${resChip(r)}</td><td class="r">${pr(r.bo)}</td><td class="r">${pr(r.bu)}</td>
+        <td class="r hide-ph">${r.pin ? `${fa(r.pin[0][3])}/${fa(r.pin[1][3])}` : '<span class="muted">—</span>'}</td><td class="r hide-ph">${r.n}</td></tr>`; }).join('')}</tbody></table></div>
+      ${rows.length > 40 && !S.fpMore ? `<div class="cb"><button class="btn" data-fpmore="1">Show all ${rows.length}</button></div>` : ''}`;
+  }
+  return `<section class="card" style="margin-top:14px">${cardH('Player props · results', `${new Set(all.map(r => r.name)).size} players · ${all.length} markets · at the closing line`)}
+    <div class="cb" style="border-bottom:1px solid var(--line-soft)">${tiles}</div><div class="pf-wrap"><div class="pf-ctl">${tseg}${rseg}${vseg}</div>${chips}</div>${rows.length ? body : '<div class="cb small muted">No props match these filters.</div>'}</section>`;
+}
+
 // finished game: closing-line research
 function renderFinal() {
   const g = O.mlb.find(x => x.final);
@@ -823,6 +900,8 @@ function renderFinal() {
     </div>
     <section class="card" style="margin-top:14px">${cardH('Every book at the close', 'moneyline BAL / TOR, run line, total')}<div class="scrollx"><table class="t"><thead><tr><th>Book</th><th class="r">BAL open</th><th class="r">Close</th><th class="r hide-ph">vs sharp close</th><th class="r hide-ph">Opener CLV</th><th class="r hide-ph">Run line</th><th class="r">Total</th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="cb" style="border-top:1px solid var(--line-soft)"><div class="age">"vs sharp close" = the book's closing BAL implied probability minus Pinnacle's no-vig close (positive = the book charged more for BAL). "Opener CLV" = value of that book's BAL opener measured at Pinnacle's fair close. Research, not a pick.</div></div></section>
+    ${finalPropsCard(g)}
+    ${note('PLAYER PROPS · RESULTS', `Every player prop priced before first pitch, graded against the box score. The line is the consensus close (the line most books closed at); the best over and under are the best closing prices with their books; the result is the player's real number, with a track showing it against the line. Filters: team, result, market; views: Players and Table. Players who were priced but did not play are kept and marked (ResultMark's did-not-play). ${REAL} ${finalRows(g).length} player-markets from ${new Set(g.props.markets.flatMap(m => m.q.map(q => q[0]))).size} books; box score from MLB's stats API. Research, not a record of picks.`)}
     <div class="g-mv" style="margin-top:14px">${(CHARTS.f = { m: ml, sp: spec('ml') }, moveCard(ml, spec('ml'), 'f', ['BAL', 'TOR']))}${openCard(tot, spec('tot'), ['Over', 'Under'], 'Total: opening → close')}</div>
   </section>`;
 }
@@ -1051,6 +1130,11 @@ document.addEventListener('click', ev => {
     S.sel = d.preset === 'sharp' ? books.filter(k => ['sharp', 'exchange'].includes(bg(k))) : d.preset === 'mine' ? books.filter(k => k === USER_BOOK || k === 'pinnacle') : d.preset === 'most' ? books.filter(k => bg(k) !== 'pickem').sort((a, b) => cnt(b) - cnt(a)).slice(0, 5) : d.preset === 'all' ? books.filter(k => !['intl', 'offshore'].includes(bg(k))) : [];
   }
   else if (d.allchips) S.allChips = d.allchips === '1';
+  else if (d.fpt) S.fp.team = d.fpt;
+  else if (d.fpr) S.fp.res = d.fpr;
+  else if (d.fpm) S.fp.mk = d.fpm;
+  else if (d.fpv) S.fp.view = d.fpv;
+  else if (d.fpmore) S.fpMore = true;
   else if (d.pft) S.pf.team = d.pft;
   else if (d.pfp) S.pf.pos = d.pfp;
   else if (d.pfm) S.pf.mk = d.pfm;
