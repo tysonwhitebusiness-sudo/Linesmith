@@ -137,6 +137,26 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
    store is the parsed Parquet archive (~50 GB/yr today + the new sources'
    share, measured in L0), which is also what S3 backs up.
 
+### 4c. Source run — build order (the checklist)
+
+Each step ends with its sources visible on the scraper's Sources page with
+non-zero counts and a green heartbeat before the next starts. The open research
+items (DeepSeek §C–E) are answered inside the step that needs them.
+
+| step | what | open items answered here |
+|---|---|---|
+| **R0 Foundations** | git init + baseline commit; scheduler rebuild (per-source loops, priority order, 60–75 s jitter, `Retry-After`, classifying circuit breaker); record `Age` / `Last-Modified` / `ETag` (+ `If-None-Match`); zstd delta raw storage (hourly keyframe, 48 h); **B3** (pull recording, flap flags); monitoring (soft-block/empty detection, drift-check fix); S2 uptime (start at boot, restart on crash, no sleep on power) | — |
+| **R1 Sharp** | Pinnacle (lines + props, 7 leagues), Kalshi (games + props, volume/open interest/depth), Polymarket (markets + live prices, volume) | Pinnacle cache TTL per league / time-to-start — read straight from the `Age` logging R0 adds; Kalshi prop series — list via its public series endpoint; Polymarket live prices — confirm the CLOB API, fall back to `gamma-api` (300 s cache) if not |
+| **R2 US books** | DraftKings, FanDuel, BetMGM, BetRivers (lines + props) | FanDuel MLB/NBA/NHL prop `tab=` slugs — read from the tab list its event-page returns |
+| **R3 Pick'em** | Underdog (ETag-gated, 24 MB), Sleeper (lines 60–75 s; `pick_stats` ~15 min) | — |
+| **R4 Betting %** | DraftKings Network splits, VSiN (line tracker + splits + umpires/refs/power ratings), ScoresAndOdds consensus, Covers, SportsBettingDime, Action Network (timestamps for T0) | DK Network — how the table loads (it is server-rendered HTML; check for a JSON feed first); VSiN's splits book — look for a book selector/label, show as "VSiN splits (book unconfirmed)" until known; ScoresAndOdds' source — label as theirs until stated; Action Network book ids — from its books endpoint / page |
+| **R5 Existing aggregators** | the 14 current sources re-slotted by usage; comparenbet parser keeps `fair_odds_available`, `_links`, team ids/logos, live state; fix betmonitor; **B6** expiring-history grab (comparenbet `/history` backfill, theoddsgap 45-day props export daily, betmonitor 24 h charts, oddstrader openers) | comparenbet `fair_odds_available` — measure when it is false (live? thin books?); 4codds `volume` — compare with Kalshi/Polymarket's own numbers, stored but unused until explained |
+
+**Not in this run:** B0–B2 matching, B4 bridge, Tracks L/E and V3 cards
+(built while the run collects); Pinnacle's live MQTT feed (later, once polling
+data shows where the 15-min cache hurts); VegasInsider (its consensus page was
+not found — dropped unless a URL turns up).
+
 **Edge coverage reality check (measured, NFL, 2026-09-23):** of DraftKings' 262
 over/under player props, Pinnacle prices the same player + stat for 152 (58%)
 but at the SAME line for only 90 (34%): receptions 44/80, TD passes 15/28,
