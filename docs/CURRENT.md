@@ -40,27 +40,29 @@ Read it next. In short:
    oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
-7. **Track O — odds section rebuild (2026-09-24): MOCKUPS APPROVED** (D17).
-   The operator's answers are D18–D23 in the parent plan. **Re-audit done:
-   `docs/design/odds-build-phases-2026-09-24.md` is the build order (P0–P13)
-   and holds 14 findings.** The headline findings:
-   - the scraper stalled at 17:38 UTC on 09-24 and the watchdog cannot see
-     it;
-   - the scraper makes ~7M changes a day against a DB at 65% of 8 GB, so the
-     storage decision (P4) must come before the bridge;
-   - the writers stamp write time with one time per price;
-   - game-line tables have no period and no alternate lines;
-   - live bug: game-line history misses line moves.
+7. **ODDS BUILD — IN PROGRESS (unattended run P0 → P4, started 2026-09-24
+   21:00 UTC).** Order of work and approvals:
+   `docs/design/odds-build/HANDOFF-P0-P4.md`. Specs: `docs/design/odds-build/`.
+   Build order and findings: `docs/design/odds-build-phases-2026-09-24.md`.
 
-   **Detailed build specs, one per phase:** `docs/design/odds-build/`
-   (README + P0…P13 + the scraper lane). **All written and committed.** P2's vocabulary data and generator are in
-   `docs/design/odds-build/data/`. Nothing is built. **P0 waits on the
-   operator's green light.** The stalled scraper was restarted at 20:53 UTC on
-   the operator's instruction (a 17:38–20:54 gap). The cause is still
-   unknown, and P0's watchdog and stall dump are what will catch it next
-   time.
-   **Unattended run P0 → P4 handoff: `docs/design/odds-build/HANDOFF-P0-P4.md`** (approvals, the
-   six spec corrections to make while waiting for D24, the order of work).
+   | phase | status |
+   |---|---|
+   | P0 keep data flowing | **DONE 21:20 UTC** — odds-scraper `52ae6b4`, `8afa4d8` (that repo has no remote: local commits only). Freshness watchdog, stall dump, backup of both archived days verified. See P0 → Result |
+   | P1 fix what is broken | next (includes the one authorised Render deploy) |
+   | P2 names · P3 matching · P4 storage measurement | waiting in order |
+   | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
+   | the six spec corrections (HANDOFF §"Known spec corrections") | after P4 |
+
+   **Background checks running (never gate):**
+   - **P0, 48 h from 2026-09-24 21:14 UTC:** no gap in `last_poll_at` over
+     300 s. Read `odds-scraper\data\watchdog.log`: any `stalled` line is a
+     freeze. If one appears, `data\stalls\stall-*.txt` holds the writer's
+     stack, which names the cause; fix it and record it in P0 → Result.
+   - **P0, daily:** `OddsScraperBackup` at 04:30 local. `data\backup.log`
+     should show a new day uploaded and `mismatches: 0`.
+
+   The 17:38 UTC freeze's cause is **still unknown**. The watchdog now caps
+   any freeze at about 5–10 min.
    Background: `docs/design/odds-rebuild/HANDOFF-OM.md` covers the four mockup rounds (approved); the
    resume prompt is `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.
 

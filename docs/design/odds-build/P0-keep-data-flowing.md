@@ -232,5 +232,60 @@ Written into `docs/CURRENT.md` when started.
 
 ## Result
 
-*(filled in when the phase closes: the hang's cause, the fix, the drill's
-output, the verified backup)*
+**Closed 2026-09-24 21:20 UTC.** odds-scraper commits `52ae6b4`, `8afa4d8`
+(local only: that repo has no git remote).
+
+- **Restart:** done by the operator at 20:53 UTC. At 21:00 `last_poll_at` was
+  3 s old. It was restarted once more at 21:05 to load the P0 code; the old
+  processes stopped fine, since the permission system allowed `Stop-Process`.
+- **A gap the spec missed, now fixed:** the old `run-scraper.ps1` blocked on
+  `python run.py`, so the `OddsScraper` task stayed "Running" for the
+  scraper's whole life. With `MultipleInstances=IgnoreNew`, every 5-minute
+  trigger was skipped, so a freshness check in that script could never have
+  run. The rewrite starts the scraper detached (`Start-Process cmd /c …`) and
+  exits. Measured: the scraper survives the task ending, and the task goes
+  back to Ready. The task's settings are unchanged, as the spec says.
+- **Drill switch:** `SCRAPER_TEST_FREEZE_WRITER=1` **or** a
+  `data\TEST_FREEZE_WRITER` file. An environment variable cannot be set on
+  a running process, so the file is what the live drill used.
+- **Live stall drill** (default 180 s dump threshold, no manual watchdog
+  run):
+  - 21:07:57: freeze file created;
+  - 21:11:02: `stall-20260924-211102.txt` written. Its writer stack ends in
+    `_test_freeze → time.sleep`, i.e. it names the blocking call;
+  - 21:12:59: **the task's own 5-minute trigger** logged
+    `stalled last_poll_at=21:07:57 pending_writes=16 in_flight=35 writer.stage=test_freeze`,
+    saved `watchdog-20260924-211259.txt`, stopped the processes and
+    restarted;
+  - 21:14:19: polling again. **Total gap 6 min 22 s, restarted by itself.**
+- **Cause of the 17:38 hang: not yet reproduced.** No freeze has happened
+  since the restart. The logs hold no error, and `server.out.log` has no
+  timestamps. Reading the code, the writer's only unbounded waits are
+  `_store_many` (SQLite with `busy_timeout` 5 s), `RawStore.write` (file I/O)
+  and `_maybe_prune_raw` (unlinks thousands of files on the writer thread;
+  the first prune after the 20:53 restart freed 472 MB). The next freeze
+  leaves `data\stalls\stall-*.txt` with the writer's stack; read it, fix
+  that call, and record it here. Until then the watchdog caps any freeze at
+  about 5–10 min.
+- **Backup:**
+  - 62 files (both archived days plus `ref/`), 242.7 MB, in
+    `linesmith-corpus/scraper-archive/…`;
+  - `--verify-day 2026-09-22`: 26 files, 9,656,725 rows, 0 mismatches;
+  - `--verify-day 2026-09-23`: 34 files, 24,095,896 rows, 0 mismatches;
+  - the second run skipped all 62.
+- **Chunked upload (a deviation):** Supabase refused objects over the
+  project's 50 MB per-file limit (the first try failed on a 50.9 MB
+  comparenbet day with an empty `PutObject` error, and multipart is held to
+  the same limit). Files over 40 MB therefore go up as `.chunkNNN` pieces,
+  and `--verify-day` reassembles them before the checks. Raising the limit
+  would be an operator setting; it is not needed.
+- **`OddsScraperBackup` task:** registered (the permission system allowed
+  it): daily 04:30 local, same account, interactive. Run once through the
+  scheduler: result 0, `data\backup.log` shows the run and a clean verify of
+  09-23. Its output is written by the script itself (`--log`), because
+  PowerShell 5.1's redirection wrote UTF-16 into the log.
+- **Tests:**
+  - `test_infra.py`: all 13 groups pass (10 old, plus `p0_writer`,
+    `p0_stall`, `p0_debug_threads`);
+  - `tools\test_watchdog.ps1`: 7/7.
+- **py-spy:** skipped (a download), per the handoff.
