@@ -55,9 +55,10 @@ Read it next. In short:
    **Detailed build specs, one per phase:** `docs/design/odds-build/`
    (README + P0…P13 + the scraper lane). **All written and committed.** P2's vocabulary data and generator are in
    `docs/design/odds-build/data/`. Nothing is built. **P0 waits on the
-   operator's green light.** P0's first step is the operator's: restart the
-   stalled scraper. The builder's process stop was refused by the
-   permission system.
+   operator's green light.** The stalled scraper was restarted at 20:53 UTC on
+   the operator's instruction (a 17:38–20:54 gap). The cause is still
+   unknown, and P0's watchdog and stall dump are what will catch it next
+   time.
    **Unattended run P0 → P4 handoff: `docs/design/odds-build/HANDOFF-P0-P4.md`** (approvals, the
    six spec corrections to make while waiting for D24, the order of work).
    Background: `docs/design/odds-rebuild/HANDOFF-OM.md` covers the four mockup rounds (approved); the

@@ -68,6 +68,19 @@ and why.
    leave the operator a summary (P4's options + recommendation, and anything
    blocked).
 
+## Scraper state at handoff
+
+- The scraper froze at 17:38 UTC on 2026-09-24. The process stayed up, but
+  polling stopped: 28 writes were pending and 39 fetches in flight.
+- It was **restarted by the operator's instruction at 20:53 UTC**, and
+  polling resumed at 20:54.
+- About 3 h 15 min of data (17:38–20:54 UTC) were never collected.
+- The cause of the hang is **still unknown**. So P0 is still needed in full:
+  - the freshness watchdog, so it restarts itself next time;
+  - the stall dump, which captures the thread stacks at the next freeze and
+    names the cause;
+  - the backup.
+
 ## Things that will need the operator (write them down, don't block on them)
 
 - Creating new Windows scheduled tasks (`OddsScraperBackup` in P0) if the
