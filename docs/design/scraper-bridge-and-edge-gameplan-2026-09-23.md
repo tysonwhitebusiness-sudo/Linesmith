@@ -48,9 +48,9 @@ show more books.
 2. **L0** measure minute-level move volume (decides storage before the bridge writes)
 3. **B3** flap filter + line-pull recording
 4. **B4** bridge (forwards individual changes with their scrape time)
-5. **B7** Pinnacle, Kalshi, Polymarket sources (own schedule)
+5. **B7** Pinnacle, Kalshi, Polymarket sources (own schedule) + **B8** VSiN (Circa, Vegas books, openers, splits)
 6. **S1–S3** scraper reliability + backups (in parallel with B4/B7)
-7. **L1–L5** line movement on the pages
+7. **L1–L5** line movement on the pages; **V1–V3** splits + exchange volume
 8. **B5/B6** page touches + expiring history grab (B6's grab is time-sensitive — can run any time)
 9. **E1–E2** edge (strict), **T0** running beside it
 10. **E3** closing-line test, ~2 weeks after E2
@@ -67,6 +67,46 @@ show more books.
 | B5 | Pages: display names and order for the new books; "open at book" deep links from comparenbet's `_links` (40+ books) | rendered on each sport's player + game page |
 | B6 | **Expiring history — grab now:** run `backfill_comparenbet_history.py` (`line_history` has 0 rows); pull theoddsgap's 45-day props export daily (each missed day is lost for good); stop discarding betmonitor's 24 h charts and oddstrader's openers | rows landing daily |
 | B7 | **Pinnacle, Kalshi, Polymarket as scraper sources** (D8). Requirements: (1) their OWN schedule, not the shared cycle; (2) bridge carries fetch time and Pinnacle's `version`; (3) per-source heartbeat read by `health_check` and the edge self-check; (4) gates: exchanges on bid/ask spread + liquidity, Pinnacle on its stated limit. REST polling ~30–60 s first; push streams (Pinnacle MQTT, exchange WebSockets) later — auth needs unverified. Fallback if Pinnacle's guest API ever blocks: pinnodds.com ($99–229/mo; its docs say no per-event timestamp either) | all three landing on their own cadence, heartbeats green, matched |
+
+| B8 | **VSiN as a scraper source** (operator, 2026-09-23; planned alongside Pinnacle). Circa has no public web odds — its apps are geo-locked (NV, CO, IL, IA, KY, MO) and its own "Betting Menu & Odds" page links out to VSiN. One source `vsin`, endpoints on their own schedules: **line tracker** (`data.vsin.com/vegas-odds-linetracker/?sportid=`, NFL/CFB/NBA/NHL/MLB/CBB) every 1–2 min — Circa + Westgate, South Point, Wynn, Stations, Boomers, Caesars, BetMGM; spread/ML/total; an OPEN row with each book's opener; per-game detail at `game_lines_detail.php?gamecode=` (opener + current only, no history); **betting splits** (`/{sport}/betting-splits/`) every 5–10 min (Track V); **MLB umpire summary** and **NFL referee summary**, **power ratings** daily. No timestamps anywhere; update rate unknown — Circa-via-VSiN is a sharp reference only after T0 (compare against Circa via comparenbet, ~919 game-line prices). No props. Player-props and projections pages carry no data without login/JS. Pages 340 KB–1 MB HTML (~14× smaller compressed). Not yet checked: `/nfl/games/`, team summaries (ATS) | line tracker + splits landing on schedule; Circa matched to Linesmith games |
+
+## 5b. Track V — betting volume and splits (new data type)
+
+**Question (operator):** total and per-book betting volume per game, team and
+player, and who has been bet on more, as a %. **Measured 2026-09-23:**
+
+- **No sportsbook publishes per-game handle.** Nothing in the three systems
+  carries it: Linesmith's paid feeds have no volume/handle/split fields
+  (`providers.py`), OddsHarvester none, and 12 of 14 scraper parsers set
+  `volume` to None.
+- **Bet % and money % (one book):** VSiN betting splits — per side, % of
+  handle and % of bets for spread/total/moneyline, NFL/CFB/MLB/NBA/NHL/CBB/
+  tennis/golf/UFC/UFL. E.g. Packers −250: 81% of moneyline bets, 31% of the
+  money. Only games not yet started are shown, so history exists only if we
+  snapshot through the day (lost per missed day). Source book unlabelled — its
+  only book link is `bookid=dk`, so probably DraftKings; Circa splits
+  unconfirmed. Game lines only.
+- **Real traded volume (exchanges, first-hand):** Kalshi per market —
+  `volume_fp`, `volume_24h_fp`, `open_interest_fp`, bid/ask sizes (an MLB
+  "Boston wins" market: 1.52M contracts traded, 926k open interest; includes
+  in-game trading). Polymarket per market and per event — `volume`,
+  `volume24hr`, `liquidity` (NFL 2027 champion event: $59.3M). Per-team volume
+  is per-market, so a game's two team markets give a % split of real money.
+  Kalshi lists player props (Linesmith's feeds carry ~1,605 Kalshi
+  player-markets); per-prop volume unverified.
+- **4codds `volume`** (only scraper source storing one): meaning unclear —
+  Pinnacle's max equals 30,000 (looks like a limit), Polymarket up to 421,720
+  (looks like traded), and its prop volume is identical for every player in a
+  game (a game-level figure). Verify against Kalshi/Polymarket before use.
+- **Not checked:** state regulators' monthly handle by operator (aggregate,
+  never per game); other public splits sites.
+
+| phase | what |
+|---|---|
+| V1 | Store VSiN splits snapshots (every 5–10 min, pre-game) with game matching |
+| V2 | Store Kalshi/Polymarket volume, 24h volume, open interest and depth with every B7 price; split pre-game from in-game |
+| V3 | "Where the money is" research card per game (and per player where Kalshi has prop volume): exchange money share per side, VSiN bets % vs money %, labelled by source — never presented as all-book handle |
+| V4 | Model inputs and a day-by-day splits/volume dataset |
 
 ## 5. Track L — minute-level line movement
 
