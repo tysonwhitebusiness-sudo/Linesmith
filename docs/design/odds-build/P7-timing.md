@@ -106,6 +106,40 @@ It runs daily at 05:00 local, as part of the P6 bridge's scheduled work or
 its own task `LinesmithSourceTiming` ⚑. The first run uses the history
 already on the laptop (since 2026-09-22), so nothing waits.
 
+### 3b. The paid feeds' own timestamps (T0.4)
+
+A read-only check of what each paid feed says about **when a book's price
+was set**, so the app knows which paid rows carry a real per-book time and
+which only carry our fetch time.
+
+- **Feeds:** SharpAPI (`fetch_sharpapi`, `fetch_sharpapi_game_lines`),
+  Odds-API.io (`fetch_oddsapiio`), SportsGameOdds (`fetch_sportsgameodds`),
+  Propline (`fetch_propline`), ParlayAPI (`fetch_parlayapi`), and the-odds-api
+  (game lines). All in `python-odds-service/src/providers.py`.
+- **For each feed:** take one real response per sport it serves (a fetch
+  inside its normal budget, or its most recent raw payload if one is kept).
+  List every field that could be a per-book or per-price time (for example
+  `last_update`, `lastUpdatedAt`, `updated_at`, `timestamp`), and at what
+  level it sits: response, event, market, book or price. Compare it with the
+  fetch time, then record for each one:
+  - is it per book;
+  - does it move when that book's price moves (two fetches a few minutes
+    apart on a live market);
+  - is it plausible (not in the future, and not simply equal to the fetch
+    time on every row).
+- **SportsGameOdds `lastUpdatedAt`:** recheck its real values **after the
+  monthly key reset**. On 2026-09-24 the key was capped, so this could not
+  be read. Record whether it is per book and whether it moves with the
+  price.
+- **Output:** a table in this file's Result: feed · field · level · per-book
+  (y/n) · moves with price (y/n) · median (fetch − field). A feed with a real
+  per-book time is a candidate for `changed_at` in P5's writer (D23), and
+  that follow-up is named in the Result. A feed without one keeps
+  `changed_at` = our fetch time, which the "since" rules already treat
+  conservatively.
+- No write, no deploy, and the provider caps are respected (a single fetch
+  per feed, through the normal cap reservation).
+
 ### 4. Edge half-life (T0.5)
 
 The method is defined here and filled by P11's edge log:
@@ -127,7 +161,10 @@ P13 reports both.
 **Exit criteria:**
 - the hermetic tests pass;
 - `source_latency` is filled;
-- the proven-fast list is written into the Result and read back by a query.
+- the proven-fast list is written into the Result and read back by a query;
+- the T0.4 table (the paid feeds' timestamps) is in the Result, with SGO's
+  `lastUpdatedAt` either checked or marked "waits for the key reset on
+  <date>".
 
 ## Background checks (never gate)
 
@@ -143,4 +180,11 @@ the numbers refine without holding anything.
 
 ## Result
 
-*(the relay-delay and follow-lag tables, the proven-fast list)*
+*(the relay-delay and follow-lag tables, the proven-fast list, the T0.4 paid-feed timestamp table)*
+
+## Changelog
+
+- **2026-09-24 — gains T0.4** (`HANDOFF-P0-P4.md` correction 5; plan §T0
+  lists it, the spec had dropped it): §3b checks each paid feed's payload
+  for per-book timestamps, and rechecks SportsGameOdds' `lastUpdatedAt`
+  after its monthly key reset. The results go in the Result.
