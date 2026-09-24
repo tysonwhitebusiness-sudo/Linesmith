@@ -73,7 +73,15 @@ pre-game). Not app-breaking; routed to §5.
 | B5 | Pages: display names / order for the new books; a shorter chart window so minute-level movement is visible | rendered on each sport's player + game page |
 | B6 | Expiring history: run `backfill_comparenbet_history.py` (`line_history` has 0 rows); pull theoddsgap's 45-day props export daily; stop discarding betmonitor's 24 h charts and oddstrader's openers | rows landing daily |
 
-## 3b. T0 — timing audit (before any edge renders)
+| B7 | **First-hand Kalshi + Polymarket** (operator, 2026-09-23). Both public APIs need no login (checked: Kalshi `trade-api/v2/markets`, Polymarket `gamma-api`); both are the exchanges themselves, so fetch time IS price time. Built the standard Python way (`fetch_kalshi`/`fetch_polymarket` in `providers.py`, a `ProviderSpec`, matched with the existing team/roster indexes), but run in its OWN small loop outside `SequentialQueue` — the worker runs one job at a time with a 10-min job budget (`job_queue.py`), so a 60 s job there would wait behind long jobs. Start that loop on the laptop beside the bridge (same uptime as the scraper); a second Render worker is the upgrade path. Gate on bid/ask spread + liquidity — a sampled new Kalshi MLB market sat at 0.44/0.68 with zero liquidity | both feeds landing every ~60 s with bid/ask, matched to Linesmith games |
+
+**Sequencing change (operator, 2026-09-23): edge does NOT wait for T0.** It
+ships right after the bridge with the STRICTEST gates, the cap, the self-check,
+the edge log, a visible price age on every edge and a kill switch; T0 runs
+beside it, gates are re-tuned at ~day 3–5, the closing-line test at ~2 weeks.
+Loosen with evidence; never launch loose and tighten later.
+
+## 3b. T0 — timing audit (runs beside edge, tunes its gates)
 
 Time is the biggest factor in edge, and **fetch time is not price time**.
 Measured 2026-09-23 from each source's newest raw page:
