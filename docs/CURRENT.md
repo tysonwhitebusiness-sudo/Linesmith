@@ -29,17 +29,16 @@ Read it next. In short:
    `/diagnostics`.
 6. **Scraper bridge, line movement + market edge (new workstream, 2026-09-23):**
    `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
-   are settled (§1). **Source run: R0-R3 built and live in the odds-scraper
-   repo; operator said (2026-09-24) run R3, R4 and R5 in one unattended pass,
-   testing after every step.** R2 = DraftKings, FanDuel, BetMGM, BetRivers;
-   R3 = Sleeper + Underdog (`898074c`) plus new `splits` / `reference_data`
-   tables; header fixes `370dffd` (Underdog Client-Version, Pinnacle
-   x-api-key). comparenbet key-collision + fair-price fix `eda615d` cut its
-   rows 76%. **IN PROGRESS: R4** (DK Network splits, VSiN, ScoresAndOdds
-   consensus, Covers, SBD, Action Network), then R5. Research so far is in the
-   scraper `HANDOFF.md`. Open from R2: FanDuel NBA/NHL prop tab slugs (check
-   when those seasons open). Nothing in line-buddy/Supabase changed for the
-   source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
+   are settled (§1). **Source run R0–R5 is DONE and live in the odds-scraper
+   repo (29 sources; plan §4c STATUS; the scraper's `HANDOFF.md` top section
+   is the operating guide). Next: B0–B2 matching, then the B4 bridge — waits
+   for the operator's go.** New data types landed: `splits` (DraftKings and
+   Circa handle/bets %, ScoresAndOdds, Covers picks, Sleeper pick counts,
+   Action Network bet counts) and `reference_data` (umpires, referees, power
+   ratings, openers, comparenbet per-game history, theoddsgap prop closes).
+   Open items are listed in the scraper `HANDOFF.md` (oddsrun data API,
+   oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
+   tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the

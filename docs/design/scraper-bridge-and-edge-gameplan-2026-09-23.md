@@ -139,12 +139,14 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
 
 ### 4c. Source run — build order (the checklist)
 
-**STATUS 2026-09-24 (UTC): R0, R1 and R2 DONE and live. R3 (Underdog,
-Sleeper) waits for the operator's go.** Scraper commits
-(odds-scraper repo, local git, created in R0): baseline `75e8f2e`, R0
-`dee6f4e` + fixes `5e9db9f` (aging) `09d9c40` (writer throughput), R1
-`5d55b38` + `4f48d87`, R2 `3779047`. Runs as scheduled task `OddsScraper`
-(logon + 5-min watchdog).
+**STATUS 2026-09-24 (UTC): the source run R0–R5 is DONE and live** (the
+operator ran R3–R5 in one unattended pass). Next: B0–B2 matching, then the B4
+bridge — needs a go. Scraper commits (odds-scraper repo, local git): baseline
+`75e8f2e`, R0 `dee6f4e` + `5e9db9f` `09d9c40`, R1 `5d55b38` + `4f48d87`, R2
+`3779047`, comparenbet key/fair fix `eda615d`, R3 `898074c`, header fixes
+`370dffd`, R4 `d5b3c2c`, R5 `6bc367b`. Runs as scheduled task `OddsScraper`
+(logon + 5-min watchdog). 29 sources; the scraper's `HANDOFF.md` top section
+is the operating guide.
 Measured along the way:
 - raw store (zstd delta vs keyframe as long-window prefix): 58x vs gzip's 9x
   on real pages; byte-exact.
@@ -192,6 +194,47 @@ Measured along the way:
   once MLB games are inside 6 h); boards every 70-72 s (BetMGM 128 s by
   design), DK prop pages 69 s, day-of games 189-192 s; no errors, all four
   healthy; R1 unchanged; writer caught up.
+- comparenbet (2026-09-24): 71% of its written rows sat on keys that appeared
+  2+ times in ONE response (team totals had lost the team; DraftKings carries
+  a second price pair on 413 of 2,033 markets), so both prices were rewritten
+  every poll; and its fair price is one market-wide number copied onto every
+  book row (identical in 3,011/3,011 markets), so a fair-only move rewrote
+  every book. Fixed with a key variant + a `comparenbet_fair` pseudo-book row;
+  replay of 84 real responses: 0 prices lost, 0 fair values unrecoverable;
+  live: comparenbet 741k -> 178k rows/hr, all sources 846k -> 263k.
+- R3: Sleeper (ids only -> names/games embedded from its public players and
+  schedule endpoints; pick counts -> new `splits` table every 15 min) and
+  Underdog (28 MB, 304 when unchanged; its API needs the web app's build stamp
+  as `Client-Version`, else 426 on 7 of 8 requests). Pinnacle's site sends an
+  `x-api-key` from its public /config/app.json; without it 1–2% of polls got
+  401.
+- R4: VSiN publishes DraftKings AND Circa splits — only the root
+  /betting-splits/?source=CIRCA page honours the book; the per-sport page
+  silently shows DraftKings. Circa's numbers differ sharply (TNF: ATL spread
+  72% of handle / 28% of bets at Circa, 39% / 36% at DK). VSiN's line tracker
+  has one table body per period (full game + first half). DK Network's
+  splits carry DraftKings' own event id. Action Network relays Fanatics,
+  Hard Rock, Caesars and bet365 NJ (blocked first-hand) with per-book
+  `inserted` times, plus an Open book. ScoresAndOdds' % are in bar widths.
+  Covers is picks, never money. New `reference_data` table for umpire,
+  referee, power-rating tables and openers.
+- R5: betmonitor had rate-limited this IP since 09-23 04:13 with a 68-byte
+  HTTP 200 "Are you a robot? Too many requests" page (read as empty pages for
+  30 h) — now a 1-hour rate limit in net.py, and betmonitor polled ~15x less.
+  comparenbet `fair_odds_available=false`: 0.27% of outcomes, 82% of them
+  where fewer than 3 books quote the market. 4codds `volume` = Pinnacle's own
+  bet limit (5/5 identical), not money traded. B6: comparenbet `/history`
+  captured once per game after it starts (~57 books, ~50 KB a game);
+  theoddsgap props export daily (free 7-day window; ~10.7k checkpoint rows a
+  game day; the 45-day window needs an account and was not taken). oddsrun's
+  page became a client shell (data API not found yet); oddstrader openers not
+  found (covered by Action Network Open, VSiN openers, theoddsgap).
+- R3–R5 verified live (steady state 09:36–09:52 UTC 09-24, 29 sources):
+  offers 253k rows/hr + splits 11.6k/hr; every new source healthy
+  (betmonitor correctly "rate_limited"). The single SQLite writer is ~75%
+  busy (queue swings 0↔~20, drains in ~20 s) — the next capacity limit;
+  watch it at evening peaks. A bare 403 now pauses 5 min doubling to 1 h
+  (a single Pinnacle 403 had paused NCAAF for an hour). Commit `be36cae`.
 
 Each step ends with its sources visible on the scraper's Sources page with
 non-zero counts and a green heartbeat before the next starts. The open research
@@ -202,9 +245,9 @@ items (DeepSeek §C–E) are answered inside the step that needs them.
 | **R0 Foundations** | git init + baseline commit; scheduler rebuild (per-source loops, priority order, 60–75 s jitter, `Retry-After`, classifying circuit breaker); record `Age` / `Last-Modified` / `ETag` (+ `If-None-Match`); zstd delta raw storage (hourly keyframe, 48 h); **B3** (pull recording, flap flags); monitoring (soft-block/empty detection, drift-check fix); S2 uptime (start at boot, restart on crash, no sleep on power) | — |
 | **R1 Sharp** | Pinnacle (lines + props, 7 leagues), Kalshi (games + props, volume/open interest/depth), Polymarket (markets + live prices, volume) | Pinnacle cache TTL per league / time-to-start — read straight from the `Age` logging R0 adds; Kalshi prop series — list via its public series endpoint; Polymarket live prices — confirm the CLOB API, fall back to `gamma-api` (300 s cache) if not |
 | **R2 US books** ✅ | DraftKings, FanDuel, BetMGM, BetRivers (lines + props) | FanDuel MLB slugs found (`batter-props`, `pitcher-props`); NBA/NHL still open until their seasons |
-| **R3 Pick'em** | Underdog (ETag-gated, 24 MB), Sleeper (lines 60–75 s; `pick_stats` ~15 min) | — |
-| **R4 Betting %** | DraftKings Network splits, VSiN (line tracker + splits + umpires/refs/power ratings), ScoresAndOdds consensus, Covers, SportsBettingDime, Action Network (timestamps for T0) | DK Network — how the table loads (it is server-rendered HTML; check for a JSON feed first); VSiN's splits book — look for a book selector/label, show as "VSiN splits (book unconfirmed)" until known; ScoresAndOdds' source — label as theirs until stated; Action Network book ids — from its books endpoint / page |
-| **R5 Existing aggregators** | the 14 current sources re-slotted by usage; comparenbet parser keeps `fair_odds_available`, `_links`, team ids/logos, live state; fix betmonitor; **B6** expiring-history grab (comparenbet `/history` backfill, theoddsgap 45-day props export daily, betmonitor 24 h charts, oddstrader openers) | comparenbet `fair_odds_available` — measure when it is false (live? thin books?); 4codds `volume` — compare with Kalshi/Polymarket's own numbers, stored but unused until explained |
+| **R3 Pick'em** ✅ | Underdog (ETag-gated, 24 MB), Sleeper (lines 60–75 s; `pick_stats` ~15 min) | — |
+| **R4 Betting %** ✅ | DraftKings Network splits, VSiN (line tracker + splits + umpires/refs/power ratings), ScoresAndOdds consensus, Covers, SportsBettingDime, Action Network (timestamps for T0) | DK Network — how the table loads (it is server-rendered HTML; check for a JSON feed first); VSiN's splits book — look for a book selector/label, show as "VSiN splits (book unconfirmed)" until known; ScoresAndOdds' source — label as theirs until stated; Action Network book ids — from its books endpoint / page |
+| **R5 Existing aggregators** ✅ | the 14 current sources re-slotted by usage; comparenbet parser keeps `fair_odds_available`, `_links`, team ids/logos, live state; fix betmonitor; **B6** expiring-history grab (comparenbet `/history` backfill, theoddsgap 45-day props export daily, betmonitor 24 h charts, oddstrader openers) | comparenbet `fair_odds_available` — measure when it is false (live? thin books?); 4codds `volume` — compare with Kalshi/Polymarket's own numbers, stored but unused until explained |
 
 **Not in this run:** B0–B2 matching, B4 bridge, Tracks L/E and V3 cards
 (built while the run collects); Pinnacle's live MQTT feed (later, once polling
