@@ -27,7 +27,7 @@ Read it next. In short:
    ranking system, every priced market) is next.**
 5. The usual operator items: Q0–Q25, M4, M5, and a signed-in pass over Q15 and
    `/diagnostics`.
-6. **Scraper bridge + market edge (new workstream, 2026-09-23):**
+6. **Scraper bridge, line movement + market edge (new workstream, 2026-09-23):**
    `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
    are settled (§1: scraper as a third writer, bridge first, gated edge on
    pages including the Scan table, closing-line test ~2 weeks after). NOTHING
