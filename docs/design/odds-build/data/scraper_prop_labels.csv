@@ -1,0 +1,405 @@
+source,label,rows_today,key,rule,status
+comparenbet,player_touchdowns,1656531,anytime-td,manual,mapped
+comparenbet,player_reception_yds,743938,receiving-yards,manual,mapped
+comparenbet,player_rush_yds,437833,rushing-yards,manual,mapped
+comparenbet,player_pass_yds,284324,passing-yards,manual,mapped
+comparenbet,player_receiving_longestReception,220833,longest-reception,manual,mapped
+comparenbet,player_shots_on_target,203591,shots-on-target,manual,mapped
+comparenbet,player_receptions,160594,receptions,app-alias,mapped
+comparenbet,player_points,149269,points,app-alias,mapped
+comparenbet,player_passing+rushing_yards,105987,pass-rush-yards,manual,mapped
+comparenbet,player_pass_tds,79238,passing-tds,manual,mapped
+comparenbet,player_rushing+receiving_yards,77786,rush-rec-yards,manual,mapped
+comparenbet,player_pass_completions,71509,passing-completions,manual,mapped
+comparenbet,player_rush_attempts,67572,rushing-attempts,manual,mapped
+comparenbet,player_pass_attempts,49360,pass-attempts,app-alias,mapped
+comparenbet,player_pass_interceptions,40054,interceptions-thrown,manual,mapped
+comparenbet,player_rushing_longestRush,38477,longest-rush,manual,mapped
+comparenbet,player_shots,32310,shots,manual,mapped
+comparenbet,player_passing_longestCompletion,25922,longest-completion,manual,mapped
+comparenbet,player_pitching_hits,13929,pitcher-hits-allowed,manual,mapped
+comparenbet,player_tackles_assists,11553,tackles-assists,manual,mapped
+comparenbet,player_kicking_totalPoints,10981,kicking-points,manual,mapped
+comparenbet,player_kicking_points,9737,kicking-points,manual,mapped
+comparenbet,player_assists,8648,assists,app-alias,mapped
+comparenbet,player_fieldGoals_made,6231,field-goals-made,manual,mapped
+comparenbet,player_pitching_basesOnBalls,6118,pitcher-walks-allowed,manual,mapped
+comparenbet,player_defense_sacks,5606,sacks,manual,mapped
+comparenbet,player_defense_assistedTackles,3158,assists,manual,mapped
+steezanomics,Anytime TD,1467,anytime-td,manual,mapped
+betrivers,Receiving Yards,1274,receiving-yards,manual,mapped
+betmgm,Touchdown,1163,anytime-td,manual,mapped
+4codds,TOTAL BASES,1116,total-bases,manual,mapped
+comparenbet,player_defense_interceptions,1057,defensive-interceptions,manual,mapped
+betrivers,"Hits, Runs & RBIs",1025,hits-runs-rbis,manual,mapped
+underdog,Rush + Rec TDs,994,rush-rec-tds,app-alias,mapped
+kalshi,hits_runs_rbis,932,hits-runs-rbis,app-alias,mapped
+fanduel,hits_runs_rbis,916,hits-runs-rbis,app-alias,mapped
+fanduel,total_bases,916,total-bases,manual,mapped
+comparenbet,player_defense_soloTackles,913,solo-tackles,manual,mapped
+fanduel,hits,912,pitcher-hits-allowed|hits,position,position
+betrivers,Receptions,890,receptions,app-alias,mapped
+comparenbet,player_total_saves,876,saves,manual,mapped
+kalshi,receiving_yards,842,receiving-yards,manual,mapped
+betrivers,Hits,769,pitcher-hits-allowed|hits,position,position
+underdog,Kills on Maps 1+2,768,,no-app-sport,no-app-sport
+kalshi,total_bases,746,total-bases,manual,mapped
+sleeper,anytime_touchdowns,691,anytime-td,manual,mapped
+underdog,Receiving Yards,662,receiving-yards,manual,mapped
+betrivers,Touchdown To Be,659,,verify:anytime-td?,verify
+fanduel,rbis,637,rbis,app-alias,mapped
+betrivers,RBIs,624,rbis,app-alias,mapped
+betrivers,Touchdowns,622,anytime-td,app-alias,mapped
+betrivers,Rushing Yards,615,rushing-yards,app-alias,mapped
+kalshi,hits,604,pitcher-hits-allowed|hits,position,position
+betrivers,Total Bases,597,total-bases,manual,mapped
+kalshi,touchdowns,566,anytime-td,app-alias,mapped
+kalshi,receptions,564,receptions,app-alias,mapped
+underdog,Longest Reception,564,longest-reception,manual,mapped
+underdog,First TD Scorer,563,first-td-scorer,app-alias,mapped
+betmgm,ReceivingYards,545,receiving-yards,manual,mapped
+sleeper,receiving_yards,531,receiving-yards,manual,mapped
+underdog,Headshots on Maps 1+2,530,,no-app-sport,no-app-sport
+fanduel,runs,524,runs,app-alias,mapped
+kalshi,rushing_yards,474,rushing-yards,app-alias,mapped
+comparenbet,player_goals+assists,461,goals-assists,manual,mapped
+fanduel,home_runs,461,home-runs,app-alias,mapped
+steezanomics,Receiving Yards,460,receiving-yards,manual,mapped
+betrivers,Passing Yards,425,passing-yards,app-alias,mapped
+betrivers,Home Runs,416,home-runs,app-alias,mapped
+kalshi,rbis,406,rbis,app-alias,mapped
+betrivers,Runs,380,runs,app-alias,mapped
+4codds,TOTAL HOME RUNS,372,home-runs,manual,mapped
+kalshi,home_runs,361,home-runs,app-alias,mapped
+underdog,Receptions,347,receptions,app-alias,mapped
+draftkings,Hits + Runs + RBIs,345,hits-runs-rbis,app-alias,mapped
+underdog,1H Receptions,326,1h-receptions,period+app-alias,mapped
+underdog,Rush Yards,323,rushing-yards,app-alias,mapped
+underdog,1H Rush + Rec TDs,322,1h-rush-rec-tds,period+app-alias,mapped
+underdog,1Q Receptions,321,1q-receptions,period+app-alias,mapped
+fanduel,Receiving Yds,319,receiving-yards,manual,mapped
+fanduel,stolen_bases,319,stolen-bases,app-alias,mapped
+draftkings,Receiving Yards,316,receiving-yards,manual,mapped
+draftkings,Hits,311,pitcher-hits-allowed|hits,position,position
+underdog,1H Receiving Yards,308,1h-receiving-yards,period+manual,mapped
+steezanomics,Receptions,306,receptions,app-alias,mapped
+underdog,1H Rec Yards,298,1h-receiving-yards,period+manual,mapped
+underdog,1H Rush Yards,289,1h-rushing-yards,period+app-alias,mapped
+underdog,Hits + Runs + RBIs,287,hits-runs-rbis,app-alias,mapped
+betmgm,RushingYards,284,rushing-yards,manual,mapped
+sleeper,rushing_yards,271,rushing-yards,app-alias,mapped
+underdog,Longest Rush,271,longest-rush,manual,mapped
+underdog,Total Bases,266,total-bases,manual,mapped
+steezanomics,Total Bases,264,total-bases,manual,mapped
+betmgm,Strikeout,254,pitcher-strikeouts|batter-strikeouts,position,position
+sleeper,total_bases,249,total-bases,manual,mapped
+draftkings,Doubles,247,doubles,app-alias,mapped
+draftkings,RBIs,247,rbis,app-alias,mapped
+draftkings,Runs,247,runs,app-alias,mapped
+draftkings,Singles,247,singles,manual,mapped
+steezanomics,H+R+RBI,246,hits-runs-rbis,manual,mapped
+kalshi,passing_yards,245,passing-yards,app-alias,mapped
+comparenbet,player_fantasyScore,243,fantasy-points,manual,mapped
+underdog,Hits,242,pitcher-hits-allowed|hits,position,position
+sleeper,hits_runs_rbis,241,hits-runs-rbis,app-alias,mapped
+sleeper,kills_maps_1_2,240,,no-app-sport,no-app-sport
+betmgm,Base,237,,verify:total-bases?,verify
+sleeper,hits,237,pitcher-hits-allowed|hits,position,position
+steezanomics,Hits,235,pitcher-hits-allowed|hits,position,position
+steezanomics,Rushing Yards,232,rushing-yards,app-alias,mapped
+underdog,1Q Rec Yards,232,1q-receiving-yards,period+manual,mapped
+betmgm,Hits,230,pitcher-hits-allowed|hits,position,position
+sleeper,singles,230,singles,manual,mapped
+steezanomics,RBIs,230,rbis,app-alias,mapped
+fanduel,doubles,229,doubles,app-alias,mapped
+fanduel,singles,229,singles,manual,mapped
+pinnacle,Total Bases,229,total-bases,manual,mapped
+sleeper,runs,228,runs,app-alias,mapped
+sleeper,rbis,226,rbis,app-alias,mapped
+steezanomics,Home Runs,226,home-runs,app-alias,mapped
+steezanomics,Singles,226,singles,manual,mapped
+underdog,Home Runs,226,home-runs,app-alias,mapped
+underdog,RBIs,226,rbis,app-alias,mapped
+betmgm,Player doubles,225,doubles,manual,mapped
+betmgm,Player singles,225,singles,manual,mapped
+betmgm,Player triples,225,triples,manual,mapped
+betmgm,RBI,225,rbis,manual,mapped
+steezanomics,Runs,225,runs,app-alias,mapped
+underdog,1Q Rush + Rec TDs,225,1q-rush-rec-tds,period+app-alias,mapped
+betmgm,Runs,224,runs,app-alias,mapped
+steezanomics,Doubles,224,doubles,app-alias,mapped
+underdog,Runs,223,runs,app-alias,mapped
+comparenbet,player_batting_runs+rbi,222,runs-rbis,manual,mapped
+comparenbet,player_batting_firstHomeRun,221,first-home-run,manual,mapped
+underdog,1Q Rush Yards,220,1q-rushing-yards,period+app-alias,mapped
+steezanomics,Walks,217,pitcher-walks-allowed|walks,position,position
+underdog,Rush + Rec Yards,217,rush-rec-yards,manual,mapped
+sleeper,headshots_maps_1_2,216,,no-app-sport,no-app-sport
+draftkings,Walks (Batter),211,walks,manual,mapped
+betrivers,RBI,208,rbis,manual,mapped
+underdog,Batter Walks,208,walks,app-alias,mapped
+betrivers,Doubles,207,doubles,app-alias,mapped
+underdog,Pass + Rush Yards,206,pass-rush-yards,manual,mapped
+kalshi,strikeouts,204,pitcher-strikeouts|batter-strikeouts,position,position
+sleeper,bat_walks,203,walks,manual,mapped
+underdog,Fantasy Points,202,fantasy-points,manual,mapped
+underdog,1H Receiving TDs,194,1h-receiving-tds,period+manual,mapped
+betmgm,Reception Yards,188,receiving-yards,manual,mapped
+pinnacle,Total Home Runs,185,home-runs,manual,mapped
+underdog,1H Pass Yards,184,1h-passing-yards,period+app-alias,mapped
+steezanomics,Longest Reception,183,longest-reception,manual,mapped
+betmgm,PassingYards,180,passing-yards,manual,mapped
+comparenbet,player_batting_triples,180,triples,manual,mapped
+fanduel,Rushing Yds,180,rushing-yards,manual,mapped
+betrivers,Passing & Rushing Yards,172,pass-rush-yards,manual,mapped
+fanduel,Total Receptions,169,receptions,manual,mapped
+sleeper,passing_yards,166,passing-yards,app-alias,mapped
+underdog,1st Set Games Won,166,1s-games-won,period+app-alias,mapped
+sleeper,receptions,162,receptions,app-alias,mapped
+underdog,1Q Receiving Yards,158,1q-receiving-yards,period+manual,mapped
+underdog,Rush Attempts,158,rushing-attempts,manual,mapped
+underdog,1Q Pass Yards,149,1q-passing-yards,period+app-alias,mapped
+betrivers,Touchdown Passes,148,passing-tds,manual,mapped
+betmgm,Rushing Yards,146,rushing-yards,app-alias,mapped
+underdog,1H Rush TDs,145,1h-rushing-tds,period+app-alias,mapped
+draftkings,Rushing Yards,141,rushing-yards,app-alias,mapped
+sleeper,longest_reception,141,longest-reception,manual,mapped
+underdog,Pass Yards,141,passing-yards,app-alias,mapped
+pinnacle,Total Receiving Yards,139,receiving-yards,manual,mapped
+draftkings,Receptions,128,receptions,app-alias,mapped
+steezanomics,Rush + Rec Yards,125,rush-rec-yards,manual,mapped
+underdog,Fumbles Lost,125,fumbles-lost,manual,mapped
+underdog,Longest Completion,123,longest-completion,app-alias,mapped
+betmgm,Passing Yards,121,passing-yards,app-alias,mapped
+kalshi,passing_tds,121,passing-tds,manual,mapped
+betmgm,Total Passing + Rushing Yards,116,pass-rush-yards,manual,mapped
+betrivers,Pass Attempts,114,pass-attempts,manual,mapped
+draftkings,Total Bases,113,total-bases,manual,mapped
+pinnacle,Total Receptions,113,receptions,manual,mapped
+betrivers,Rushing & Receiving Yards,107,rush-rec-yards,manual,mapped
+underdog,1Q Rush TDs,106,1q-rushing-tds,period+app-alias,mapped
+betmgm,Rushing and Reception Yards,105,rush-rec-yards,manual,mapped
+underdog,Stolen Bases,105,stolen-bases,app-alias,mapped
+comparenbet,player_last_goal_scorer,103,last-goalscorer,manual,mapped
+fanduel,Passing Yds,100,passing-yards,manual,mapped
+underdog,Pass TDs,100,passing-tds,app-alias,mapped
+betrivers,Stolen Bases,99,stolen-bases,app-alias,mapped
+betrivers,Strikeouts thrown,98,pitcher-strikeouts,source-manual,mapped
+steezanomics,Passing Yards,96,passing-yards,app-alias,mapped
+underdog,Sets Won,96,sets-won,manual,mapped
+betrivers,Interceptions Thrown,95,interceptions-thrown,manual,mapped
+underdog,1Q Receiving TDs,95,1q-receiving-tds,period+manual,mapped
+underdog,1st Set Games Played,93,1s-games-played,period+manual,mapped
+underdog,INTs Thrown,93,interceptions-thrown,app-alias,mapped
+comparenbet,player_first_goal_scorer,92,first-goalscorer,manual,mapped
+steezanomics,Stolen Bases,92,stolen-bases,app-alias,mapped
+draftkings,Rushing + Receiving Yards,90,rush-rec-yards,manual,mapped
+draftkings,Stolen Bases,90,stolen-bases,app-alias,mapped
+steezanomics,Passing Touchdowns,90,passing-tds,app-alias,mapped
+underdog,1H Rush + Rec Yards,90,1h-rush-rec-yards,period+manual,mapped
+fanduel,Passing TDs,89,passing-tds,manual,mapped
+betrivers,Pass Completions,88,passing-completions,manual,mapped
+oddstrader,Player Doubles,88,doubles,manual,mapped
+draftkings,Outs,87,pitcher-outs,app-alias,mapped
+underdog,Batter Strikeouts,87,batter-strikeouts,app-alias,mapped
+sleeper,passing_touchdowns,86,passing-tds,app-alias,mapped
+underdog,1H Pass TDs,86,1h-passing-tds,period+app-alias,mapped
+underdog,1Q Pass TDs,84,1q-passing-tds,period+app-alias,mapped
+underdog,Pass Attempts,80,pass-attempts,manual,mapped
+steezanomics,Rushing Attempts,78,rushing-attempts,manual,mapped
+underdog,Tiebreakers Played,76,tiebreakers-played,manual,mapped
+underdog,Doubles,75,doubles,app-alias,mapped
+underdog,Kills on Map 1,75,,no-app-sport,no-app-sport
+underdog,Singles,75,singles,manual,mapped
+underdog,Completions,74,passing-completions,manual,mapped
+underdog,Kicking Points,72,kicking-points,manual,mapped
+comparenbet,player_last_td,70,last-td-scorer,manual,mapped
+steezanomics,Longest Rush,70,longest-rush,manual,mapped
+underdog,Assists,70,assists,app-alias,mapped
+betmgm,TouchdownPass,68,passing-tds,manual,mapped
+draftkings,Passing Yards,68,passing-yards,app-alias,mapped
+betrivers,Rush Attempts,67,rushing-attempts,manual,mapped
+draftkings,Strikeouts Thrown,67,pitcher-strikeouts,source-manual,mapped
+pinnacle,Total Rushing Yards,67,rushing-yards,manual,mapped
+underdog,FG Made,66,field-goals-made,app-alias,mapped
+underdog,Games Played,66,games-played,manual,mapped
+underdog,1Q Rush + Rec Yards,65,1q-rush-rec-yards,period+manual,mapped
+4codds,TOTAL HITS ALLOWED,64,pitcher-hits-allowed,source-manual,mapped
+underdog,Games Won,64,games-won,app-alias,mapped
+underdog,XP Made,64,extra-points-made,manual,mapped
+underdog,Last TD Scorer,63,last-td-scorer,manual,mapped
+underdog,Sets Played,63,sets-played,manual,mapped
+betmgm,RushingReceivingYards,62,rush-rec-yards,manual,mapped
+draftkings,Rushing Attempts,61,rushing-attempts,manual,mapped
+comparenbet,player_reception_tds,60,receiving-tds,manual,mapped
+sleeper,passing_and_rushing_yards,60,pass-rush-yards,manual,mapped
+underdog,Points ,59,points,app-alias,mapped
+underdog,Finishing Position,58,,verify:(golf finishing position),verify
+underdog,Rebounds,58,rebounds,app-alias,mapped
+sleeper,games_played,56,games-played,manual,mapped
+sleeper,rushing_attempts,55,rushing-attempts,manual,mapped
+betrivers,Touchdown Passes Thrown,52,passing-tds,manual,mapped
+fanduel,Rushing + Receiving Yds,52,rush-rec-yards,manual,mapped
+underdog,Regular Season Goals,52,,"verify:(season-long, not a game prop)",verify
+underdog,Aces,51,aces,app-alias,mapped
+4codds,TEAM TOTAL RUNS,50,,team-market,not-a-player-prop
+betmgm,Longest Reception,50,longest-reception,manual,mapped
+betrivers,Rushing Attempts,50,rushing-attempts,manual,mapped
+draftkings,Hits Allowed,50,pitcher-hits-allowed,app-alias,mapped
+draftkings,Hits Allowed + Walks Allowed + Earned Runs Allowed,50,pitcher-hits-walks-earned-runs,manual,mapped
+sleeper,kicking_points,48,kicking-points,manual,mapped
+sleeper,games_won,47,games-won,app-alias,mapped
+sleeper,longest_rush,47,longest-rush,manual,mapped
+betmgm,Receptions,46,receptions,app-alias,mapped
+draftkings,Passing + Rushing Yards,44,pass-rush-yards,manual,mapped
+4codds,TOTAL STRIKEOUTS,43,pitcher-strikeouts,source-manual,mapped
+sleeper,rushing_and_receiving_yards,42,rush-rec-yards,manual,mapped
+underdog,Strikeouts,42,pitcher-strikeouts|batter-strikeouts,position,position
+pinnacle,Total Rush Attempts,41,rushing-attempts,manual,mapped
+underdog,Fantasy Points in Games 1+2,41,,no-app-sport,no-app-sport
+sleeper,longest_passing_completion,38,longest-completion,manual,mapped
+underdog,Pitching Outs,38,pitcher-outs,app-alias,mapped
+underdog,Regular Season Points,37,,"verify:(season-long, not a game prop)",verify
+underdog,Sacks,37,sacks,app-alias,mapped
+draftkings,Passing Completions,36,passing-completions,manual,mapped
+pinnacle,Total Passing Yards,36,passing-yards,manual,mapped
+underdog,Tackles + Assists,35,tackles-assists,manual,mapped
+underdog,Defensive INTs,34,defensive-interceptions,manual,mapped
+draftkings,Passing Attempts,33,pass-attempts,manual,mapped
+underdog,Hits Allowed,33,pitcher-hits-allowed,app-alias,mapped
+4codds,TOTAL EARNED RUNS,32,earned-runs,source-manual,mapped
+pinnacle,Total Pass Completions,32,passing-completions,manual,mapped
+sleeper,pass_completions,32,passing-completions,manual,mapped
+comparenbet,player_rush_tds,31,rushing-tds,manual,mapped
+draftkings,Earned Runs Allowed,31,earned-runs,manual,mapped
+draftkings,Walks Allowed,31,pitcher-walks-allowed,manual,mapped
+pinnacle,Total Touchdown Passes,31,passing-tds,manual,mapped
+sleeper,extra_point_made,31,extra-points-made,manual,mapped
+sleeper,passing_attempts,31,pass-attempts,manual,mapped
+draftkings,Passing Touchdowns,30,passing-tds,app-alias,mapped
+pinnacle,Total Pass Attempts,30,pass-attempts,manual,mapped
+underdog,Solo Tackles,30,solo-tackles,manual,mapped
+steezanomics,Longest Completion,29,longest-completion,app-alias,mapped
+steezanomics,Passing Attempts,29,pass-attempts,manual,mapped
+sleeper,outs,28,pitcher-outs,app-alias,mapped
+steezanomics,Completions,28,passing-completions,manual,mapped
+steezanomics,Interceptions,28,interceptions-thrown,manual,mapped
+draftkings,Interceptions Thrown,27,interceptions-thrown,manual,mapped
+pinnacle,Total Interceptions,27,interceptions-thrown,manual,mapped
+sleeper,interceptions,27,interceptions-thrown,manual,mapped
+underdog,Points,27,points,app-alias,mapped
+underdog,Earned Runs Allowed,26,earned-runs,manual,mapped
+underdog,Walks Allowed,26,pitcher-walks-allowed,manual,mapped
+betrivers,Strikeouts,25,pitcher-strikeouts|batter-strikeouts,position,position
+fanduel,Strikeouts,25,pitcher-strikeouts|batter-strikeouts,position,position
+oddstrader,Receptions,25,receptions,app-alias,mapped
+steezanomics,Earned Runs,24,earned-runs,app-alias,mapped
+underdog,1st Inn. Batters Faced,24,1i-pitcher-batters-faced,period+manual,mapped
+underdog,1st Inn. Hits Allowed,24,1i-pitcher-hits-allowed,period+app-alias,mapped
+underdog,1st Inn. Pitch Count,24,1i-pitcher-pitches-thrown,period+manual,mapped
+underdog,1st Inn. Runs Allowed,24,1i-pitcher-runs-allowed,period+manual,mapped
+underdog,1st Inn. Strikeouts,24,1i-pitcher-strikeouts|1i-batter-strikeouts,period+position,position
+underdog,1st Round Finish,24,,no-app-sport,no-app-sport
+underdog,2nd Round Finish,24,,no-app-sport,no-app-sport
+underdog,3rd Round Finish,24,,no-app-sport,no-app-sport
+underdog,Finishes,24,,no-app-sport,no-app-sport
+underdog,Knockouts,24,,no-app-sport,no-app-sport
+underdog,Significant Strikes,24,,no-app-sport,no-app-sport
+underdog,Submissions,24,,no-app-sport,no-app-sport
+betmgm,Longest Pass,23,longest-pass,manual,mapped
+betrivers,Outs,23,pitcher-outs,app-alias,mapped
+steezanomics,Outs,23,pitcher-outs,app-alias,mapped
+steezanomics,Strikeouts,23,pitcher-strikeouts|batter-strikeouts,position,position
+pinnacle,Total Strikeouts,22,pitcher-strikeouts,source-manual,mapped
+sleeper,earned_runs,22,earned-runs,app-alias,mapped
+sleeper,hits_allowed,22,pitcher-hits-allowed,app-alias,mapped
+comparenbet,player_pitching_win,21,pitcher-win,manual,mapped
+sleeper,strike_outs,21,pitcher-strikeouts|batter-strikeouts,position,position
+sleeper,walks,21,pitcher-walks-allowed|walks,position,position
+steezanomics,Hits Allowed,21,pitcher-hits-allowed,app-alias,mapped
+underdog,Pts + Rebs + Asts,21,points-rebounds-assists,manual,mapped
+betmgm,Passing Attempts,20,pass-attempts,manual,mapped
+comparenbet,player_1st_td,20,first-td-scorer,manual,mapped
+sleeper,first_inning_runs,20,1i-runs,period+app-alias,mapped
+sleeper,points,20,points,app-alias,mapped
+pinnacle,Total Earned Runs,18,earned-runs,manual,mapped
+pinnacle,Total Hits Allowed,18,pitcher-hits-allowed,manual,mapped
+sleeper,rebounds,18,rebounds,app-alias,mapped
+underdog,Breakpoints Won,18,break-points-won,manual,mapped
+underdog,Points + Rebounds,18,points-rebounds,manual,mapped
+sleeper,assists,17,assists,app-alias,mapped
+steezanomics,Threes,17,three-pointers-made,manual,mapped
+betmgm,Pass Completions,16,passing-completions,manual,mapped
+sleeper,field_goal_made,16,field-goals-made,manual,mapped
+steezanomics,Rebounds,16,rebounds,app-alias,mapped
+underdog,Headshots on Map 1,16,,no-app-sport,no-app-sport
+underdog,Points Won,16,points-won,manual,mapped
+betmgm,Hits Allowed,15,pitcher-hits-allowed,app-alias,mapped
+sleeper,doubles,15,doubles,app-alias,mapped
+sleeper,significant_strikes,15,,no-app-sport,no-app-sport
+steezanomics,Points,15,points,app-alias,mapped
+underdog,Points + Assists,15,points-assists,manual,mapped
+underdog,1st Set Aces,14,1s-aces,period+app-alias,mapped
+underdog,Double Faults,14,double-faults,manual,mapped
+betmgm,Rushing Attempts,13,rushing-attempts,manual,mapped
+sleeper,atleast_birdies,13,birdies-or-better,manual,mapped
+sleeper,strokes,13,strokes,manual,mapped
+sleeper,tackles,13,tackles,app-alias,mapped
+sleeper,tackles_and_assists,13,tackles-assists,manual,mapped
+comparenbet,player_pitching_pitchesThrown,12,pitcher-pitches-thrown,manual,mapped
+pinnacle,Total Field Goals,12,field-goals-made,manual,mapped
+sleeper,goals_against,12,goals-against,app-alias,mapped
+underdog,3-Pointers Made,12,three-pointers-made,manual,mapped
+underdog,Fight Time (Mins),12,,no-app-sport,no-app-sport
+comparenbet,player_pitching_strikesThrown,11,pitcher-strikes-thrown,manual,mapped
+pinnacle,Total Touchdowns,11,anytime-td,manual,mapped
+steezanomics,Assists,11,assists,app-alias,mapped
+underdog,Rebounds + Assists,11,rebounds-assists,manual,mapped
+sleeper,breakpts_won,10,break-points-won,manual,mapped
+sleeper,first_half_goals_against,10,1h-goals-against,period+app-alias,mapped
+betrivers,Defensive Tackles (both solo & assists),9,tackles-assists,manual,mapped
+betrivers,Yards of Longest Reception,9,longest-reception,manual,mapped
+sleeper,goalie_fantasy_points,9,goalie-fantasy-points,manual,mapped
+sleeper,threes_made,9,three-pointers-made,manual,mapped
+underdog,Targets,9,targets,manual,mapped
+sleeper,home_runs,8,home-runs,app-alias,mapped
+sleeper,pts_reb_ast,8,points-rebounds-assists,manual,mapped
+betrivers,Yards of Longest Rush,7,longest-rush,manual,mapped
+comparenbet,player_receiving_targets,7,targets,manual,mapped
+oddstrader,Player To Hit A Home Run,7,home-runs,manual,mapped
+betmgm,Hits allowed,6,pitcher-hits-allowed,app-alias,mapped
+betmgm,Kicking Points,6,kicking-points,manual,mapped
+steezanomics,PRA,6,points-rebounds-assists,manual,mapped
+underdog,1+ Pass TDs in Each Half,6,,verify:?,verify
+underdog,Takedowns,6,,no-app-sport,no-app-sport
+betmgm,Interceptions Thrown,5,interceptions-thrown,manual,mapped
+draftkings,WR.TE Fantasy Points,5,,verify:fantasy-points?,verify
+sleeper,bogeys_or_worse,5,bogeys-or-worse,manual,mapped
+sleeper,takedowns,5,,no-app-sport,no-app-sport
+sleeper,total_fight_time,5,,no-app-sport,no-app-sport
+betmgm,Extra Points Made,4,extra-points-made,manual,mapped
+betmgm,Field Goals Made,4,field-goals-made,manual,mapped
+comparenbet,player_shots_on_goal,4,shots-on-goal,app-alias,mapped
+sleeper,stolen_bases,4,stolen-bases,app-alias,mapped
+underdog,Total TDs,4,anytime-td,manual,mapped
+comparenbet,player_rushing_yardsPerAttempt,3,rush-yards-per-attempt,manual,mapped
+sleeper,first_touchdown,3,first-td-scorer,app-alias,mapped
+sleeper,sacks,3,sacks,app-alias,mapped
+underdog,Game High Rush Yards,3,,verify:?,verify
+betrivers,Kicking points,2,kicking-points,manual,mapped
+betrivers,Successful Field Goals,2,field-goals-made,manual,mapped
+betrivers,Yards of Longest Completed Pass,2,longest-completion,manual,mapped
+comparenbet,player_tackles,2,tackles,manual,mapped
+draftkings,QB Fantasy Points,2,,verify:fantasy-points?,verify
+draftkings,RB Fantasy Points,2,,verify:fantasy-points?,verify
+sleeper,shots_on_target,2,shots-on-target,manual,mapped
+underdog,1H Points,2,1h-points,period+app-alias,mapped
+underdog,4th Round Finish,2,,no-app-sport,no-app-sport
+underdog,5th Round Finish,2,,no-app-sport,no-app-sport
+underdog,Game High Pass Yards,2,,verify:?,verify
+betmgm,CombinedRuns,1,,verify:?,verify
+comparenbet,player_pitching_battersFaced,1,pitcher-batters-faced,manual,mapped
+oddstrader,Player to score a touchdown,1,anytime-td,manual,mapped
+oddstrader,Player to score first touchdown,1,first-td-scorer,manual,mapped
+underdog,1H Assists,1,1h-assists,period+app-alias,mapped
+underdog,1H Pts + Rebs + Asts,1,1h-points-rebounds-assists,period+manual,mapped
