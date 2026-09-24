@@ -518,6 +518,14 @@ Confidence (2026-09-23): timing 4/10 today. Edge as originally planned ~5/10
 (game lines) and ~4/10 (props); after T0 + first-hand Pinnacle/exchanges,
 ~8/10 game lines, ~6/10 props. E3 replaces these with measured numbers.
 
+## 7b. Track O — the odds section rebuild
+
+The app's odds sections rebuilt for ~20 books, minute-level movement, pulls,
+openers, splits and edge: `docs/design/odds-section-rebuild-gameplan-2026-09-24.md`
+(today's state measured on a prod build, the shared components O-A…O-I, where
+each goes on the player / game / team pages and the Slate, phases O0–O8). O0
+(fix what is broken now) and O1–O3 can start before the bridge.
+
 ## 8. Other tracks and routed findings
 
 **S — scraper reliability and storage**
