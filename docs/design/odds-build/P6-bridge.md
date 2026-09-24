@@ -216,6 +216,20 @@ CREATE POLICY scraper_checks_read ON scraper_checks FOR SELECT USING (true);
   - Covers stays `kind='picks'`, never money.
 - **Exchange books:** see §3.
 
+### 8b. Reference facts (amendment from P8)
+
+Scraper `reference_data` rows with VSiN power ratings, the MLB umpire summary
+and the NFL referee summary become `game_reference` rows via
+`db.write_game_reference` (P5):
+- power ratings are keyed by team name, matched to the linked games' teams
+  with `entity_resolution.normalize_team_name`;
+- umpires and referees are keyed by the game when the VSiN row names the
+  matchup.
+
+They are written on change. The builder reads 3 real rows of each kind in
+`scraper.db` before writing the mapping and records their shape in this
+section.
+
 ### 9. Health check — `python-odds-service/src/health_check.py` (the deploy)
 
 - `check_scraper_bridge()`, modelled on `check_harvester_scrapes()`:

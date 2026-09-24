@@ -200,10 +200,23 @@ CREATE TABLE IF NOT EXISTS exchange_books (
 );
 CREATE INDEX IF NOT EXISTS exchange_books_game ON exchange_books (sport, game_id, market);
 
+-- 6b. Reference facts per game (amendment from P8: the approved Vegas board shows VSiN
+--     power ratings; umpires/referees ride along). One row per (game, source, kind, subject).
+CREATE TABLE IF NOT EXISTS game_reference (
+  sport       text NOT NULL,
+  game_id     text NOT NULL,
+  source      text NOT NULL,              -- vsin
+  kind        text NOT NULL CHECK (kind IN ('power_rating','umpire','referee')),
+  subject     text NOT NULL,              -- team name for power ratings; '' for game-level
+  data        jsonb NOT NULL,             -- the source row as stored by the scraper
+  observed_at timestamptz NOT NULL,
+  PRIMARY KEY (sport, game_id, source, kind, subject)
+);
+
 -- 7. RLS, the pattern of 20260915060000.
 DO $$ DECLARE t text; BEGIN
   FOREACH t IN ARRAY ARRAY['prop_odds_pulls','game_lines','game_lines_history','game_line_pulls',
-                           'market_openers','market_splits','exchange_books'] LOOP
+                           'market_openers','market_splits','exchange_books','game_reference'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I', t || '_read', t);
     EXECUTE format('CREATE POLICY %I ON %I FOR SELECT USING (true)', t || '_read', t);
@@ -291,6 +304,10 @@ class ExchangeBookInput: exchange, contract_id, sport, game_id, subject_id, peri
                          best_bid, best_ask, bid_size, ask_size, volume_24h, open_interest, liquidity,
                          ladder: dict | None, changed_at: datetime, fetched_at: datetime
 async def write_exchange_books(rows: list[ExchangeBookInput]) -> int   # upsert on (exchange, contract_id)
+
+@dataclass
+class GameReferenceInput: sport, game_id, source, kind, subject, data: dict, observed_at: datetime
+async def write_game_reference(rows: list[GameReferenceInput]) -> int   # upsert on the primary key (latest wins)
 ```
 
 `write_game_lines` also writes the **full-game main ml/sp/tot** rows it
@@ -310,6 +327,7 @@ Defaults, replaced by D24 where it says otherwise:
 | `game_lines_history` | `CORPUS` entry `CorpusTable("game_lines_history", "observed_at", OBSERVED_AT_PREDICATE, partition_by="id_chunk")`; `KEEP_RECENT_DAYS` 10 |
 | `prop_odds_pulls`, `game_line_pulls` | `CORPUS` entries on `pulled_at`, `id_chunk`; `KEEP_RECENT_DAYS` 10 |
 | `market_splits` | `CORPUS` entry on `observed_at`, `id_chunk`; `KEEP_RECENT_DAYS` 10 |
+| `game_reference` | `RETENTION_RULES`: `observed_at < now() - interval '30 days'` |
 | `market_openers` | not pruned (small; closing-line research and the team page's record against the close read old games' openers) |
 
 ### 4. The reader rule (F6) — `lib/odds/props/mainLine.ts`
