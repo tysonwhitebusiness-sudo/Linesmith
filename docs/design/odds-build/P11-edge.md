@@ -48,17 +48,30 @@ or fail, and **all results are logged**.
      relay `proven_fast`.
    - **Exchanges count only** with bid–ask spread ≤ **4¢** and
      (`volume_24h` ≥ $1,000 or `liquidity` ≥ $1,000).
-2. **Time.**
-   - The sharp quote was checked ≤ **20 min** ago (Pinnacle's CDN copies are
-     ≤ ~15 min, D13, plus one poll).
-   - The soft quote was checked ≤ **3 min** ago. For a relay-sourced soft
-     quote, the limit is ≤ (P7 relay median + 2 min), and the relay must
-     have shown a change for that book on the same game within the last
-     **60 min**. The last rule is the "since, not checked" rule (D23): a
-     relay re-confirming an 11-hour-old price fails it.
-   - No fast sharp source (Kalshi/Polymarket at the same line) moved its
-     fair probability by more than **1.5 pts** since the sharp quote's
-     `since`.
+2. **Time — D13, exactly** (revised 2026-09-24, see the changelog below).
+   - **The sharp price time** is the moment our copy of Pinnacle's price
+     represents: `Last-Modified` when the response carried one, else
+     `fetched_at − cache_age_s` (the CDN's `Age`). It is **not** the row's
+     `changed_at`: a CDN copy fetched now can describe a price that is up to
+     ~15 min old, and `changed_at` only says when *we* first saw it change.
+   - **The soft price is taken as it stood at the sharp price time**, from
+     the soft book's own history (`*_history`, minute resolution): the last
+     soft row with `observed_at ≤ sharp price time`. The edge is computed
+     from that pair, both describing the same instant.
+   - **Then it is shown only if nothing moved since the sharp price time:**
+     - the soft book's price has **not changed since** (no soft history row
+       for that key after the sharp price time: its current price is the
+       one compared);
+     - no fast sharp source (Kalshi/Polymarket, same line) moved its fair
+       probability by more than **1.5 pts** since the sharp price time.
+   - **The checked-age limits still apply:**
+     - the sharp quote was checked ≤ **20 min** ago (Pinnacle's CDN copies
+       are ≤ ~15 min, D13, plus one poll);
+     - the soft quote was checked ≤ **3 min** ago. For a relay-sourced soft
+       quote the limit is ≤ (P7 relay median + 2 min), and the relay must
+       have shown a change for that book on the same game within the last
+       **60 min**. That last rule is the "since, not checked" rule (D23): a
+       relay re-confirming an 11-hour-old price fails it.
    - (This replaces `price_resolution._MAX_PAIR_SKEW_SECONDS`' 30-minute
      unaligned comparison for this purpose.)
 3. **Corroboration.** If another provider carries the same book at the same
@@ -178,7 +191,7 @@ INSERT INTO app_flags (key, value, updated_by) VALUES ('edge_display', '{"enable
 
 | test | kind | what it proves |
 |---|---|---|
-| `src/test_market_edge.py` (new, hermetic → CI) | Python | each gate in isolation: a fixture passing all 11, then one fixture per gate that fails only that gate and produces no edge. **The two known edges reproduce** from om-data fixtures: GB −4.5 BetMGM −105 vs Pinnacle −113/+102 → shown, EV ≈ +1.0% (tolerance 0.2 pt); London receptions 5.5 over at Underdog (implied +110) vs Pinnacle −103/−117 with Novig agreeing → shown, EV ≈ +1.8% when Novig's relay is `proven_fast` in the fixture, and **not** shown when it is not. The anytime-TD mismatches → no edge (gate 8). Self-check: 30 evaluated with 3 passing at EV > 5% → auto-off; 3 clean runs → cleared |
+| `src/test_market_edge.py` (new, hermetic → CI) | Python | each gate in isolation: a fixture passing all 11, then one fixture per gate that fails only that gate and produces no edge. **The two known edges reproduce** from om-data fixtures: GB −4.5 BetMGM −105 vs Pinnacle −113/+102 → shown, EV ≈ +1.0% (tolerance 0.2 pt); London receptions 5.5 over at Underdog (implied +110) vs Pinnacle −103/−117 with Novig agreeing → shown, EV ≈ +1.8% when Novig's relay is `proven_fast` in the fixture, and **not** shown when it is not. The anytime-TD mismatches → no edge (gate 8). **Gate 2 (D13):** the soft price is read at the sharp price time (`fetched_at − cache_age_s`, or `Last-Modified`), not at `changed_at`; **a soft book that moved after the sharp price time → no edge**, even when its current price would show one; a Kalshi move of 2 pts after the sharp price time → no edge; a soft price unchanged since → the edge is computed from the aligned pair. Self-check: 30 evaluated with 3 passing at EV > 5% → auto-off; 3 clean runs → cleared |
 | `tests/scan-no-edge.test.ts` (rewritten) | TS | model-vs-market still banned everywhere; market edge only in the allowlist and only from payload fields |
 | kill switch drill | live | `UPDATE app_flags … enabled false` → within 30 s no edge on any page; back to true → edges return |
 | auto-off drill | live, test flag | inject one fake soft price 12% off in a test game under provider `edge-test` → gate 8 blocks it; inject 10 fake 6% edges → self-check trips, `health_check` alerts, pages show none; clean up |
@@ -212,3 +225,15 @@ INSERT INTO app_flags (key, value, updated_by) VALUES ('edge_display', '{"enable
   - Scan files + hashes, `components/slate/*`;
   - `tests/scan-no-edge.test.ts`;
   - `CLAUDE.md`, `docs/table-ownership.md`, `docs/CURRENT.md`.
+
+## Changelog
+
+- **2026-09-24 — gate 2 implements D13 exactly** (the operator's "does this
+  follow the plan" review, `HANDOFF-P0-P4.md` correction 1). The first draft
+  anchored gate 2 on the sharp quote's `since` and compared current prices.
+  D13 says the sharp price time is when our copy's price was true
+  (`Last-Modified`, or fetch time − `Age`), the soft price is taken **at that
+  instant** from the soft book's history, and the edge shows only if neither
+  the soft price nor a fast sharp source has moved since. The checked-age
+  limits are kept, and `test_market_edge.py` gains the case where the soft
+  book moved after the sharp price time.
