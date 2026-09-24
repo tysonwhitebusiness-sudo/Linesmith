@@ -58,20 +58,8 @@ Read it next. In short:
    operator's green light.** P0's first step is the operator's: restart the
    stalled scraper. The builder's process stop was refused by the
    permission system.
-   **Resume prompt for the whole workstream: `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.**
-   Read `docs/design/odds-rebuild/HANDOFF-OM.md` first. It covers how to view
-   and regenerate the mockups and the four review rounds so far. Round 4
-   (v4) is done:
-   - no receipt pills anywhere;
-   - "Sharp prices" as a normal header with a live dot;
-   - the live layer (a replay of the real last hour, flashes, trails, pulls,
-     heartbeat);
-   - v3 verified at both widths.
-
-   It waits on the operator's review, plus the §8 answers. Plan:
-   `docs/design/odds-section-rebuild-gameplan-2026-09-24.md` (§8 =
-   decisions + revision log, Revision 4 = the live rules). **Nothing in
-   Track O is built until the operator approves (D16).**
+   Background: `docs/design/odds-rebuild/HANDOFF-OM.md` covers the four mockup rounds (approved); the
+   resume prompt is `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current
