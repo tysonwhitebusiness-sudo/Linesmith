@@ -29,6 +29,7 @@ kept 48 h). Its own resume notes: `HANDOFF.md`, `SOURCE_HANDOFF.md`.
 | D10 | Minute-level **line movement** is a headline goal in its own right (§5), not a by-product. |
 | D11 | Done in-session: user CLV removed (`709d807`); `prop_odds_history` hot window 14 → 10 days (`2331a56`), sized for the game page's pre-game prop prices; older rows stay in the Parquet corpus. |
 | D12 | Never mention licences, terms or resale for any source (standing preference). |
+| D13 | **Pinnacle's CDN-cached prices (up to ~15 min old, `max-age=905`) are acceptable** — accounted for, not rejected. Price time = `Last-Modified` (or fetch time − `Age`). The edge compares Pinnacle with the soft book's price **at that same instant** (from the soft book's minute-level history), then shows it only if neither the soft price nor the fast sharp sources (Kalshi ~15 s, Novig/ProphetX) have moved since. The page shows the reference's age ("Pinnacle as of 13 min ago"). |
 
 ## 2. The three systems today
 
@@ -234,9 +235,12 @@ book. Only ~500 used a sharp reference, and those carry the `pick_history` bug
    prop limits are $250–500) a second sharp/exchange source agreeing, or two
    sharp/exchange sources (Novig, ProphetX, Kalshi, Polymarket) agreeing.
    Exchanges count only with a tight bid/ask spread and real liquidity.
-2. Fresh and simultaneous: both prices recent by MEASURED lag (T0), within a
-   few minutes of each other (today's `_MAX_PAIR_SKEW_SECONDS` = 30 min is too
-   loose).
+2. Time-aligned (D13): the soft price is taken AT the sharp price's own time
+   (price time = `Last-Modified` or fetch − `Age`, or measured lag for relays),
+   from minute-level history — not "now" against a stale reference. Then the
+   edge stands only if the soft price and the fast sharp sources have not
+   moved since. A cached Pinnacle copy up to ~15 min old is usable this way.
+   (Today's `_MAX_PAIR_SKEW_SECONDS` = 30 min compares unaligned prices — replace it.)
 3. Soft price corroborated by a second source where available (a soft price
    that already moved is the other main source of fake edges).
 4. Settled: passed the flap filter; not pulled; comparenbet fair prices only
