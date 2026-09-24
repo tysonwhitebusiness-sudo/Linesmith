@@ -48,8 +48,9 @@ Read it next. In short:
    | phase | status |
    |---|---|
    | P0 keep data flowing | **DONE 21:20 UTC** — odds-scraper `52ae6b4`, `8afa4d8` (that repo has no remote: local commits only). Freshness watchdog, stall dump, backup of both archived days verified. See P0 → Result |
-   | P1 fix what is broken | next (includes the one authorised Render deploy) |
-   | P2 names · P3 matching · P4 storage measurement | waiting in order |
+   | P1 fix what is broken | **DONE 21:55 UTC** — `4d64071`, deployed (see Deploys). Game line on every sport's player page, one market-label and one book registry, game-line history logs line moves (proved live). See P1 → Result |
+   | P2 names | in progress |
+| P3 matching · P4 storage measurement | waiting in order |
    | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
    | the six spec corrections (HANDOFF §"Known spec corrections") | after P4 |
 
@@ -63,6 +64,14 @@ Read it next. In short:
 
    The 17:38 UTC freeze's cause is **still unknown**. The watchdog now caps
    any freeze at about 5–10 min.
+
+   **Operator items from this run:**
+   - **Deploy `e8b5a89`** (a fix, not a phase): `tennisStatsJob` fails at
+     its first yield (`maybe_yield() missing 'wait_hint'`, seen on the first
+     cycle after P1's deploy), and `golfCoursesJob` has the same bug, hidden
+     because it is a no-op. The fix is committed, and `test_yield_contract`
+     is now in CI. It needs a worker deploy; this run was authorised for P1
+     only. Run `node scripts/render_deploy.mjs` on your go.
    Background: `docs/design/odds-rebuild/HANDOFF-OM.md` covers the four mockup rounds (approved); the
    resume prompt is `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.
 
@@ -116,6 +125,7 @@ Update this table and the run doc's §2 after every phase commit, then push.
 
 | when | commit | service | what it enables |
 |---|---|---|---|
+| 2026-09-24 21:48 UTC | `4d64071` (odds P1) | line-buddy-odds-worker (`dep-daqpki6k1f9s73d15vbg`, live) | `write_game_odds_history` logs a line move at an unchanged price. Proved live at 21:50:57: MLB 822840's total moved 8.5 → 7.5 at −110 (BetUS, LowVig, BetOnline) and was logged. 21 of 22 jobs green on the first cycle; the one failure (`tennisStatsJob`) is a pre-existing yield bug, fixed in `e8b5a89`, which awaits a deploy. Was on `f4a8373`. |
 | 2026-09-23 18:53 UTC | `f4a8373` (odds-model Phase 0) | line-buddy-odds-worker (`dep-daq1vkjncjis7397r6rg`, live) | `golfEloJob` (hourly) and `maintainMlbStatcastAggJob` (6-hourly), both confirmed running live at 21:44 UTC. Nine dead model files deleted. The `corpusFreshness` fix (checks all 6 corpus tables, was 2) lives in the health-check cron, which auto-deploys on push. Its Render deploy has not been checked yet. Was on `4f49150`. |
 | 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |
 | 2026-09-23 16:11 UTC | `4f49150` (C8+SPC) | line-buddy-odds-worker (`live`) | Golfer names from ESPN's per-athlete endpoint (cached a month); read templates for the tennis and golf factors, with no pronouns in any of them. Was on `f6c4cd6`. |

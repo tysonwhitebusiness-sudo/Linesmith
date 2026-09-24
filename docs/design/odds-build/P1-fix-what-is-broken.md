@@ -365,8 +365,20 @@ None.
 
 ## Result
 
-**Built 2026-09-24.** Commit and deploy are recorded in `docs/CURRENT.md` →
-Deploys.
+**Closed 2026-09-24 21:55 UTC.** Commit `4d64071`; deployed as
+`dep-daqpki6k1f9s73d15vbg`, live at 21:48:32 UTC (`docs/CURRENT.md` → Deploys).
+
+- **After the deploy:**
+  - 21 of 22 jobs were green on the first cycle;
+  - **live F5 proof:** MLB 822840's total moved 8.5 → 7.5 at an unchanged
+    −110 (BetUS, LowVig, BetOnline, via propline). It was logged at 21:50:57,
+    where the old comparison would have dropped it;
+  - the one red job, `tennisStatsJob`, is a pre-existing bug (below).
+- **Found by the deploy check and fixed (`e8b5a89`, awaits a deploy):**
+  `tennis_stats.py` (×2) and `golf_courses.py` called `yield_fn()` without
+  the `wait_hint` that `maybe_yield(caller, wait_hint)` requires, so
+  `tennisStatsJob` died at its first yield. `test_yield_contract.py` already
+  failed on all three and was not in CI; it is a CI step now.
 
 - **Game line on every sport's player page:** built as specified.
   `todaysLine.ts` adds `gamePkOf` and `gameSideOf`, and six adapters set
