@@ -29,10 +29,12 @@ Read it next. In short:
    `/diagnostics`.
 6. **Scraper bridge, line movement + market edge (new workstream, 2026-09-23):**
    `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
-   are settled (§1). **Source run: R0 + R1 are built and live in the
+   are settled (§1). **Source run: R0 + R1 + R2 are built and live in the
    odds-scraper repo** (§4c STATUS; scraper's own `HANDOFF.md` top section).
-   **Operator said STOP after R1 — R2 (DraftKings, FanDuel, BetMGM,
-   BetRivers) waits for a go.** Nothing in line-buddy/Supabase changed for the
+   R2 = DraftKings, FanDuel, BetMGM, BetRivers (lines + props, NJ), verified
+   live 2026-09-24. **R3 (Underdog, Sleeper) waits for the operator's go.**
+   Open from R2: FanDuel NBA/NHL prop tab slugs (check when those seasons
+   open). Nothing in line-buddy/Supabase changed for the
    source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
 

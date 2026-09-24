@@ -139,11 +139,12 @@ Linesmith or Supabase changes during this run. Bundled prerequisites:
 
 ### 4c. Source run — build order (the checklist)
 
-**STATUS 2026-09-24 (UTC): R0 and R1 DONE and live. Operator: STOP after R1 —
-R2 (DraftKings, FanDuel, BetMGM, BetRivers) waits for a go.** Scraper commits
+**STATUS 2026-09-24 (UTC): R0, R1 and R2 DONE and live. R3 (Underdog,
+Sleeper) waits for the operator's go.** Scraper commits
 (odds-scraper repo, local git, created in R0): baseline `75e8f2e`, R0
 `dee6f4e` + fixes `5e9db9f` (aging) `09d9c40` (writer throughput), R1
-`5d55b38`. Runs as scheduled task `OddsScraper` (logon + 5-min watchdog).
+`5d55b38` + `4f48d87`, R2 `3779047`. Runs as scheduled task `OddsScraper`
+(logon + 5-min watchdog).
 Measured along the way:
 - raw store (zstd delta vs keyframe as long-window prefix): 58x vs gzip's 9x
   on real pages; byte-exact.
@@ -170,6 +171,27 @@ Measured along the way:
   endpoint until its result was WRITTEN; workers were never the limit (busy 3.1
   of 10). Fixed: cap counts running fetches; 12 workers as headroom; Polymarket
   discovery timeout 90 s. Pinnacle CDN copies averaged ~11 min old (D13).
+- R2 shape: each book = one board per league (main lines + game discovery,
+  60-75 s) + one endpoint PER GAME for props/ladders, tiered by start (60 s
+  inside 6 h, 3 min inside 24 h, 10 min inside 72 h, 30 min inside 7 days, not
+  beyond; NCAAF 5x slower — FanDuel lists 115 NCAAF games). One endpoint per
+  game, not a rotating slice, because B3 pull detection is per endpoint.
+  DraftKings needs none: a prop-subcategory page covers every game in the
+  league. Started games' endpoints are retired (schedule/health dropped).
+- R2 measured: FanDuel MLB batter props are yes-only "to record N+" ladders
+  (no over/under at all) — stored as OVER N-0.5 with `depth.yes_only`; BetMGM's
+  NFL board with lines is 5.7 MB/poll (every alternate line), so its board is
+  discovery only and the 1.2 MB per-game view carries lines + props; BetMGM
+  serves an older market format for MLB/NBA/NHL and flags no main line (the
+  closest-to-even pair is taken); BetRivers (Kambi) stamps every price with
+  `changedDate` — the only R2 book with a per-price time. No soccer at FanDuel
+  or BetRivers NJ (404). FanDuel NBA/NHL prop tab slugs: not verifiable until
+  those seasons open, so those leagues have boards only for now.
+- R2 verified live (steady state 05:26-05:35 UTC 09-24): requests/min DK 21.7,
+  FD 12.5, BetMGM 8.5, BetRivers 7.9 (plus ~1 per game per book per minute
+  once MLB games are inside 6 h); boards every 70-72 s (BetMGM 128 s by
+  design), DK prop pages 69 s, day-of games 189-192 s; no errors, all four
+  healthy; R1 unchanged; writer caught up.
 
 Each step ends with its sources visible on the scraper's Sources page with
 non-zero counts and a green heartbeat before the next starts. The open research
@@ -179,7 +201,7 @@ items (DeepSeek §C–E) are answered inside the step that needs them.
 |---|---|---|
 | **R0 Foundations** | git init + baseline commit; scheduler rebuild (per-source loops, priority order, 60–75 s jitter, `Retry-After`, classifying circuit breaker); record `Age` / `Last-Modified` / `ETag` (+ `If-None-Match`); zstd delta raw storage (hourly keyframe, 48 h); **B3** (pull recording, flap flags); monitoring (soft-block/empty detection, drift-check fix); S2 uptime (start at boot, restart on crash, no sleep on power) | — |
 | **R1 Sharp** | Pinnacle (lines + props, 7 leagues), Kalshi (games + props, volume/open interest/depth), Polymarket (markets + live prices, volume) | Pinnacle cache TTL per league / time-to-start — read straight from the `Age` logging R0 adds; Kalshi prop series — list via its public series endpoint; Polymarket live prices — confirm the CLOB API, fall back to `gamma-api` (300 s cache) if not |
-| **R2 US books** | DraftKings, FanDuel, BetMGM, BetRivers (lines + props) | FanDuel MLB/NBA/NHL prop `tab=` slugs — read from the tab list its event-page returns |
+| **R2 US books** ✅ | DraftKings, FanDuel, BetMGM, BetRivers (lines + props) | FanDuel MLB slugs found (`batter-props`, `pitcher-props`); NBA/NHL still open until their seasons |
 | **R3 Pick'em** | Underdog (ETag-gated, 24 MB), Sleeper (lines 60–75 s; `pick_stats` ~15 min) | — |
 | **R4 Betting %** | DraftKings Network splits, VSiN (line tracker + splits + umpires/refs/power ratings), ScoresAndOdds consensus, Covers, SportsBettingDime, Action Network (timestamps for T0) | DK Network — how the table loads (it is server-rendered HTML; check for a JSON feed first); VSiN's splits book — look for a book selector/label, show as "VSiN splits (book unconfirmed)" until known; ScoresAndOdds' source — label as theirs until stated; Action Network book ids — from its books endpoint / page |
 | **R5 Existing aggregators** | the 14 current sources re-slotted by usage; comparenbet parser keeps `fair_odds_available`, `_links`, team ids/logos, live state; fix betmonitor; **B6** expiring-history grab (comparenbet `/history` backfill, theoddsgap 45-day props export daily, betmonitor 24 h charts, oddstrader openers) | comparenbet `fair_odds_available` — measure when it is false (live? thin books?); 4codds `volume` — compare with Kalshi/Polymarket's own numbers, stored but unused until explained |
