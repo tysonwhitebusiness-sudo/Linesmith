@@ -74,7 +74,7 @@ async def backfill_courses(client: httpx.AsyncClient, limit: int = BATCH, yield_
     no_course: list[str] = []
     for i, event_id in enumerate(event_ids):
         if yield_fn is not None:
-            await yield_fn()
+            await yield_fn(0.0)  # a yield point, not a wait (test_yield_contract)
         meta = await fetch_event_meta(client, event_id)
         if meta is None:
             # ESPN no longer answers for this id. Recorded, not retried: the

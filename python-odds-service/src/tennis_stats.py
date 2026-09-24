@@ -403,14 +403,17 @@ async def ingest(client: httpx.AsyncClient, first_year: int, last_year: int, yie
         years = []
         for year in range(first_year, last_year + 1):
             if yield_fn is not None:
-                await yield_fn()
+                # Between units of work, not a rate-limit wait: nothing to sleep, so 0.
+                # yield_fn is partial(maybe_yield, name) and needs the hint; calling
+                # it bare killed this job at its first yield (test_yield_contract).
+                await yield_fn(0.0)
             years.append(await ingest_year(client, sport, year, ids))
         held, players = await db.tennis_stats_coverage(sport)
         out["tours"][sport] = {"espn_names": len(names), "matchable": len(ids), "years": years,
                                "rows_held": held, "players_held": players}
     for sport in CHARTING:
         if yield_fn is not None:
-            await yield_fn()
+            await yield_fn(0.0)
         ids = _name_index(await espn_names(client, sport))
         out["charting"][sport] = await ingest_charting(client, sport, ids)
     # Named so a reader of the job log is not left wondering where a tour went.
