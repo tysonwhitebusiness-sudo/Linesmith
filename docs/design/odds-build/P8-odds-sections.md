@@ -106,7 +106,7 @@ primitives; **no receipt pills**, Revision 4):
 | `BestPrice` | O-B | two tiles + your-book line + "N books within 5¢" + hold meter (D20 text for negative hold) |
 | `MarketTabs` | player/game | tab: name · line · O/U best · books · Pin price or "no sharp"; "+ N more" → Coverage |
 | `LineStepper` | player/game | shared with the prop block (one state, lifted in `PlayerDetail`) |
-| `LineMovement` | O-D | window seg (2h default · 6h · 12h · 48h · Since open), Line/Price seg, presets (Sharp · My book · Most moves · All · Clear), book picker (buttons, the kit's toggle), chart with first-mover markers, "Every move" disclosure table |
+| `LineMovement` | O-D | window seg (2h default · 6h · 12h · 48h · Since open), Line/Price seg, presets (Sharp · My book · Most moves · All · Clear), book picker (buttons, the kit's toggle), chart with first-mover markers, "Every move" disclosure table. **Also (2026-09-24 revision):** an optional **consensus line** (the modal main line across books, `mainLines` in `om-mock.js`), toggled like a book; **unselected books drawn as grey context** behind the selected ones (thin, no markers, not in the tooltip); **pulled lines drawn on the chart** (plan L2): a gap from the pull to the return, and a "pulled" tick at the pull, from `prop_odds_pulls` / `game_line_pulls` |
 | `OpenNow` | O-F | open → now table + summary sentence; flagged openers shown with "⚠ check", never as the opener |
 | `Ladder` | O-G | "All lines" view of the board |
 | `Depth` | O-H | three mini stats + exchange order-book ladder |
@@ -137,6 +137,16 @@ primitives; **no receipt pills**, Revision 4):
 - `npm test`, `tsc` and build green.
 
 ---
+
+**`LineMovement` additions (2026-09-24), tested in O1:** the consensus line
+equals the modal main line of a fixture; unselected books render as grey
+context, not in the tooltip; a fixture pull draws a gap and a "pulled" tick
+at `pulled_at` and resumes at `returned_at`.
+
+**D16:** the consensus line, grey context, pulled-line gap and Dropping odds
+list come from the master plan (L2, L5) and the operator's 2026-09-24 review.
+Any of them the approved mockup does not already draw gets a 1:1 mockup with
+real data, approved before it is built.
 
 ## O2 · Player page — "Odds & prices"
 
@@ -240,6 +250,12 @@ primitives; **no receipt pills**, Revision 4):
   - Live games read "● Live · <state>".
 - **Movers** (`SlateMovers.tsx`): "Biggest moves" (steam with first mover;
   moneylines that moved most) and "Pulled lines".
+  - **"Dropping odds"** (plan L5, restored 2026-09-24): per market, open →
+    current and the % change in implied probability, measured **across
+    books** (the median book's move, and how many books moved the same way),
+    from `market_openers` and the current prices. Sorted by the size of the
+    move; it names no edge and colours nothing by value (the no-edge rule).
+  - Pulled-line **alerts** are P12's (O8), not built here.
 - **Market hub** (`SlateMarket.tsx`): tabs Edges (P11) · Best prices (games
   × books) · Openers vs now · Pulled · Where the money is (P10) · Lowest hold
   · Line disagreements.
@@ -259,7 +275,9 @@ primitives; **no receipt pills**, Revision 4):
 
 **O4 tests (P8's exit):**
 - `tests/slate-odds.test.ts` (fixture: the Sep 24 MLB slate from om-data):
-  card numbers, movers order, hub tabs;
+  card numbers, movers order, hub tabs; the **Dropping odds** list's open →
+  current and % change from a fixture of openers + current prices, and its
+  order;
 - `tests/slate-shell.test.ts` green with the new hashes;
 - `tests/scan-no-edge.test.ts` still green (no edge yet);
 - render the Slate on every sport at 1440 and 400;
@@ -284,3 +302,16 @@ None.
 - Deleted (after the swap): `components/PlayerOddsSection.tsx`,
   `components/PropOddsPanel.tsx` (board), `components/LineMovementCard.tsx`,
   and each adapter's `game-lines` card builder.
+
+## Changelog
+
+- **2026-09-24 — line-movement additions and L5 restored**
+  (`HANDOFF-P0-P4.md` corrections 3 and 4):
+  - `LineMovement` gains the optional consensus line, unselected books as
+    grey context, and pulled lines drawn on the chart (L2, from `*_pulls`);
+  - the L5 "Dropping odds" list returns as an O4 Movers sub-item (open →
+    current, % change across books, from `market_openers` + current
+    prices). Pulled-line alerts stay in P12.
+
+  Both were in the plan and missing from this spec. The D16 note above
+  applies to any piece the approved mockup does not draw.
