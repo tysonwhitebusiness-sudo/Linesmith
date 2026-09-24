@@ -112,6 +112,44 @@ is shown labelled by its source; none is presented as all-book handle.
 | V3 | "Where the money is" research card per game (and per player where Kalshi has prop volume): exchange money share per side, VSiN bets % vs money %, labelled by source — never presented as all-book handle |
 | V4 | Model inputs and a day-by-day splits/volume dataset |
 
+## 5c. Source targets — US books, DFS, public betting % (researched 2026-09-23)
+
+Probed read-only from the laptop (curl_cffi, 1–3 requests each). **Nothing
+built; research continues before choosing** (operator). Note: Linesmith's paid
+feeds already carry most of these books (fresh `prop_odds` rows seen for
+DraftKings, FanDuel, Fanatics, Hard Rock, BetMGM, Caesars, bet365, BetRivers,
+PrizePicks, Underdog, Sleeper) — relayed, at ~20 min. Direct scraping buys
+freshness and depth, not new books.
+
+**Works now (verified):**
+
+| target | endpoint | what | timestamps |
+|---|---|---|---|
+| DraftKings | `sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/leagues/{id}` + `/categories/{catId}` (NFL 88808) | game lines; props by category — one Receiving Props call = 79 markets, 959 prices; display + true odds | none |
+| FanDuel | `sbapi.nj.sportsbook.fanduel.com/api/content-managed-page` + `/api/event-page?eventId=&tab=` | futures + main lines; props per game (28 receiving markets in one game); each runner carries `previousWinRunnerOdds` | none (previous price only) |
+| BetRivers | Kambi `eu-offering-api.kambicdn.com/offering/v2018/rsiusnj/listView/...` | game lines (32 NFL events); props via event endpoint unverified | **`changedDate` per price** |
+| Sleeper (pick'em) | `api.sleeper.app/lines/available` | 2,393 lines — CFB 993, NFL 680, MLB 481, tennis, golf, MLS, MMA; payout multipliers; **`pick_stats`: users' over/under pick counts per player prop** on 1,544 lines (e.g. MLB hits 0.5: 1,033 over / 18 under) | **`updated_at` per line** |
+
+**Blocked or unresolved:** PrizePicks (403 captcha); Hard Rock (Cloudflare /
+location); Caesars API (403); Underdog (HTTP 426 "a new version is required" —
+needs an app-version header, likely solvable); BetMGM and Fanatics (odds API
+not in page HTML — needs a browser network capture; the built-in browser
+refuses sportsbook sites); bet365 (script-only shell); theScore/ESPN not
+probed. Wrong Kambi brand code tried first (`ubusnj`) — BetRivers is `rsiusnj`.
+
+**Public betting % targets:**
+
+| target | what | status |
+|---|---|---|
+| **DraftKings Network splits** (`dknetwork.draftkings.com/draftkings-sportsbook-betting-splits/`) | DraftKings' OWN % handle and % bets per market; NFL, NCAA, MLB, NHL, EPL, UCL, MLS; Today / Tomorrow / 7 / 30 days (future games too); server-rendered | works — Packers ML 80% handle / 85% bets |
+| **Sleeper `pick_stats`** | per-player-prop over/under pick counts + popularity | works (above) |
+| VSiN splits (B8) | **not DraftKings** — same game: VSiN 31% handle / 81% bets vs DK 80% / 85%. Default book possibly Circa — confirm | works |
+| ScoresAndOdds consensus (`/nfl/consensus-picks`) | % bets and % money per side; source unstated | works |
+| Action Network API | `_public`/`_money` fields exist but EMPTY for every book without paid access; each book row has an `inserted` time (use for T0) | fields gated |
+| Covers consensus | contest players' picks %, not money | works (different signal) |
+| SportsBettingDime | weekly public-betting report, small tables | works (articles) |
+| VegasInsider | URL tried 404'd | not found |
+
 ## 5. Track L — minute-level line movement
 
 Why it matters: the app's movement is sparse because most sports refresh every
