@@ -107,10 +107,10 @@ Every **30 s** (one cycle):
 
 | field | rule |
 |---|---|
-| game | `offers.event_external_id` → scraper `game_links` (source, external_id) → `game_key` → `bridge.db.game_links` → (`app_sport`, `app_game_id`, `reversed`). None → skip `unmatched-game` |
+| game | `offers.event_external_id` → scraper `game_links` (source, external_id) → `game_key` → `bridge.db.game_links` → (`app_sport`, `app_game_id`, `reversed`). None → `unmatched-game`, kept in `scraper_unmatched_prices` (§6b) |
 | book | `bridgeable_book(book_key)` (P2) → else skip `non-price` / `unidentified-book` |
 | game market | `game_market(market)` → (period, type). None → skip `unmapped-game-market`. `reversed` → swap `home`/`away` sides; for `sp` negate `point`; swap `tt_home`/`tt_away` |
-| prop | `prop_market_external_id` → scraper `prop_markets` (player, player_norm, stat, line) → `bridge.db.player_links (source, player_norm, app_game_id)` → subject. Key = `prop_market_key(source, stat, position)`, falling back to `prop_market_key(source, offers.market)`. None → skip `unmapped-market` / `unmatched-player` |
+| prop | `prop_market_external_id` → scraper `prop_markets` (player, player_norm, stat, line) → `bridge.db.player_links (source, player_norm, app_game_id)` → subject. Key = `prop_market_key(source, stat, position)`, falling back to `prop_market_key(source, offers.market)`. None → `unmapped-market` / `unmatched-player`, kept in `scraper_unmatched_prices` (§6b) |
 | side | game: as above. Prop: `over`/`under`, else passed through (the writer's `canonical_prop_side` makes it `other`) |
 | price | `american = round(price)`; a value in (−100, 100) after rounding becomes −100 or +100 by sign (the schema's sanity check). `decimal = 1 + price/100` if price > 0 else `1 + 100/−price`, computed from the **unrounded** price |
 | checked (`observed_at`) | the offer's snapshot `fetched_at` |
@@ -174,6 +174,45 @@ CREATE POLICY scraper_checks_read ON scraper_checks FOR SELECT USING (true);
 - The bridge keeps an endpoint → games map from the offers it has seen, to
   know which games an endpoint confirms.
 - Retention: `RETENTION_RULES` `last_ok_at < now() - interval '3 days'`.
+
+### 6b. Unmatched prices are kept, with their prices (plan B4)
+
+A priced row the bridge cannot map is **not only counted**: it is kept, so
+the price exists in the app's database the moment a game, player or label
+rule catches up. It goes to a current-state table, one row per scraper key,
+upserted each cycle (additive migration, beside P5's or its own):
+
+```sql
+CREATE TABLE IF NOT EXISTS scraper_unmatched_prices (
+  source      text NOT NULL,
+  scraper_key text NOT NULL,          -- the scraper's offer key (source|event|prop market|market|side|book|line)
+  event       text,                   -- scraper event name "away @ home" and its start, for a human
+  market      text NOT NULL,          -- scraper market / prop label, raw
+  player      text,                   -- prop rows: the scraper's player name
+  book        text NOT NULL,          -- book_key
+  line        double precision,
+  side        text,
+  price       double precision NOT NULL,  -- as the scraper holds it (American)
+  checked     timestamptz NOT NULL,   -- last confirmation (the snapshot's fetched_at)
+  since       timestamptz NOT NULL,   -- last change (D23: source_ts_ms, fetched_at - Age, or fetched_at)
+  reason      text NOT NULL,          -- unmatched-game | unmatched-player | unmapped-market | unmapped-game-market | no-app-sport
+  PRIMARY KEY (source, scraper_key));
+ALTER TABLE scraper_unmatched_prices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY scraper_unmatched_prices_read ON scraper_unmatched_prices FOR SELECT USING (true);
+```
+
+- **Who writes:** the bridge only (Python writes; a row in
+  `docs/table-ownership.md`). Non-price rows (`bridgeable_book` false) never
+  enter it: they are not prices.
+- **Budget:** it is subject to **D24**. The policy object (§5) has an
+  `unmatched_prices` entry (on/off, and which reasons). If D24 excludes
+  it, D24 says so and why, and the rows stay on the laptop only.
+- **Leaving it:** when a later cycle maps the key (a new link or label),
+  the row is deleted in the same transaction that writes the mapped price.
+  Retention: `RETENTION_RULES` removes rows whose `checked` is > 3 days old
+  (a key the scraper stopped quoting).
+- **The daily `odds_unresolved` summary (§2 step 7) stays:** it is the
+  backlog view; this table is the prices.
 
 ### 7. Openers (D21)
 
@@ -251,6 +290,7 @@ section.
 | test | kind | what it proves |
 |---|---|---|
 | `src/test_scraper_bridge.py` (new, hermetic → CI) | Python | **mapping:** reversed game swaps sides and negates spreads; tt_home↔tt_away; fractional price → int + exact decimal; ±99.5 → ±100; `changed_at` from `source_ts_ms` / from Age / from fetch time; is_main by `alt` flag, sole line, closest-to-even; extra whitelist; comparenbet_fair skipped. **Hold buffer:** A→B then a later reading of B → B forwarded with its own times; A→B→A within 600 s → nothing forwarded, 1 flap; A→B→C before a second reading → only C (once confirmed); a pull drops the pending change. **Policy:** a relay_duplicate row is skipped when the policy says so; in-game is decided at `app_start`. **Openers:** the BetMGM NV fixture is flagged; a peer set of 2 is not checked; a normal opener passes |
+| unmatched kept (in `test_scraper_bridge.py`) | Python | an unmatched priced row is upserted to `scraper_unmatched_prices` with source, event, market, book, line, side, price, checked, since and its reason; the same key's next change updates the row; once the key maps, the row is deleted and the mapped price written in one transaction; a non-price row is never written there; the policy's `unmatched_prices: off` writes nothing |
 | `src/test_odds_checks.py` (new, hermetic → CI) | Python | each threshold row of §7 at its boundary (just inside passes, just outside flags) |
 | replay test | laptop, live DB | run the bridge against a **copy** of `scraper.db` limited to one recorded hour, writing to Supabase under provider `scraper-test:*` and fake-game-free real links. Rows written equal the replay's own expected count (a script counts it independently from the same hour). Times are preserved: `prop_odds_history.observed_at` equals the source times. Then delete every `scraper-test:*` row (a cleanup script, listed in the test) |
 | heartbeat drill | laptop | stop the bridge → within 15 min `health_check` reports `scraper_bridge` STALE; start it → OK. Kill the process → the watchdog restarts it within 5 min |
@@ -282,6 +322,15 @@ section.
 - New: the files in §1, plus `src/test_scraper_bridge.py` and
   `src/test_odds_checks.py`.
 - Edited: `python-odds-service/src/health_check.py`,
-  `python-odds-service/src/db.py` (the `scraper_checks` upsert and
-  retention rule), `.github/workflows/ci.yml`, `docs/CURRENT.md`.
+  `python-odds-service/src/db.py` (the `scraper_checks` and
+  `scraper_unmatched_prices` upserts and their retention rules),
+  `docs/table-ownership.md` (both tables), the migration (§6, §6b), `.github/workflows/ci.yml`, `docs/CURRENT.md`.
 - odds-scraper: none (the bridge only reads `scraper.db`).
+
+## Changelog
+
+- **2026-09-24 — unmatched rows are kept with their prices** (plan B4;
+  `HANDOFF-P0-P4.md` correction 2). The first draft only counted them and
+  wrote a daily top-200 summary. New §6b adds `scraper_unmatched_prices`
+  (current state, one row per scraper key), subject to D24's budget, plus its
+  tests and ownership row.
