@@ -9,6 +9,7 @@
  * Pure: no fetching, no JSX.
  */
 
+import { marketLabel } from '@/lib/odds/props/marketLabels';
 import type { SoccerGameResearchPayload, SoccerPropResult } from '@/lib/sports/soccer/gameResearch';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
@@ -17,17 +18,6 @@ import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard }
 
 type Payload = SoccerGameResearchPayload;
 type Side = 'away' | 'home';
-
-export const SOCCER_MARKET_LABELS: Record<string, string> = {
-  goals: 'Goals',
-  assists: 'Assists',
-  shots: 'Shots',
-  'shots-on-target': 'Shots on target',
-  'goals-assists': 'Goals + assists',
-  'anytime-goalscorer': 'Anytime scorer',
-  'first-goalscorer': 'First scorer',
-  'two-plus-goals': '2+ goals',
-};
 
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
 const signedLine = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
@@ -333,7 +323,7 @@ function soccerLinesSection(payload: Payload, state: GameState): ResearchSection
       imageUrl: p.side ? payload[p.side].logoUrl : null,
       imageKind: 'logo' as const,
       values: {
-        market: SOCCER_MARKET_LABELS[p.market] ?? p.market,
+        market: marketLabel(p.market, 'soccer'),
         line: p.line == null ? 'yes/no' : p.line,
         over: `${am(p.over.price)} ${p.over.book}`,
         under: p.under ? `${am(p.under.price)} ${p.under.book}` : '—',
@@ -380,7 +370,7 @@ function soccerPlayersSection(payload: Payload, state: GameState): ResearchSecti
         imageUrl: p.side ? payload[p.side].logoUrl : null,
         imageKind: 'logo' as const,
         side: p.side,
-        marketLabel: SOCCER_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, 'soccer'),
         line: lineOf(p),
         books: p.books,
         history: s.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [],
@@ -442,7 +432,7 @@ function soccerNowSection(payload: Payload): ResearchSection {
         imageUrl: p.side ? payload[p.side].logoUrl : null,
         imageKind: 'logo' as const,
         sideAbbr: p.side ? payload[p.side].abbr : null,
-        marketLabel: SOCCER_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, 'soccer'),
         line: lineOf(p),
         books: p.books,
         result: p.result,

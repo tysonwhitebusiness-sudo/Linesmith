@@ -358,6 +358,9 @@ const BOOKMAKER_ALIASES: Record<string, string> = {
   betus: 'betus',
 };
 
+/** Every canonical bookmaker id the app can produce; the book registry covers each (tests/book-registry.test.ts). */
+export const CANONICAL_BOOKMAKERS: ReadonlySet<string> = new Set(Object.values(BOOKMAKER_ALIASES));
+
 export function normalizeBookmaker(raw: string): string | null {
   const key = raw.trim().toLowerCase().replace(/[\s._-]+/g, '');
   return BOOKMAKER_ALIASES[key] ?? null;
@@ -382,7 +385,7 @@ export function normalizeBookmaker(raw: string): string | null {
  * wrong price to a candidate that's asking a narrower question, so they
  * resolve to `null` and the UI shows "no price fetched" honestly instead.
  */
-const CANONICAL_MARKET_KEYS = new Set(Object.values(MARKET_KEY_ALIASES));
+export const CANONICAL_MARKET_KEYS = new Set(Object.values(MARKET_KEY_ALIASES));
 
 export function candidateDimensionToMarketKey(dimension: string): MarketKey | null {
   if (dimension === 'hit-in-game') return 'hits';

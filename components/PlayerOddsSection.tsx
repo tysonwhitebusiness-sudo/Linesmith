@@ -117,7 +117,7 @@ function Quote({ q }: { q: PlayerPriceQuote | null }) {
   return (
     <Tooltip content={`${bookLabel(q.bookmaker)}, ${new Date(q.capturedAt).toLocaleString()}`}><span className="inline-flex items-center justify-end gap-1.5">
       <span className="font-semibold text-ink">{fmt.american(q.americanOdds)}</span>
-      <BookLogo bookId={q.bookmaker} size={14} />
+      <BookLogo bookId={q.bookmaker} size={14} withLabel />
     </span></Tooltip>
   );
 }

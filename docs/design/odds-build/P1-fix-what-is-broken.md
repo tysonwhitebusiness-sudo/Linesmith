@@ -362,3 +362,79 @@ None.
   - `lib/odds/props/entityResolution.ts` (two exports);
   - `python-odds-service/src/db.py`;
   - `CLAUDE.md`, `docs/CURRENT.md`.
+
+## Result
+
+**Built 2026-09-24.** Commit and deploy are recorded in `docs/CURRENT.md` →
+Deploys.
+
+- **Game line on every sport's player page:** built as specified.
+  `todaysLine.ts` adds `gamePkOf` and `gameSideOf`, and six adapters set
+  `gameLine`. Rendered in fresh tabs, the card shows the moneyline:
+  - soccer (Matt Edwards, MLS 761830, 1440 + 400): "Polymarket · NYC +212 /
+    ATL +133";
+  - tennis (Denis Shapovalov, ATP 183412, 400): "DraftKings · Away −386 /
+    Home +294".
+
+  Before this, both said "No game line yet". NFL, CFB, NBA and NHL have no
+  candidate today whose game has a two-sided moneyline with a book (most
+  lines are one book, one side). There, "No game line yet" is true, and the
+  data path is covered by `tests/player-game-line.test.ts` for all six.
+  MLB: 0 priced lines today; the Skubal page renders without error.
+- **Two deviations, both found on the first render:**
+  1. **`source`:** the spec said `source: 'game_odds_book_lines'`.
+     `OddsChip` (a frozen Scan cell component) reads `source` as provenance,
+     and a table name is not one, so every price showed "? Source not
+     recorded". The helper now passes the line's own writer
+     (`UnifiedGameLine.source`), exactly as MLB does. A merged line is
+     tagged `game-odds-book-lines`, which the chip still shows as "?", the
+     same as MLB today. Real per-price provenance needs the reader (P5,
+     F6) and the rebuilt card (P8 O2); routed there.
+  2. **Home/away:** the card labelled `away` with the opponent and `home`
+     with the player's team. That is wrong for every player whose team is
+     away, and was already wrong on MLB. `TodaysLineData.playerSide` (from
+     `subjectMeta.isHome`, set by the helper and by MLB's adapter) now
+     labels each price. When the side is unknown (tennis candidates carry
+     no `isHome`), it says Away / Home rather than guess a name.
+- **Labels:** `marketLabels.ts` holds the 72 canonical labels, the 4 legacy
+  keys, and sport overrides taken from a diff of every local map, so no
+  existing wording changed:
+  - football `assists` → "Tackle assists";
+  - MLB "Strikeouts (batter/pitcher)", plus `pitcher-walks`;
+  - NBA "Pts + reb" and friends, plus `threes`, `three-pointers`,
+    `steals-blocks`;
+  - NHL and soccer "Anytime scorer"; soccer "First scorer".
+
+  The six game-research maps are deleted. NFL's and CFB's candidate maps
+  were Title Case ("Passing Yards", like every sport's candidates), so they
+  use `marketLabelTitle()`. It reproduces all 12 old strings exactly
+  (pinned in the test). CFB's map also gated which markets exist; that is
+  now `CFB_MARKETS`. `propRanking.ts` had no local map (its label comes from
+  the board data), so there was nothing to change. Rendered: NFL game
+  401872953 and CFB game 401858234 (400) show no raw market key.
+- **Books:** `registry.ts` has 87 entries, generated from §3's table. The
+  table named two books "Betr" (`betr` pick'em and `betrsportsbook`
+  Australia), which contradicts its own no-duplicates test, so the
+  Australian one is "Betr (AU)", like the table's "TAB (AU)". `BookLogo`
+  re-exports `bookLabel`/`bookLogoUrl` and draws a monogram tile when there
+  is no logo; the three call sites use `withLabel`. Rendered: the NFL
+  Slate's outliers read "Parx" (was "parx parx") and "bet365", and the
+  player page's "Prices by market" shows "+2200 Fanatics".
+- **F5:** `write_game_odds_history` compares `(american_odds, point)`.
+  `test_game_odds_history_point.py` passes 6/6 against the live table and
+  is listed in CI's "Not run here".
+- **CLAUDE.md:** `/api/odds/lines` moved out of the "write side-effect" list
+  and cited as the game-line pattern-2 route.
+- **Tests:**
+  - `npm test` 697/697 before the source/side fixes; re-run after them
+    (see the commit);
+  - `tsc` clean; `npm run build` clean;
+  - `test_entity_resolution` and `test_canonical_bookmaker` pass.
+- **Found, not fixed (routed):**
+  - **Units bug:** OddsHarvester's bet365 row for NFL 401872950 has
+    `awayOdds: 101` beside `homeOdds: 2.6`. Every `BookmakerOdds` price is
+    decimal, so 101 is an American price stored as decimal. It is a
+    harvester parse or writer bug and needs a ledger row.
+  - **Loading state:** the Game line card says "No game line yet" while
+    `/api/odds/lines` is still loading, for a few seconds. MLB's card does
+    the same; P8's rebuilt card owns its loading state.

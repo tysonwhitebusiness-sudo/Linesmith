@@ -9,6 +9,7 @@
  * Pure: no fetching, no JSX.
  */
 
+import { marketLabel } from '@/lib/odds/props/marketLabels';
 import type { TennisFormRow, TennisGameResearchPayload, TennisPropResult } from '@/lib/sports/tennis/gameResearch';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
@@ -18,12 +19,6 @@ import { espnHeadshot } from '@/lib/sports/shared/identity';
 
 type Payload = TennisGameResearchPayload;
 type Side = 'away' | 'home';
-
-export const TENNIS_MARKET_LABELS: Record<string, string> = {
-  aces: 'Aces',
-  'games-won': 'Games won',
-  'to-win-a-set': 'To win a set',
-};
 
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
 /** A yes/no market's value is 1 or 0, so it settles over 0.5. */
@@ -368,7 +363,7 @@ function tennisLinesSection(payload: Payload, state: GameState): ResearchSection
       imageKind: 'player' as const,
       href: `/tennis/${t.tour}/player/${encodeURIComponent(`espn:tennis:${p.athleteId}`)}`,
       values: {
-        market: TENNIS_MARKET_LABELS[p.market] ?? p.market,
+        market: marketLabel(p.market, 'tennis'),
         line: p.line == null ? 'yes/no' : p.line,
         over: `${am(p.over.price)} ${p.over.book}`,
         books: p.books,
@@ -396,7 +391,7 @@ function tennisPlayersSection(payload: Payload, state: GameState): ResearchSecti
         href: `/tennis/${t.tour}/player/${encodeURIComponent(`espn:tennis:${p.athleteId}`)}`,
         imageUrl: espnHeadshot('tennis', p.athleteId),
         side: p.side,
-        marketLabel: TENNIS_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, 'tennis'),
         line: lineOf(p),
         books: p.books,
         history: t.propHistory[`${p.athleteId}|${p.market}`] ?? [],
@@ -431,7 +426,7 @@ function tennisNowSection(payload: Payload): ResearchSection {
           href: `/tennis/${t.tour}/player/${encodeURIComponent(`espn:tennis:${p.athleteId}`)}`,
           imageUrl: espnHeadshot('tennis', p.athleteId),
           sideAbbr: p.side ? payload[p.side].abbr : null,
-          marketLabel: TENNIS_MARKET_LABELS[p.market] ?? p.market,
+          marketLabel: marketLabel(p.market, 'tennis'),
           line: lineOf(p),
           books: p.books,
           result: p.result,

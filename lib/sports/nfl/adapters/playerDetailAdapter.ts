@@ -17,6 +17,8 @@
  * already take.
  */
 
+import type { UnifiedGameLine } from '@/lib/odds/types';
+import { gamePkOf, gameSideOf, todaysLineFromGameLines } from '@/lib/sports/shared/todaysLine';
 import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
@@ -111,6 +113,8 @@ export interface NflPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: NflPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** `useGameLines(sport)`'s lines: the player's game's line (P1). */
+  gameLines?: readonly UnifiedGameLine[] | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +293,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   });
 
   return {
+    // P1 (odds workstream): the player's game's line, from /api/odds/lines.
+    gameLine: todaysLineFromGameLines(input.gameLines, gamePkOf(active), gameSideOf(active)),
     opponentUnit,
     conditions,
     spatialGrid,

@@ -27,6 +27,8 @@
  * `propOddsBoard` is real and independent of history, same as before.
  */
 
+import type { UnifiedGameLine } from '@/lib/odds/types';
+import { gamePkOf, gameSideOf, todaysLineFromGameLines } from '@/lib/sports/shared/todaysLine';
 import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -74,6 +76,8 @@ export interface SoccerPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: SoccerPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** `useGameLines(sport)`'s lines: the player's game's line (P1). */
+  gameLines?: readonly UnifiedGameLine[] | null;
 }
 
 /**
@@ -309,6 +313,8 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    // P1 (odds workstream): the player's game's line, from /api/odds/lines.
+    gameLine: todaysLineFromGameLines(input.gameLines, gamePkOf(active), gameSideOf(active)),
     opponentUnit,
     usageMix,
     careerH2H,

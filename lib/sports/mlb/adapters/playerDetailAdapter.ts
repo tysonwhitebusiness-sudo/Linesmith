@@ -134,6 +134,14 @@ export interface PropOddsBoardProps {
 
 /** The "Today's line" context-rail card's data — moneyline/total plus edges, when a game model exists. Sport-agnostic in shape (same `EdgeBadge`/`OddsChip` consumers as Game Detail's picks panel use); `null` for a sport/subject with no game line today, `{}`-ish empty state otherwise. */
 export interface TodaysLineData {
+  /**
+   * Which side of the line is the player's (P1, odds workstream, 2026-09-24).
+   * The Game line card labelled `away` with the opponent and `home` with the
+   * player's team, which is wrong whenever the player's team is away. `null`
+   * when the sport does not say (tennis has no home/away on a candidate): the
+   * card then labels the prices Away / Home rather than guess a name.
+   */
+  playerSide?: 'home' | 'away' | null;
   liveScore?: { home: string; away: string };
   livePeriod?: string;
   moneyline?: { away: number; home: number; book: string; source: string } | null;
@@ -238,6 +246,10 @@ export interface PlayerDetailData {
   chart: PlayerDetailChart;
   propOddsBoard: PropOddsBoardProps | null;
   model?: { todaysLine?: TodaysLineData | null } | null;
+  /** P1 (odds workstream): the player's game's line for sports without a game model. Every
+   *  non-MLB sport's player page showed "No game line yet" because only MLB filled
+   *  model.todaysLine. MLB keeps model.todaysLine (it carries the model's edges). */
+  gameLine?: TodaysLineData | null;
   /**
    * MLB/NFL "Form" context-rail card.
    *
@@ -534,6 +546,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   const totalEdge = computeTotalEdge(gameModel, projected?.total);
   const todaysLine: TodaysLineData | null = projected?.available
     ? {
+        playerSide: meta.isHome === true ? 'home' : meta.isHome === false ? 'away' : null,
         liveScore: liveScoreInfo.liveScore,
         livePeriod: liveScoreInfo.livePeriod,
         moneyline:

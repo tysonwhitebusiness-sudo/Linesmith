@@ -10,6 +10,7 @@
  * Pure: no fetching, no JSX.
  */
 
+import { marketLabel } from '@/lib/odds/props/marketLabels';
 import type { NhlGameResearchPayload, NhlPropResult } from '@/lib/sports/nhl/gameResearch';
 import type { NhlEvent } from '@/lib/sports/nhl/apiWebParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
@@ -20,18 +21,6 @@ import { nhlHeadshot } from '@/lib/sports/shared/identity';
 
 type Payload = NhlGameResearchPayload;
 type Side = 'away' | 'home';
-
-export const NHL_MARKET_LABELS: Record<string, string> = {
-  goals: 'Goals',
-  assists: 'Assists',
-  points: 'Points',
-  'shots-on-goal': 'Shots on goal',
-  hits: 'Hits',
-  'blocked-shots': 'Blocked shots',
-  saves: 'Saves',
-  'goals-against': 'Goals against',
-  'anytime-goalscorer': 'Anytime scorer',
-};
 
 const SHOT_TYPES = ['goal', 'shot-on-goal', 'missed-shot', 'blocked-shot'];
 const SHOT_LABEL: Record<string, string> = { goal: 'Goal', 'shot-on-goal': 'Shot on goal', 'missed-shot': 'Missed', 'blocked-shot': 'Blocked' };
@@ -421,7 +410,7 @@ function nhlLinesSection(payload: Payload, state: GameState): ResearchSection {
       imageKind: 'player' as const,
       labelNote: p.side ? payload[p.side].abbr : null,
       href: `/nhl/player/${p.playerId}`,
-      values: { market: NHL_MARKET_LABELS[p.market] ?? p.market, line: p.line == null ? 'yes/no' : p.line, over: `${am(p.over.price)} ${p.over.book}`, books: p.books, result: p.result, went: p.result == null ? null : p.result > lineOf(p) ? 'Over' : p.result < lineOf(p) ? 'Under' : 'Push' },
+      values: { market: marketLabel(p.market, 'nhl'), line: p.line == null ? 'yes/no' : p.line, over: `${am(p.over.price)} ${p.over.book}`, books: p.books, result: p.result, went: p.result == null ? null : p.result > lineOf(p) ? 'Over' : p.result < lineOf(p) ? 'Under' : 'Push' },
     })),
     caption: 'Markets with one book quoting both sides are left out.',
   };
@@ -469,7 +458,7 @@ function nhlPlayersSection(payload: Payload, state: GameState): ResearchSection 
     away: payload.away,
     home: payload.home,
     state,
-    props: n.props.filter((p) => p.books >= 2).map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId), side: p.side, marketLabel: NHL_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.playerId}|${p.market}`] ?? [] })),
+    props: n.props.filter((p) => p.books >= 2).map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId), side: p.side, marketLabel: marketLabel(p.market, 'nhl'), line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.playerId}|${p.market}`] ?? [] })),
   });
 }
 
@@ -517,7 +506,7 @@ function nhlNowSection(payload: Payload): ResearchSection {
         ],
       },
     ],
-    [propsTrackerCard(n.props.map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId), sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: NHL_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, result: p.result })))],
+    [propsTrackerCard(n.props.map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId), sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: marketLabel(p.market, 'nhl'), line: lineOf(p), books: p.books, result: p.result })))],
   ];
   if (n.live) {
     const l = n.lines;

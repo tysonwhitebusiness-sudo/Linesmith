@@ -1942,6 +1942,12 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
     (event_id, market, side, bookmaker, source), still the
     (observed_at DESC, id DESC) ordering whose tiebreaker is load-bearing
     above.
+
+    A line move at the same price is a change (P1, 2026-09-24): the prior
+    comparison was on american_odds alone, so -4.5 -110 -> -5.5 -110 was
+    never logged, and every game-line chart missed pure line moves. The
+    comparison is now on (american_odds, point); moneyline's point is None
+    on both sides, so it compares equal.
     """
     if not rows:
         return
@@ -1976,7 +1982,7 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
             prior_rows = await conn.fetch(
                 """
                 SELECT DISTINCT ON (event_id, market, side, bookmaker, source)
-                       event_id, market, side, bookmaker, source, american_odds
+                       event_id, market, side, bookmaker, source, american_odds, point
                 FROM game_odds_history
                 WHERE (event_id, market, side, bookmaker, source) IN (
                     SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
@@ -1990,11 +1996,11 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
                 [k[4] for k in keys],
             )
             prior = {
-                (p["event_id"], p["market"], p["side"], p["bookmaker"], p["source"]): p["american_odds"]
+                (p["event_id"], p["market"], p["side"], p["bookmaker"], p["source"]): (p["american_odds"], p["point"])
                 for p in prior_rows
             }
 
-            changed = [r for k, r in latest_in_batch.items() if prior.get(k) != r.american_odds]
+            changed = [r for k, r in latest_in_batch.items() if prior.get(k) != (r.american_odds, r.point)]
             if not changed:
                 return
             await conn.executemany(

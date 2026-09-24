@@ -15,6 +15,7 @@
  * soccer's unsupported markets have.
  */
 
+import { marketLabelTitle } from '@/lib/odds/props/marketLabels';
 import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary } from '@/lib/core/types';
 import { resolveVenueWeather } from '@/lib/sports/shared/venueWeather';
 import type { WeatherContext } from '@/lib/core/types';
@@ -26,16 +27,9 @@ import { candidateLine, historyAverageLine } from '@/lib/odds/props/mainLine';
 import { cfbTeamLogoByAbbr, fetchAllTeams } from './espn';
 import { currentCfbdSeason, matchCfbdTeamName, fetchFbsTeamNames, loadCfbdTeamContext, cfbdPlayerMatchesFromContext, fetchSeasonStatus, type CfbdMatchStat } from './cfbd';
 
-const MARKET_META: Record<string, { label: string }> = {
-  'passing-yards': { label: 'Passing Yards' },
-  'rushing-yards': { label: 'Rushing Yards' },
-  'receiving-yards': { label: 'Receiving Yards' },
-  receptions: { label: 'Receptions' },
-  'longest-rush': { label: 'Longest Rush' },
-  'longest-reception': { label: 'Longest Reception' },
-  'longest-completion': { label: 'Longest Completion' },
-  'kicking-points': { label: 'Kicking Points' },
-};
+/** The CFB markets a candidate is built for. Labels come from the one registry
+ *  (`marketLabelTitle`, P1 of the odds build); this list only gates which exist. */
+const CFB_MARKETS: readonly string[] = ['passing-yards', 'rushing-yards', 'receiving-yards', 'receptions', 'longest-rush', 'longest-reception', 'longest-completion', 'kicking-points'];
 
 /** Which markets have a real per-game field in CFBD's box score, and how to read it — `longest-completion` has none (see file header) and stays out of this map. */
 const HISTORY_FIELD: Record<string, (m: CfbdMatchStat) => number> = {
@@ -239,7 +233,7 @@ export async function buildSyntheticPlayerCandidates(subjectId: string, subjectN
   const matches = cfbdPlayerMatchesFromContext(context, subjectName);
   if (matches.length === 0) return [];
 
-  return Object.entries(MARKET_META).map(([marketKey, meta]) => {
+  return CFB_MARKETS.map((marketKey) => {
     const field = HISTORY_FIELD[marketKey];
     const values = matches.map((m) => (field ? field(m) : 0));
     const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
@@ -252,7 +246,7 @@ export async function buildSyntheticPlayerCandidates(subjectId: string, subjectN
       subjectName,
       subjectMeta: { team: teamAbbr },
       dimension: marketKey,
-      dimensionLabel: meta.label,
+      dimensionLabel: marketLabelTitle(marketKey, 'cfb'),
       category: 'over',
       categoryLabel: 'Over',
       line: defaultLine,
@@ -322,8 +316,7 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
 
     for (const [key, marketRows] of rowsBySubjectMarket) {
       const [subjectId, marketKey] = key.split('|');
-      const meta = MARKET_META[marketKey];
-      if (!meta) {
+      if (!CFB_MARKETS.includes(marketKey)) {
         warnings.push(`Unrecognized CFB market key "${marketKey}" — skipped.`);
         continue;
       }
@@ -357,7 +350,7 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
           gamePk: game.gameId,
         },
         dimension: marketKey,
-        dimensionLabel: meta.label,
+        dimensionLabel: marketLabelTitle(marketKey, 'cfb'),
         category: 'over',
         categoryLabel: 'Over',
         line: priced.line,

@@ -1,7 +1,7 @@
 'use client';
 import { coverageLine, priceCoverage } from '@/lib/odds/priceFreshness';
 import { OddsChip } from './OddsChip';
-import { BookLogo, bookLabel } from './BookLogo';
+import { BookLogo } from './BookLogo';
 import { rowsFor, type PropOddsRow } from './usePropOdds';
 
 /** Full per-book breakdown for a Player Detail-style panel. */
@@ -53,8 +53,7 @@ export function PropOddsBoard({
         >
           <span className={`flex items-center gap-1.5 ${book === userSportsbook ? 'font-semibold text-masters' : 'text-ink-muted'}`}>
             {book === userSportsbook ? '★' : null}
-            <BookLogo bookId={book} size={14} />
-            {bookLabel(book)}
+            <BookLogo bookId={book} size={14} withLabel />
           </span>
           <span className="flex gap-1.5">
             {over ? (

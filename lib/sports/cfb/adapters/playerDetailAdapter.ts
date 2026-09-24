@@ -14,6 +14,8 @@
  * and independent of history, same as every other sport's adapter.
  */
 
+import type { UnifiedGameLine } from '@/lib/odds/types';
+import { gamePkOf, gameSideOf, todaysLineFromGameLines } from '@/lib/sports/shared/todaysLine';
 import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
@@ -87,6 +89,8 @@ export interface CfbPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: CfbPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** `useGameLines(sport)`'s lines: the player's game's line (P1). */
+  gameLines?: readonly UnifiedGameLine[] | null;
   /** League-wide defense-allowed leaderboard (`useTeamDefenseAllowed('/api/cfb/team-defense-allowed', ...)`, `PlayerDetail.tsx`) — fetched once, shared across every subject on the page, so picking a custom opponent in the matchup card is a pure client re-index. `[]` while loading or when CFBD has no data yet (no `CFBD_API_KEY`, or season hasn't started) — the matchup card degrades to no card at all in that case, same "null when a sport genuinely has no data" rule as everything else in this file. */
   teamDefenseAllowed?: CfbTeamDefenseAllowed[];
 }
@@ -272,6 +276,8 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
   });
 
   return {
+    // P1 (odds workstream): the player's game's line, from /api/odds/lines.
+    gameLine: todaysLineFromGameLines(input.gameLines, gamePkOf(active), gameSideOf(active)),
     opponentUnit,
     careerH2H,
     conditions,

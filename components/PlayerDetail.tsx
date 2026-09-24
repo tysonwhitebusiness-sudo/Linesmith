@@ -23,7 +23,8 @@ import { nbaZoneCompareCard } from '@/lib/sports/nba/adapters/compareCards';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData, type ResearchCard } from '@/lib/sports/shared/playerResearchShapes';
 import { isTeamProductionSport } from '@/lib/sports/shared/teamProductionShapes';
-import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import { useGameLines } from './useGameLines';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { compareInk, gradientCardStyle, deltaGradientStyle } from '@/lib/ui/heat';
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
@@ -957,6 +958,10 @@ export function PlayerDetail({
   const nhlTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nhl/teamDefenseAllowed').NhlTeamDefenseAllowed>('/api/nhl/team-defense-allowed', active?.sport === 'nhl');
 
   const propOdds = usePropOdds(gamePkStr, snapshot?.fetchedAt, true, startIso);
+  // P1 (odds workstream): the game's line for every sport, from the same
+  // /api/odds/lines read the game page and the Slate use. Always called (rules
+  // of hooks); golf's call returns nothing.
+  const gameLines = useGameLines((active?.sport ?? 'mlb') as Sport, snapshot?.fetchedAt ?? null);
   // Market calibration is no longer fetched here (R6.1d): its only reader, a
   // trust-tier value, had not been rendered since the page's R3 rebuild, and
   // a cold `/api/props/calibration` takes 60+ seconds.
@@ -1287,6 +1292,7 @@ export function PlayerDetail({
             snapshot,
             scope: { lineOffset, opponentOnly, lastN },
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+            gameLines: gameLines.result?.lines ?? null,
             live: footballLive,
           })
         : active.sport === 'soccer'
@@ -1297,6 +1303,7 @@ export function PlayerDetail({
               snapshot,
               scope: { lineOffset, opponentOnly, lastN },
               propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+              gameLines: gameLines.result?.lines ?? null,
             })
           : active.sport === 'cfb'
             ? toCfbPlayerDetailData({
@@ -1305,6 +1312,7 @@ export function PlayerDetail({
                 snapshot,
                 scope: { lineOffset, opponentOnly, lastN },
                 propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                gameLines: gameLines.result?.lines ?? null,
                 teamDefenseAllowed: cfbTeamDefense.teams,
                 live: footballLive,
               })
@@ -1316,6 +1324,7 @@ export function PlayerDetail({
                   snapshot,
                   scope: { lineOffset, opponentOnly, lastN },
                   propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                  gameLines: gameLines.result?.lines ?? null,
                   teamDefenseAllowed: nbaTeamDefense.teams,
                 })
               : active.sport === 'nhl'
@@ -1326,6 +1335,7 @@ export function PlayerDetail({
                     snapshot,
                     scope: { lineOffset, opponentOnly, lastN },
                     propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                    gameLines: gameLines.result?.lines ?? null,
                     teamDefenseAllowed: nhlTeamDefense.teams,
                   })
                 : active.sport === 'tennis'
@@ -1336,6 +1346,7 @@ export function PlayerDetail({
                       snapshot,
                       scope: { lineOffset, opponentOnly, lastN },
                       propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                      gameLines: gameLines.result?.lines ?? null,
                     })
           : toMlbPlayerDetailData({
             candidates,
@@ -1679,7 +1690,11 @@ export function PlayerDetail({
     </>
   );
 
-  const todays = data.model?.todaysLine ?? null;
+  const todays = data.model?.todaysLine ?? data.gameLine ?? null;
+  // Label each moneyline price by the player's real side (P1): the card used
+  // to assume the player's team was home. Unknown side -> Away / Home.
+  const mlAwayLabel = todays?.playerSide === 'home' ? data.subject.opponentAbbr : todays?.playerSide === 'away' ? data.subject.teamAbbr : undefined;
+  const mlHomeLabel = todays?.playerSide === 'home' ? data.subject.teamAbbr : todays?.playerSide === 'away' ? data.subject.opponentAbbr : undefined;
   const oddsCards = {
     movement: (
       <LineMovementCard
@@ -1723,13 +1738,13 @@ export function PlayerDetail({
                 <BookLogo bookId={todays.moneyline.book} size={13} withLabel />
               </div>
               <div className="flex gap-1.5">
-                <OddsChip price={todays.moneyline.away} source={todays.moneyline.source} side={data.subject.opponentAbbr} size="md" className="flex-1 justify-center" />
-                <OddsChip price={todays.moneyline.home} source={todays.moneyline.source} side={data.subject.teamAbbr} size="md" className="flex-1 justify-center" />
+                <OddsChip price={todays.moneyline.away} source={todays.moneyline.source} side={mlAwayLabel ?? 'Away'} size="md" className="flex-1 justify-center" />
+                <OddsChip price={todays.moneyline.home} source={todays.moneyline.source} side={mlHomeLabel ?? 'Home'} size="md" className="flex-1 justify-center" />
               </div>
               {todays.moneylineEdge ? (
                 <div className="mt-1 flex gap-1.5">
-                  <EdgeBadge edge={todays.moneylineEdge.away} modelProb={todays.moneylineEdge.awayModelProb} marketProb={todays.moneylineEdge.awayMarketProb} label={data.subject.opponentAbbr ?? 'Away'} />
-                  <EdgeBadge edge={todays.moneylineEdge.home} modelProb={todays.moneylineEdge.homeModelProb} marketProb={todays.moneylineEdge.homeMarketProb} label={data.subject.teamAbbr ?? 'Home'} />
+                  <EdgeBadge edge={todays.moneylineEdge.away} modelProb={todays.moneylineEdge.awayModelProb} marketProb={todays.moneylineEdge.awayMarketProb} label={mlAwayLabel ?? 'Away'} />
+                  <EdgeBadge edge={todays.moneylineEdge.home} modelProb={todays.moneylineEdge.homeModelProb} marketProb={todays.moneylineEdge.homeMarketProb} label={mlHomeLabel ?? 'Home'} />
                 </div>
               ) : null}
             </div>

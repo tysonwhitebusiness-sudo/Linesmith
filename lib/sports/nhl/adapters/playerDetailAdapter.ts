@@ -8,6 +8,8 @@
  * NHL yet. `propOddsBoard` is real and independent of history.
  */
 
+import type { UnifiedGameLine } from '@/lib/odds/types';
+import { gamePkOf, gameSideOf, todaysLineFromGameLines } from '@/lib/sports/shared/todaysLine';
 import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import { athleteIdOf, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
@@ -57,6 +59,8 @@ export interface NhlPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: NhlPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** `useGameLines(sport)`'s lines: the player's game's line (P1). */
+  gameLines?: readonly UnifiedGameLine[] | null;
   /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
   teamDefenseAllowed?: NhlTeamDefenseAllowed[];
 }
@@ -234,6 +238,8 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
   });
 
   return {
+    // P1 (odds workstream): the player's game's line, from /api/odds/lines.
+    gameLine: todaysLineFromGameLines(input.gameLines, gamePkOf(active), gameSideOf(active)),
     usageMix,
     conditions,
     opponentUnit,

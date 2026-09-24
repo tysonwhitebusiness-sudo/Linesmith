@@ -14,6 +14,8 @@
  * `awayAbbr`/`homeAbbr`.
  */
 
+import type { UnifiedGameLine } from '@/lib/odds/types';
+import { gamePkOf, gameSideOf, todaysLineFromGameLines } from '@/lib/sports/shared/todaysLine';
 import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -47,6 +49,8 @@ export interface TennisPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: TennisPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** `useGameLines(sport)`'s lines: the player's game's line (P1). */
+  gameLines?: readonly UnifiedGameLine[] | null;
 }
 
 export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetailData | null {
@@ -248,6 +252,8 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
 
 
   return {
+    // P1 (odds workstream): the player's game's line, from /api/odds/lines.
+    gameLine: todaysLineFromGameLines(input.gameLines, gamePkOf(active), gameSideOf(active)),
     opponentUnit,
     binarySplit,
     careerH2H,

@@ -8,6 +8,7 @@
  * Pure: no fetching, no JSX.
  */
 
+import { marketLabel } from '@/lib/odds/props/marketLabels';
 import type { FootballBoxTeam, FootballGameResearchPayload } from '@/lib/sports/multiSport/footballGameResearch';
 import type { Drive, FootballPlay } from '@/lib/sports/espn/summaryParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
@@ -22,26 +23,6 @@ const faceOf = (league: string, id: string | null | undefined) => espnHeadshot(l
 
 type Payload = FootballGameResearchPayload;
 type Side = 'away' | 'home';
-
-export const FOOTBALL_MARKET_LABELS: Record<string, string> = {
-  'passing-yards': 'Passing yards',
-  'passing-tds': 'Passing TDs',
-  completions: 'Completions',
-  'pass-attempts': 'Pass attempts',
-  'passing-attempts': 'Pass attempts',
-  interceptions: 'Interceptions thrown',
-  'rushing-yards': 'Rushing yards',
-  'rushing-attempts': 'Rushing attempts',
-  'receiving-yards': 'Receiving yards',
-  receptions: 'Receptions',
-  'longest-reception': 'Longest reception',
-  'rush-rec-yards': 'Rush + rec yards',
-  'pass-rush-yards': 'Pass + rush yards',
-  tackles: 'Tackles',
-  assists: 'Tackle assists',
-  sacks: 'Sacks',
-  'anytime-td': 'Anytime TD',
-};
 
 export const quarterName = (p: number | null) => (p == null ? '' : p <= 4 ? `Q${p}` : p === 5 ? 'OT' : `${p - 4}OT`);
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
@@ -462,7 +443,7 @@ function footballLinesSection(payload: Payload, state: GameState): ResearchSecti
       imageUrl: faceOf(f.league, p.athleteId),
       imageKind: 'player' as const,
       values: {
-        market: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
+        market: marketLabel(p.market, f.league),
         line: p.line,
         over: `${am(p.over.price)} ${p.over.book}`,
         under: p.under ? `${am(p.under.price)} ${p.under.book}` : '—',
@@ -612,7 +593,7 @@ function footballPlayersSection(payload: Payload, state: GameState): ResearchSec
         href: `/${f.league}/player/${p.athleteId}`,
         imageUrl: faceOf(f.league, p.athleteId),
         side: p.side,
-        marketLabel: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, f.league),
         line: p.line,
         books: p.books,
         history: f.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [],
@@ -711,7 +692,7 @@ function footballNowSection(payload: Payload): ResearchSection {
         href: `/${f.league}/player/${p.athleteId}`,
         imageUrl: faceOf(f.league, p.athleteId),
         sideAbbr: p.side ? payload[p.side].abbr : null,
-        marketLabel: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, f.league),
         line: p.line,
         books: p.books,
         result: p.result,

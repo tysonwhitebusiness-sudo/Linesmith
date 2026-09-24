@@ -121,7 +121,7 @@ jobs:
           echo "  needs a live database:  test_game_context_roster, test_calibration, test_elo_and_pitcher_game_score,"
           echo "                          test_game_pick_lock, test_game_sim_cache,"
           echo "                          test_odds_lines_cycle, test_staking, test_write_prop_odds,"
-          echo "                          test_mlb_bradley_terry"
+          echo "                          test_mlb_bradley_terry, test_game_odds_history_point"
           echo "  25-50 min + live data:  test_mlb_mlp, test_mlb_tree_models, test_mlb_stacking,"
           echo "                          test_model_benchmark"
           echo "  scraper laptop only:    test_harvester_scrape (imports oddsharvester)"

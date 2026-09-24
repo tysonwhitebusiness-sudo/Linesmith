@@ -9,6 +9,7 @@
  * Pure: no fetching, no JSX.
  */
 
+import { marketLabel } from '@/lib/odds/props/marketLabels';
 import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
 import { pitchMix, type AtBat, type MlbWinProbabilityPoint } from '@/lib/sports/mlb/liveFeedParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
@@ -19,26 +20,6 @@ import type { PregameStarter } from '@/lib/sports/mlb/statcastRollupShapes';
 import { pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import { TEAM_ABBR_BY_ID } from '@/lib/sports/mlb/teamAliases';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
-
-const MLB_MARKET_LABELS: Record<string, string> = {
-  hits: 'Hits',
-  'total-bases': 'Total bases',
-  'home-runs': 'Home runs',
-  rbis: 'RBIs',
-  runs: 'Runs',
-  walks: 'Walks',
-  'batter-strikeouts': 'Strikeouts (batter)',
-  doubles: 'Doubles',
-  triples: 'Triples',
-  'stolen-bases': 'Stolen bases',
-  singles: 'Singles',
-  'hits-runs-rbis': 'Hits + runs + RBIs',
-  'pitcher-strikeouts': 'Strikeouts (pitcher)',
-  'pitcher-outs': 'Outs recorded',
-  'earned-runs': 'Earned runs',
-  'pitcher-hits-allowed': 'Hits allowed',
-  'pitcher-walks': 'Walks allowed',
-};
 
 const HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run']);
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
@@ -446,7 +427,7 @@ function mlbLinesSection(payload: MlbGameResearchPayload, state: GameState): Res
       imageUrl: mlbHeadshot(p.playerId),
       imageKind: 'player' as const,
       values: {
-        market: MLB_MARKET_LABELS[p.market] ?? p.market,
+        market: marketLabel(p.market, 'mlb'),
         line: p.line,
         over: p.over ? `${am(p.over.price)} ${p.over.book}` : '—',
         under: p.under ? `${am(p.under.price)} ${p.under.book}` : '—',
@@ -698,7 +679,7 @@ function mlbPlayersSection(payload: MlbGameResearchPayload, state: GameState): R
         href: `/mlb/player/${p.playerId}`,
         imageUrl: mlbHeadshot(p.playerId),
         side: p.side ?? sideById.get(p.playerId) ?? null,
-        marketLabel: MLB_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, 'mlb'),
         line: p.line,
         books: p.books,
         history: m.pregame.propHistory[`${p.playerId}|${p.market}`] ?? [],
@@ -813,7 +794,7 @@ function mlbNowSection(payload: MlbGameResearchPayload): ResearchSection {
         href: `/mlb/player/${p.playerId}`,
         imageUrl: mlbHeadshot(p.playerId),
         sideAbbr: p.side ? payload[p.side].abbr : null,
-        marketLabel: MLB_MARKET_LABELS[p.market] ?? p.market,
+        marketLabel: marketLabel(p.market, 'mlb'),
         line: p.line,
         books: p.books,
         result: p.result,

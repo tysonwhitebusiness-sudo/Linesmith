@@ -28,6 +28,7 @@
  * renders honestly ("insufficient") rather than needing special-casing here.
  */
 
+import { marketLabelTitle } from '@/lib/odds/props/marketLabels';
 import type { HistoryEntry, LiveState, PickCandidate, SplitEvidence, SportSnapshot, SubjectSummary } from '@/lib/core/types';
 import { resolveVenueWeather } from '@/lib/sports/shared/venueWeather';
 import type { WeatherContext } from '@/lib/core/types';
@@ -157,17 +158,6 @@ function matchupFavorableFor(marketKey: string, opponentDefenseAllowed: Nflverse
   if (!line) return null;
   return favorableFromRank(line.rank, NFL_TEAM_POOL_SIZE);
 }
-
-const MARKET_LABELS: Record<string, string> = {
-  'passing-yards': 'Passing Yards',
-  'passing-tds': 'Passing TDs',
-  'rushing-yards': 'Rushing Yards',
-  'rushing-tds': 'Rushing TDs',
-  'receiving-yards': 'Receiving Yards',
-  receptions: 'Receptions',
-  'receiving-tds': 'Receiving TDs',
-  'interceptions-thrown': 'Interceptions Thrown',
-};
 
 /**
  * Typical sportsbook lines, used until a real `prop_odds` row for that exact
@@ -393,7 +383,7 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
           },
           supportingSplits: [vsOpponentSplit],
           dimension: marketKey,
-          dimensionLabel: MARKET_LABELS[marketKey] ?? marketKey,
+          dimensionLabel: marketLabelTitle(marketKey, 'nfl'),
           category: 'over',
           categoryLabel: 'Over',
           line,

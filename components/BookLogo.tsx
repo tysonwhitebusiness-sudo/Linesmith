@@ -2,64 +2,33 @@
 
 import { useEffect, useState } from 'react';
 
+import { bookLabel, bookLogoUrl } from '@/lib/odds/books/registry';
+
 /**
  * Sportsbook mark.
  *
- * No sportsbook publishes a stable public logo CDN the way MLB does for team
- * marks, so this hotlinks each book's real site favicon via Google's public
- * favicon proxy — the actual icon, not a fabricated asset path. Falls back to
- * the plain text label on failure, matching TeamLogo's degradation chain.
+ * Names and logo domains come from the one book registry
+ * (`lib/odds/books/registry.ts`, P1 of the odds build); `bookLabel` and
+ * `bookLogoUrl` are re-exported here so existing imports keep working.
+ *
+ * With no logo (no domain, or the favicon failed) it draws a one-letter
+ * monogram tile rather than the book's name: the name used to be the
+ * fallback, and callers that printed the label beside the logo showed it
+ * twice ("parx parx"). `withLabel` adds the name beside the mark or tile.
  */
+export { bookLabel, bookLogoUrl };
 
-const BOOK_DOMAIN: Record<string, string> = {
-  draftkings: 'draftkings.com',
-  fanduel: 'fanduel.com',
-  fanatics: 'sportsbook.fanatics.com',
-  betmgm: 'betmgm.com',
-  caesars: 'caesars.com',
-  // the-odds-api's raw bookmaker key for Caesars — normalised everywhere
-  // else in the app, but the legacy game-odds feed passes this straight
-  // through, so it needs its own entry rather than going unrecognised.
-  williamhill_us: 'caesars.com',
-  pinnacle: 'pinnacle.com',
-  espnbet: 'espnbet.com',
-  bovada: 'bovada.lv',
-  pointsbet: 'pointsbet.com',
-  unibet: 'unibet.com',
-  // C4: the books the Slate shows most often but the map lacked.
-  kalshi: 'kalshi.com',
-  prophetx: 'prophetx.co',
-  hardrockbet: 'hardrock.bet',
-  betrivers: 'betrivers.com',
-};
-
-const BOOK_LABEL: Record<string, string> = {
-  draftkings: 'DraftKings',
-  fanduel: 'FanDuel',
-  fanatics: 'Fanatics',
-  betmgm: 'BetMGM',
-  caesars: 'Caesars',
-  williamhill_us: 'Caesars',
-  pinnacle: 'Pinnacle',
-  espnbet: 'ESPN Bet',
-  bovada: 'Bovada',
-  pointsbet: 'PointsBet',
-  unibet: 'Unibet',
-  kalshi: 'Kalshi',
-  prophetx: 'ProphetX',
-  hardrockbet: 'Hard Rock Bet',
-  betrivers: 'BetRivers',
-};
-
-export function bookLabel(id: string | undefined | null): string {
-  if (!id) return '';
-  return BOOK_LABEL[id] ?? id;
-}
-
-export function bookLogoUrl(id: string | undefined | null, pixelSize = 32): string | undefined {
-  if (!id) return undefined;
-  const domain = BOOK_DOMAIN[id];
-  return domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=${pixelSize}` : undefined;
+function Monogram({ label, size }: { label: string; size: number }) {
+  const letter = (label.match(/[A-Za-z0-9]/)?.[0] ?? '?').toUpperCase();
+  return (
+    <span
+      aria-hidden
+      style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.62)), lineHeight: `${size}px` }}
+      className="inline-block shrink-0 rounded-xs bg-ink text-center font-semibold text-paper"
+    >
+      {letter}
+    </span>
+  );
 }
 
 export interface BookLogoProps {
@@ -80,23 +49,26 @@ export function BookLogo({ bookId, size = 14, withLabel = false, className = '' 
 
   if (!bookId) return null;
 
-  if (!url || failed) {
-    return <span className={`text-overline tracking-normal font-medium text-ink-muted ${className}`}>{bookLabel(bookId)}</span>;
-  }
+  const label = bookLabel(bookId);
+  const mark = !url || failed ? (
+    <Monogram label={label} size={size} />
+  ) : (
+    <img
+      src={url}
+      alt=""
+      aria-hidden
+      loading="lazy"
+      decoding="async"
+      style={{ width: size, height: size }}
+      onError={() => setFailed(true)}
+      className="shrink-0 rounded-xs object-contain"
+    />
+  );
 
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
-      <img
-        src={url}
-        alt=""
-        aria-hidden
-        loading="lazy"
-        decoding="async"
-        style={{ width: size, height: size }}
-        onError={() => setFailed(true)}
-        className="shrink-0 rounded-xs object-contain"
-      />
-      {withLabel ? <span className="text-overline font-normal tracking-normal text-ink-muted">{bookLabel(bookId)}</span> : null}
+      {mark}
+      {withLabel ? <span className="text-overline font-normal tracking-normal text-ink-muted">{label}</span> : null}
     </span>
   );
 }

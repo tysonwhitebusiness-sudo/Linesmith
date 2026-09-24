@@ -9,6 +9,7 @@
  * Pure: no fetching, no JSX.
  */
 
+import { marketLabel } from '@/lib/odds/props/marketLabels';
 import type { NbaGameResearchPayload, NbaPropResult } from '@/lib/sports/nba/gameResearch';
 import type { CourtPlay } from '@/lib/sports/espn/summaryParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
@@ -19,22 +20,6 @@ import { espnHeadshot } from '@/lib/sports/shared/identity';
 
 type Payload = NbaGameResearchPayload;
 type Side = 'away' | 'home';
-
-export const NBA_MARKET_LABELS: Record<string, string> = {
-  points: 'Points',
-  rebounds: 'Rebounds',
-  assists: 'Assists',
-  steals: 'Steals',
-  blocks: 'Blocks',
-  turnovers: 'Turnovers',
-  threes: 'Threes made',
-  'three-pointers': 'Threes made',
-  'points-rebounds-assists': 'Pts + reb + ast',
-  'points-rebounds': 'Pts + reb',
-  'points-assists': 'Pts + ast',
-  'rebounds-assists': 'Reb + ast',
-  'steals-blocks': 'Steals + blocks',
-};
 
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
 const signedLine = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
@@ -319,7 +304,7 @@ function nbaLinesSection(payload: Payload, state: GameState): ResearchSection {
       labelNote: p.side ? payload[p.side].abbr : null,
       href: `/nba/player/${p.athleteId}`,
       values: {
-        market: NBA_MARKET_LABELS[p.market] ?? p.market,
+        market: marketLabel(p.market, 'nba'),
         line: p.line == null ? 'yes/no' : p.line,
         over: `${am(p.over.price)} ${p.over.book}`,
         under: p.under ? `${am(p.under.price)} ${p.under.book}` : '—',
@@ -368,7 +353,7 @@ function nbaPlayersSection(payload: Payload, state: GameState): ResearchSection 
     state,
     props: n.props
       .filter((p) => p.books >= 2)
-      .map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, imageUrl: espnHeadshot('nba', p.athleteId), side: p.side, marketLabel: NBA_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [] })),
+      .map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, imageUrl: espnHeadshot('nba', p.athleteId), side: p.side, marketLabel: marketLabel(p.market, 'nba'), line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [] })),
   });
 }
 
@@ -417,7 +402,7 @@ function nbaNowSection(payload: Payload): ResearchSection {
     ],
     [
       propsTrackerCard(
-        n.props.map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, imageUrl: espnHeadshot('nba', p.athleteId), sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: NBA_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, result: p.result })),
+        n.props.map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, imageUrl: espnHeadshot('nba', p.athleteId), sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: marketLabel(p.market, 'nba'), line: lineOf(p), books: p.books, result: p.result })),
       ),
     ],
   ];

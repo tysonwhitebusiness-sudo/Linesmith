@@ -61,8 +61,7 @@ const OUTLIER_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id: str
   },
   { key: 'bookmaker', label: 'Book', sortable: false, render: (r) => (
     <span className="flex items-center gap-1.5">
-      <BookLogo bookId={r.bookmaker} size={18} />
-      <span className="text-ink">{bookLabel(r.bookmaker)}</span>
+      <BookLogo bookId={r.bookmaker} size={18} withLabel />
     </span>
   ) },
   { key: 'odds', label: 'Price', numeric: true, render: (r) => american(r.odds) },
