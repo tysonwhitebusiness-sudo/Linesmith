@@ -63,6 +63,8 @@ brackets.
 
 ## 2. The build phases, in order
 
+**The detailed build spec for each phase is in `docs/design/odds-build/`** (README + one file per phase + the scraper lane). This section is the summary; the spec files win where they are more specific.
+
 ### The time rule (operator, 2026-09-24)
 
 **No phase waits on elapsed time.** A test that needs time to pass (a two-day

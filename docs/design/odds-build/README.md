@@ -26,6 +26,7 @@ operator still owns are marked ⚑ and are not made by the builder.
 | P11 Edge | `P11-edge.md` | Python + app |
 | P12 Alerts, slip, flags | `P12-alerts-slip-flags.md` | app + Python |
 | P13 Closing-line test | `P13-closing-line-test.md` | background |
+| Scraper lane (G3, G7, G5, S5, G4, G1→G2) | `S-scraper-lane.md` | laptop, after P4 |
 
 ## Conventions every phase follows
 

@@ -53,8 +53,7 @@ Read it next. In short:
    - live bug: game-line history misses line moves.
 
    **Detailed build specs, one per phase:** `docs/design/odds-build/`
-   (README + P0…P13). **P0–P7 are written and committed; P8–P13 are in
-   progress.** P2's vocabulary data and generator are in
+   (README + P0…P13 + the scraper lane). **All written and committed.** P2's vocabulary data and generator are in
    `docs/design/odds-build/data/`. Nothing is built. **P0 waits on the
    operator's green light.** P0's first step is the operator's: restart the
    stalled scraper. The builder's process stop was refused by the
