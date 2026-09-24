@@ -226,6 +226,11 @@ and the NFL referee summary become `game_reference` rows via
 - umpires and referees are keyed by the game when the VSiN row names the
   matchup.
 
+comparenbet's per-event book links (`reference_data`, the `cnb_event`
+kind; R5 kept `_links` for 40+ books) become `kind='book_link'` rows, with
+`subject` = the canonical bookmaker and `data` = `{"url": …}`. They feed
+P12's "open at book".
+
 They are written on change. The builder reads 3 real rows of each kind in
 `scraper.db` before writing the mapping and records their shape in this
 section.

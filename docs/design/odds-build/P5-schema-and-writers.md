@@ -206,8 +206,8 @@ CREATE TABLE IF NOT EXISTS game_reference (
   sport       text NOT NULL,
   game_id     text NOT NULL,
   source      text NOT NULL,              -- vsin
-  kind        text NOT NULL CHECK (kind IN ('power_rating','umpire','referee')),
-  subject     text NOT NULL,              -- team name for power ratings; '' for game-level
+  kind        text NOT NULL CHECK (kind IN ('power_rating','umpire','referee','book_link')),
+  subject     text NOT NULL,              -- team name for power ratings; bookmaker for book_link; '' for game-level
   data        jsonb NOT NULL,             -- the source row as stored by the scraper
   observed_at timestamptz NOT NULL,
   PRIMARY KEY (sport, game_id, source, kind, subject)
