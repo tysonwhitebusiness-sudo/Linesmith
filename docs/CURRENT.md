@@ -58,6 +58,8 @@ Read it next. In short:
    operator's green light.** P0's first step is the operator's: restart the
    stalled scraper. The builder's process stop was refused by the
    permission system.
+   **Unattended run P0 → P4 handoff: `docs/design/odds-build/HANDOFF-P0-P4.md`** (approvals, the
+   six spec corrections to make while waiting for D24, the order of work).
    Background: `docs/design/odds-rebuild/HANDOFF-OM.md` covers the four mockup rounds (approved); the
    resume prompt is `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.
 
