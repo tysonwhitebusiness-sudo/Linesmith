@@ -29,12 +29,16 @@ Read it next. In short:
    `/diagnostics`.
 6. **Scraper bridge, line movement + market edge (new workstream, 2026-09-23):**
    `docs/design/scraper-bridge-and-edge-gameplan-2026-09-23.md`. Decisions
-   are settled (§1). **Source run: R0 + R1 + R2 are built and live in the
-   odds-scraper repo** (§4c STATUS; scraper's own `HANDOFF.md` top section).
-   R2 = DraftKings, FanDuel, BetMGM, BetRivers (lines + props, NJ), verified
-   live 2026-09-24. **R3 (Underdog, Sleeper) waits for the operator's go.**
-   Open from R2: FanDuel NBA/NHL prop tab slugs (check when those seasons
-   open). Nothing in line-buddy/Supabase changed for the
+   are settled (§1). **Source run: R0-R3 built and live in the odds-scraper
+   repo; operator said (2026-09-24) run R3, R4 and R5 in one unattended pass,
+   testing after every step.** R2 = DraftKings, FanDuel, BetMGM, BetRivers;
+   R3 = Sleeper + Underdog (`898074c`) plus new `splits` / `reference_data`
+   tables; header fixes `370dffd` (Underdog Client-Version, Pinnacle
+   x-api-key). comparenbet key-collision + fair-price fix `eda615d` cut its
+   rows 76%. **IN PROGRESS: R4** (DK Network splits, VSiN, ScoresAndOdds
+   consensus, Covers, SBD, Action Network), then R5. Research so far is in the
+   scraper `HANDOFF.md`. Open from R2: FanDuel NBA/NHL prop tab slugs (check
+   when those seasons open). Nothing in line-buddy/Supabase changed for the
    source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
 
