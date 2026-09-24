@@ -16,8 +16,8 @@ test('every canonical bookmaker has a registry entry with a label', () => {
   }
 });
 
-test('87 entries; no two books share a display name except Caesars and its the-odds-api key', () => {
-  assert.equal(Object.keys(BOOKS).length, 87);
+test('90 entries; no two books share a display name except Caesars and its the-odds-api key', () => {
+  assert.equal(Object.keys(BOOKS).length, 90, "P1's 87 + P2's westgate, skybet, betfair");
   const byLabel = new Map<string, string[]>();
   for (const [id, e] of Object.entries(BOOKS)) byLabel.set(e.label, [...(byLabel.get(e.label) ?? []), id]);
   const dupes = [...byLabel.entries()].filter(([, ids]) => ids.length > 1);
@@ -55,5 +55,18 @@ test('guard: no page prints a book label right after a <BookLogo> for the same b
     for (const m of src.matchAll(re)) {
       assert.notEqual(m[1]!.trim(), m[2]!.trim(), `${f}: <BookLogo> then bookLabel(${m[2]}) prints the name twice; use withLabel`);
     }
+  }
+});
+
+test('P2: every scraper book added to the alias maps has a registry entry', () => {
+  const P2_BOOKS = ['sugarhouse', 'ladbrokes', 'bookmaker', 'polymarketus', 'courtside', 'everygame', 'betmgmnv', 'caesarsnv',
+    'wynn', 'stations', 'boomers', 'southpoint', 'westgate', 'coolbet', 'betanysports', 'playup', 'nordicbet', 'tabtouch',
+    'riverscasino', 'betfairexchange', 'betfairsportsbook', 'betfair', 'leovegas', 'grosvenor', 'betsson', 'gtbets', 'casumo',
+    'marathonbet', 'tab', 'betvictor', 'sportsbet', 'virginbet', 'livescorebet', 'coral', 'betway', 'bet105', 'neds', 'skybet',
+    'betrsportsbook', 'betano', 'betanything', 'boylesports', 'tipico', 'heritage', '888sport', 'paddypower', 'aceshigh',
+    'justbet', 'williamhill'];
+  for (const id of P2_BOOKS) {
+    assert.ok(CANONICAL_BOOKMAKERS.has(id), `${id} is not a canonical bookmaker`);
+    assert.ok(BOOKS[id]?.label, `${id} has no registry entry`);
   }
 });

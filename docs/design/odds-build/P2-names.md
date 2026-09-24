@@ -221,3 +221,67 @@ None. (P6's bridge reports its own unmapped rows daily; that is P6's check.)
     `tests/book-registry.test.ts`;
   - `.github/workflows/ci.yml` (one step);
   - `docs/design/odds-build/data/*` (re-run outputs).
+
+## Result
+
+**Closed 2026-09-24 ~22:25 UTC.** No deploy (P6 is the first caller).
+
+- **Census re-run** at 21:45 UTC (`data/vocab-2026-09-24b.json`, 3 min 24 s,
+  read-only). **Coverage gate met:** props 99.8% mapped + 0.1% position =
+  99.9% of 4,802,541 rows (gate ≥ 99%); game markets 96.5% of 198,194
+  (gate ≥ 96%). The other 3.5% are player/special rows filed as game
+  offers, not game markets.
+- **Verify list decided** from 5+ real offers each. The decisions and their
+  evidence are in the generator (`MANUAL`, and a new `SKIP` set):
+  - **Mapped:**
+    - `touchdown to be` → `anytime-td`: betrivers, lines 1.5/2.5 only, Over
+      only, +3300…+18000. These are the 2+/3+ rungs of a TD-count ladder;
+      the line carries the count, as the existing "total touchdowns" rule
+      does.
+    - `base` → `total-bases`: betmgm batters, lines 0.5 (145) and 1.5 (97),
+      Over/Under pairs; betmgm lists "Hits" separately.
+    - `wr.te` / `qb` / `rb fantasy points` → `fantasy-points`: DraftKings
+      lines 7.0–20.75 at −110/−110.
+  - **Skipped:**
+    - `combinedruns`: one market a day, ambiguous between runs and runs +
+      RBIs;
+    - `1+ pass tds in each half`: a yes/no special;
+    - `game high rush/pass yards`: who-leads specials;
+    - `regular season goals/points`: NHL season futures;
+    - `finishing position`: the spec guessed golf; it is **NASCAR** (Erik
+      Jones, Logano, Chastain), a sport the app does not cover.
+  - `1st Inn. Pitch Count` never reached the verify step: the period rule
+    already maps it to `1i-pitcher-pitches-thrown`, which the lines
+    (14.5–19.5 on pitchers) confirm.
+  - `VERIFY` is now empty, and the test asserts it.
+- **New labels in the evening census:**
+  - betmgm camel-case spellings mapped: `LongestPass`,
+    `PassingRushingYards`, `PassAttempt`, `PassCompleted`,
+    `RushingAttempt`; also underdog `Saves`;
+  - esports "on Maps 1+2+3" and NASCAR "Qualifying Position" added to
+    `NO_APP_SPORT_PATTERNS`;
+  - **6 labels left unmapped, all under 30 rows a day and with no app
+    market:** `player_punting_numPunts` (28), `player_passing_sacksTaken`
+    (19), `player_punting_puntsInside20` (14), `Plus Minus` (14),
+    `Faceoffs Won` (4), `Power Play Points` (2).
+- **`scraper_markets.py`:** the generator's dictionaries, extracted
+  verbatim from its source, plus the public API.
+  `test_scraper_markets.py` (a CI step) checks every row of both CSVs (424
+  prop labels, 244 game markets), the book sets, and that the module's
+  dictionaries equal the generator's (a drift check).
+- **Alias maps:** 28 new keys plus 6 comparenbet spellings, and 49 books
+  plus 7 spellings, in both languages. The drift test now also asserts that
+  the canonical market **value** sets are identical: they were already, so
+  nothing was hiding. `pass-rush-yards` moved from P1's legacy labels to
+  `MARKET_LABELS` (same wording). Period props label as "1st half ·
+  Receptions".
+- **Registry:** +3 rows (`westgate`, `skybet`, `betfair`), 90 in all; every
+  P2 book has an entry.
+- **Tests:**
+  - `test_entity_resolution`, `test_canonical_bookmaker`,
+    `test_scraper_markets` and `test_yield_contract` pass;
+  - the market-labels, book-registry and config-drift tests: 18/18;
+  - full `npm test` and build: see the commit.
+- **The render check** (book names and market labels come from the
+  registry) was done in P1's renders, which are the same registries. P2
+  changes no component.

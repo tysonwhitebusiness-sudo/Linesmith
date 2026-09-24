@@ -6,7 +6,7 @@
  * pages showed `bet365`, `fanatics` and, where a caller printed the fallback
  * label again beside it, `parx parx`. Every page now reads names from here.
  *
- * The 87 entries: the approved mockup's book map (`docs/design/odds-rebuild/
+ * The 90 entries (87 from P1, plus P2's westgate, skybet, betfair): the approved mockup's book map (`docs/design/odds-rebuild/
  * om-data.js` -> `OM.books`, built by the scraper's `canonical_book`), the 9
  * canonical books the mockup never met, and `williamhill_us` (the-odds-api's
  * raw key for Caesars, which the legacy game feed passes straight through).
@@ -65,6 +65,7 @@ export const BOOKS: Readonly<Record<string, BookEntry>> = {
   southpoint: { label: 'South Point', group: 'nevada', domain: 'southpointcasino.com' },
   stations: { label: 'Station Casinos', group: 'nevada', domain: 'stationcasinos.com' },
   wynn: { label: 'Wynn', group: 'nevada', domain: 'wynnbet.com' },
+  westgate: { label: 'Westgate', group: 'nevada', domain: 'westgatedestinations.com' }, // P2
   aceshigh: { label: 'Aces High', group: 'offshore', domain: 'aceshigh.ag' },
   bet105: { label: 'Bet105', group: 'offshore', domain: 'bet105.ag' },
   betanysports: { label: 'BetAnySports', group: 'offshore', domain: 'betanysports.eu' },
@@ -87,6 +88,8 @@ export const BOOKS: Readonly<Record<string, BookEntry>> = {
   betrsportsbook: { label: 'Betr (AU)', group: 'intl', domain: 'betr.com.au' },
   betsson: { label: 'Betsson', group: 'intl', domain: 'betsson.com' },
   betvictor: { label: 'BetVictor', group: 'intl', domain: 'betvictor.com' },
+  skybet: { label: 'Sky Bet', group: 'intl', domain: 'skybet.com' }, // P2
+  betfair: { label: 'Betfair', group: 'intl', domain: 'betfair.com' }, // P2
   betway: { label: 'Betway', group: 'intl', domain: 'betway.com' },
   boylesports: { label: 'BoyleSports', group: 'intl', domain: 'boylesports.com' },
   casumo: { label: 'Casumo', group: 'intl', domain: 'casumo.com' },

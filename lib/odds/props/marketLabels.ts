@@ -15,7 +15,7 @@ import { CANONICAL_MARKET_KEYS } from './entityResolution';
  * every canonical key out of that last step.
  */
 
-/** The 72 canonical keys (`CANONICAL_MARKET_KEYS`), sentence case. */
+/** Every canonical key (`CANONICAL_MARKET_KEYS`: P1's 72 plus P2's 28 scraper keys), sentence case. */
 export const MARKET_LABELS: Readonly<Record<string, string>> = {
   aces: 'Aces',
   'anytime-goalscorer': 'Anytime goalscorer',
@@ -89,6 +89,35 @@ export const MARKET_LABELS: Readonly<Record<string, string>> = {
   'two-plus-goals': '2+ goals',
   walks: 'Walks',
   'yellow-cards': 'Yellow cards',
+  // P2 (2026-09-24): the scraper vocabulary's new canonical keys (scraper_markets.NEW_KEYS).
+  'pass-rush-yards': 'Pass + rush yards',
+  targets: 'Targets',
+  'tackles-assists': 'Tackles + assists',
+  'solo-tackles': 'Solo tackles',
+  'defensive-interceptions': 'Interceptions (defense)',
+  'fumbles-lost': 'Fumbles lost',
+  'extra-points-made': 'Extra points made',
+  'last-td-scorer': 'Last TD scorer',
+  'fantasy-points': 'Fantasy points',
+  'to-receive-card': 'To be carded',
+  'pitcher-pitches-thrown': 'Pitches thrown',
+  'pitcher-strikes-thrown': 'Strikes thrown',
+  'pitcher-batters-faced': 'Batters faced',
+  'pitcher-hits-walks-earned-runs': 'Hits + walks + earned runs allowed',
+  'pitcher-runs-allowed': 'Runs allowed',
+  'longest-pass': 'Longest pass',
+  'rush-yards-per-attempt': 'Rush yards per attempt',
+  'sets-won': 'Sets won',
+  'sets-played': 'Sets played',
+  'games-played': 'Games played',
+  'tiebreakers-played': 'Tiebreakers played',
+  'double-faults': 'Double faults',
+  'break-points-won': 'Break points won',
+  'points-won': 'Points won',
+  strokes: 'Strokes',
+  'birdies-or-better': 'Birdies or better',
+  'bogeys-or-worse': 'Bogeys or worse',
+  'goalie-fantasy-points': 'Goalie fantasy points',
 };
 
 /** Candidate dimensions and older adapter keys; kept so no current label changes. */
@@ -96,7 +125,7 @@ const LEGACY_LABELS: Readonly<Record<string, string>> = {
   completions: 'Completions',
   'passing-attempts': 'Pass attempts',
   interceptions: 'Interceptions thrown',
-  'pass-rush-yards': 'Pass + rush yards',
+  // 'pass-rush-yards' was here until P2 made it a canonical key (MARKET_LABELS).
 };
 
 /**
@@ -126,6 +155,10 @@ export const SPORT_MARKET_LABELS: Readonly<Partial<Record<Sport, Record<string, 
   soccer: { 'anytime-goalscorer': 'Anytime scorer', 'first-goalscorer': 'First scorer' },
 };
 
+/** P2: period props from the scraper ("1h-receptions" -> "1st half · Receptions"). */
+const PERIOD_PROP = /^(1h|1q|1i|1s)-(.+)$/;
+const PERIOD_LABELS: Readonly<Record<string, string>> = { '1h': '1st half', '1q': '1st quarter', '1i': '1st inning', '1s': '1st set' };
+
 const warned = new Set<string>();
 
 export function marketLabel(key: string, sport?: Sport | string | null): string {
@@ -133,6 +166,9 @@ export function marketLabel(key: string, sport?: Sport | string | null): string 
   if (bySport) return bySport;
   const label = MARKET_LABELS[key] ?? LEGACY_LABELS[key];
   if (label) return label;
+  // P2: a period prop is "<period>-<base key>" (scraper_markets' PERIOD_PREFIX).
+  const period = PERIOD_PROP.exec(key);
+  if (period) return `${PERIOD_LABELS[period[1]!]} · ${marketLabel(period[2]!, sport)}`;
   if (process.env.NODE_ENV !== 'production' && !CANONICAL_MARKET_KEYS.has(key) && !warned.has(key)) {
     warned.add(key);
     console.warn(`marketLabel: no label for market key "${key}"${sport ? ` (${sport})` : ''}; sentence-casing it`);

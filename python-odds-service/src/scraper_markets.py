@@ -1,29 +1,37 @@
-"""P2 seed: every scraper prop label and game-market string, mapped to line-buddy keys.
+"""The scraper's vocabulary -> the app's market keys (P2 of the odds build, 2026-09-24).
 
-Reads a census of the scraper DB (read-only) and writes two CSVs beside this file:
+A pure module (no DB, no network). Its dictionaries are ported VERBATIM from
+docs/design/odds-build/data/gen_scraper_market_map.py, the generator whose
+dictionaries are the decisions (P2-names.md), and whose CSVs
+(scraper_prop_labels.csv, scraper_game_markets.csv) are this module's test
+fixture (test_scraper_markets.py). Change a decision in the generator first,
+re-run it, then port it here; the test fails if the two drift.
 
-    scraper_prop_labels.csv   source, label, rows_today, key, rule, status
-    scraper_game_markets.csv  market, rows_2h, period, type, status
+Only Python reads scraper labels: the bridge (P6) writes canonical keys, so
+TypeScript never sees one. The new canonical keys (NEW_KEYS) are also identity
+aliases in both MARKET_KEY_ALIASES maps, so labels and the drift test know them.
 
-Run (line-buddy's venv, so entity_resolution imports):
-    python-odds-service/.venv/Scripts/python.exe docs/design/odds-build/data/gen_scraper_market_map.py <vocab.json>
-
-`vocab.json` is produced by the census query in P2-names.md §1. The decisions below
-(MANUAL, PERIOD, POSITION_DEPENDENT, NO_APP_SPORT) ARE the spec: P2 ports them into
-python-odds-service/src/scraper_markets.py and uses these CSVs as its coverage fixture.
+Some labels mean different things by source and by player: "Strikeouts" is
+pitcher strikeouts at Pinnacle/DraftKings/4codds and batter strikeouts
+elsewhere. So the map is source-scoped first (SOURCE_MANUAL), and the MLB
+labels in POSITION_DEPENDENT resolve from the matched player's roster position
+(P3): a pitcher gets the pitching key, anyone else the batting key, and a
+two-way player stays unresolved, never guessed.
 """
 from __future__ import annotations
 
-import collections
-import csv
-import json
-import os
 import re
-import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "..", "python-odds-service", "src"))
-from entity_resolution import resolve_market_key  # noqa: E402
+from entity_resolution import resolve_market_key
+
+PITCHER_POSITIONS = frozenset({"P", "SP", "RP"})
+TWO_WAY_POSITIONS = frozenset({"TWP"})
+
+# Consensus/opener lines (never a sportsbook price; anopen feeds P5's openers,
+# not prices) and book codes nobody has identified yet (kept on the laptop).
+NON_PRICE_BOOKS = frozenset({"comparenbet_fair", "anconsensus", "anopen"})
+UNIDENTIFIED_BOOKS = frozenset({"4c", "4cx", "apex", "3et", "sharpbookc", "sharpag", "sharpbet",
+                                "amapola", "vertex", "buckeye", "predictfun", "playersfantasy", "pph", "hard"})
 
 
 def norm(label: str) -> str:
@@ -33,9 +41,9 @@ def norm(label: str) -> str:
     return s.strip()
 
 
+
 # ---------------------------------------------------------------------------
-# NEW canonical keys P2 adds to BOTH alias maps (identity aliases) and to
-# P1's MARKET_LABELS. Label in parentheses.
+# Prop labels (verbatim from the generator)
 # ---------------------------------------------------------------------------
 NEW_KEYS = {
     "pass-rush-yards": "Pass + rush yards",
@@ -68,7 +76,6 @@ NEW_KEYS = {
     "goalie-fantasy-points": "Goalie fantasy points",
 }
 
-# Period prefixes for player props: the key is "<prefix>-<base key>".
 PERIOD_PREFIX = [
     (re.compile(r"^(1h|1st half|first half)\s+"), "1h"),
     (re.compile(r"^(1q|1st quarter|first quarter)\s+"), "1q"),
@@ -76,9 +83,6 @@ PERIOD_PREFIX = [
     (re.compile(r"^(1st set)\s+"), "1s"),
 ]
 
-# (normalized label) -> key, for labels the app alias map does not resolve or
-# resolves wrongly for the scraper's sources. Source-scoped overrides are in
-# SOURCE_MANUAL. Values must be an existing canonical key or a NEW_KEYS key.
 MANUAL = {
     # comparenbet (SportsGameOdds naming): player_<group>_<stat>
     "player touchdowns": "anytime-td", "player anytime td": "anytime-td",
@@ -173,7 +177,6 @@ MANUAL = {
     "rushingattempt": "rushing-attempts", "saves": "saves",
 }
 
-# Verify-list labels decided NOT to map (P2 step 2, 2026-09-24), with the evidence.
 SKIP = {
     # betmgm: one market a day (A.J. Ewing, 0.5), a player "combined runs" that could be
     # runs or runs+RBIs; not certain from the label or the prices.
@@ -188,8 +191,6 @@ SKIP = {
     "finishing position": "motorsport (no app sport)",
 }
 
-# (source, normalized label) -> key: where the source's meaning differs from the
-# global one. Pinnacle/4codds list only pitcher strikeouts in MLB.
 SOURCE_MANUAL = {
     ("pinnacle", "total strikeouts"): "pitcher-strikeouts",
     ("4codds", "total strikeouts"): "pitcher-strikeouts",
@@ -199,9 +200,6 @@ SOURCE_MANUAL = {
     ("4codds", "total earned runs"): "earned-runs",
 }
 
-# MLB labels whose meaning depends on whether the player pitches. Resolved at
-# bridge time from the matched roster entry's position (P3): pitcher -> first,
-# otherwise -> second; a two-way player (position TWP) stays UNRESOLVED.
 POSITION_DEPENDENT = {
     "strikeouts": ("pitcher-strikeouts", "batter-strikeouts"),
     "strike outs": ("pitcher-strikeouts", "batter-strikeouts"),
@@ -211,8 +209,6 @@ POSITION_DEPENDENT = {
     "hits": ("pitcher-hits-allowed", "hits"),
 }
 
-# Labels needing a sample check before mapping (their meaning is not certain
-# from the label alone). P2 step 2 resolves each by reading real offers.
 VERIFY: dict[str, str] = {}  # every label on the P2 verify list was decided (MANUAL or SKIP)
 
 # Team markets that some sources file among player props: never a player prop.
@@ -225,6 +221,20 @@ NO_APP_SPORT_PATTERNS = [
     r"on maps", r"qualifying position",  # esports maps; NASCAR qualifying (2026-09-24 census)
 ]
 
+NOT_PLAYER_PROP = {"team total runs"}
+
+# Markets from sports the app does not cover: never mapped, never bridged.
+NO_APP_SPORT_PATTERNS = [
+    r"kills", r"headshots", r"round finish", r"^finishes$", r"^knockouts$", r"significant strikes",
+    r"^submissions$", r"takedowns", r"fight time", r"total fight time", r"in games 1\+2",
+    r"on maps", r"qualifying position",  # esports maps; NASCAR qualifying (2026-09-24 census)
+]
+
+NO_APP_SPORT_PATTERNS = [
+    r"kills", r"headshots", r"round finish", r"^finishes$", r"^knockouts$", r"significant strikes",
+    r"^submissions$", r"takedowns", r"fight time", r"total fight time", r"in games 1\+2",
+    r"on maps", r"qualifying position",  # esports maps; NASCAR qualifying (2026-09-24 census)
+]
 
 def map_label(source: str, label: str) -> tuple[str | None, str, str]:
     """-> (key, rule, status). status: mapped | position | verify | no-app-sport | unmapped."""
@@ -262,8 +272,9 @@ def map_label(source: str, label: str) -> tuple[str | None, str, str]:
     return None, "none", "unmapped"
 
 
+
 # ---------------------------------------------------------------------------
-# Game markets: "<period>_<type>" grammar.
+# Game markets: "<period>_<type>" (verbatim from the generator)
 # ---------------------------------------------------------------------------
 GAME_PERIOD = [
     (r"^(1h)_", "1h"), (r"^(2h)_", "2h"), (r"^(1q)_", "1q"), (r"^(2q)_", "2q"), (r"^(3q)_", "3q"), (r"^(4q)_", "4q"),
@@ -308,41 +319,40 @@ def map_game_market(m: str) -> tuple[str, str | None, str]:
     return period, t, "mapped" if t else "unmapped"
 
 
-def main(vocab_path: str) -> None:
-    v = json.load(open(vocab_path))
-    rows = []
-    for src, stat, n in v["prop_stats"]:
-        key, rule, status = map_label(src, stat or "")
-        rows.append((src, stat, n, key or "", rule, status))
-    rows.sort(key=lambda r: -r[2])
-    with open(os.path.join(HERE, "scraper_prop_labels.csv"), "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["source", "label", "rows_today", "key", "rule", "status"])
-        w.writerows(rows)
-    tot = sum(r[2] for r in rows)
-    by = collections.Counter()
-    for r in rows:
-        by[r[5]] += r[2]
-    print("props:", {k: f"{v_ / tot:.1%}" for k, v_ in by.most_common()}, f"of {tot:,}")
 
-    gm = collections.Counter()
-    for _src, m, n in v["game_markets"]:
-        gm[m] += n
-    grows = []
-    for m, n in gm.most_common():
-        p, t, st = map_game_market(m)
-        grows.append((m, n, p, t or "", st))
-    with open(os.path.join(HERE, "scraper_game_markets.csv"), "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["market", "rows_2h", "period", "type", "status"])
-        w.writerows(grows)
-    gt = sum(r[1] for r in grows)
-    gb = collections.Counter()
-    for r in grows:
-        gb[r[4].split(" ")[0]] += r[1]
-    print("game markets:", {k: f"{v_ / gt:.1%}" for k, v_ in gb.most_common()}, f"of {gt:,}")
-    print("unmapped game markets:", [r[0] for r in grows if r[4] == "unmapped"])
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+def prop_market_key(source: str, label: str, position: str | None = None) -> str | None:
+    """The app market key for a scraper prop label, or None (unmapped, verify, skip,
+    no app sport, team market). `position` is the matched roster position (P3); a
+    POSITION_DEPENDENT label with no position, or a two-way player, returns None."""
+    key, _rule, status = map_label(source, label or "")
+    if status == "mapped":
+        return key
+    if status == "position" and key:
+        pos = (position or "").strip().upper()
+        if not pos or pos in TWO_WAY_POSITIONS:
+            return None
+        pitcher_key, other_key = key.split("|")
+        return pitcher_key if pos in PITCHER_POSITIONS else other_key
+    return None
 
 
-if __name__ == "__main__":
-    main(sys.argv[1])
+def prop_label_status(source: str, label: str) -> str:
+    """mapped | position | verify | skip | no-app-sport | not-a-player-prop | unmapped:
+    what the bridge reports for a row it did not write."""
+    return map_label(source, label or "")[2]
+
+
+def game_market(market: str) -> tuple[str, str] | None:
+    """(period, type) for a scraper game-market string, or None. period: fg, 1h, 2h,
+    1q..4q, p1..p4, f3, f5, f7, i1..i9, s1, m10, live. type: the GAME_TYPE values."""
+    period, typ, status = map_game_market(market or "")
+    return (period, typ) if status == "mapped" and typ else None
+
+
+def bridgeable_book(book_key: str | None) -> bool:
+    """False for None, a NON_PRICE_BOOKS row (a consensus or opener line, never a
+    sportsbook price) and an UNIDENTIFIED_BOOKS code (kept on the laptop until identified)."""
+    return bool(book_key) and book_key not in NON_PRICE_BOOKS and book_key not in UNIDENTIFIED_BOOKS

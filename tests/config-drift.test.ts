@@ -90,6 +90,17 @@ test('market key aliases: every key TS knows, Python maps the same way', () => {
   assert.deepEqual(disagreements, [], 'the two alias maps disagree on a shared key');
 });
 
+test('market key aliases: both languages produce exactly the same canonical keys (P2)', () => {
+  // The test above only compares keys both maps share, so a canonical key
+  // added to one language alone passed silently. The key sets may still
+  // differ (each language has provider-specific spellings); the canonical
+  // VALUE sets may not.
+  const ts = new Set(tsMap(TS_ENTITY, 'const MARKET_KEY_ALIASES').values());
+  const py = new Set(pyMap(PY_ENTITY, 'MARKET_KEY_ALIASES: dict[str, str] = {').values());
+  assert.deepEqual([...ts].filter((v) => !py.has(v)).sort(), [], 'canonical keys only TypeScript produces');
+  assert.deepEqual([...py].filter((v) => !ts.has(v)).sort(), [], 'canonical keys only Python produces');
+});
+
 test('the Propline MLB vocabulary (task 5.1) is present in BOTH languages', () => {
   // These are the keys the live 2026-08-29 capture proved Propline sends, and
   // whose absence was the real cause of P2 C1. If one language gains them and
@@ -125,7 +136,17 @@ test('bookmaker aliases agree across languages', () => {
   assert.deepEqual(disagreements, [], 'the two bookmaker maps disagree');
   // Task 5.3's additions specifically — a canonicalisation that exists in one
   // language collapses spellings there and not in the other.
-  for (const k of ['lowvig', 'mybookie', 'betus', 'matchbook', 'smarkets', 'rebet', 'onexbet', 'tabau']) {
+  // P2's scraper books (2026-09-24), identity aliases and the scraper's spellings.
+  const P2_BOOKS = [
+    'sugarhouse', 'ladbrokes', 'bookmaker', 'polymarketus', 'courtside', 'everygame', 'betmgmnv', 'caesarsnv', 'wynn',
+    'stations', 'boomers', 'southpoint', 'westgate', 'coolbet', 'betanysports', 'playup', 'nordicbet', 'tabtouch',
+    'riverscasino', 'betfairexchange', 'betfairsportsbook', 'betfair', 'leovegas', 'grosvenor', 'betsson', 'gtbets',
+    'casumo', 'marathonbet', 'tab', 'betvictor', 'sportsbet', 'virginbet', 'livescorebet', 'coral', 'betway', 'bet105',
+    'neds', 'skybet', 'betrsportsbook', 'betano', 'betanything', 'boylesports', 'tipico', 'heritage', '888sport',
+    'paddypower', 'aceshigh', 'justbet', 'williamhill',
+    'bookmakereu', '1xbet', 'pinnaclesports', 'prophetexchange', 'thescorebet', 'bally', 'hardrockbetfl',
+  ];
+  for (const k of ['lowvig', 'mybookie', 'betus', 'matchbook', 'smarkets', 'rebet', 'onexbet', 'tabau', ...P2_BOOKS]) {
     assert.ok(ts.has(k), `TS bookmaker map is missing ${k}`);
     assert.ok(py.has(k), `Python bookmaker map is missing ${k}`);
   }

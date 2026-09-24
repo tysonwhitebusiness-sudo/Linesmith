@@ -9,7 +9,7 @@ import { CANONICAL_MARKET_KEYS } from '../lib/odds/props/entityResolution';
 import { MARKET_LABELS, marketLabel, marketLabelTitle } from '../lib/odds/props/marketLabels';
 
 test('every canonical market key has a label, and the label is not the key', () => {
-  assert.equal(CANONICAL_MARKET_KEYS.size, 72);
+  assert.equal(CANONICAL_MARKET_KEYS.size, 100, "P1's 72 + P2's 28 scraper keys");
   for (const key of CANONICAL_MARKET_KEYS) {
     assert.ok(MARKET_LABELS[key], `no registry label for ${key}`);
     for (const sport of ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer', 'tennis', 'golf'] as const) {
@@ -74,4 +74,22 @@ test('guard: no label lookup falls back to the raw market key', () => {
     const src = readFileSync(f, 'utf8');
     src.split('\n').forEach((line, i) => assert.ok(!bad.test(line), `${f}:${i + 1} falls back to a raw key: ${line.trim()}`));
   }
+});
+
+test('P2: the 28 scraper keys have labels, and period props read as period + stat', () => {
+  const p2 = ['pass-rush-yards', 'targets', 'tackles-assists', 'solo-tackles', 'defensive-interceptions', 'fumbles-lost',
+    'extra-points-made', 'last-td-scorer', 'fantasy-points', 'to-receive-card', 'pitcher-pitches-thrown',
+    'pitcher-strikes-thrown', 'pitcher-batters-faced', 'pitcher-hits-walks-earned-runs', 'pitcher-runs-allowed',
+    'longest-pass', 'rush-yards-per-attempt', 'sets-won', 'sets-played', 'games-played', 'tiebreakers-played',
+    'double-faults', 'break-points-won', 'points-won', 'strokes', 'birdies-or-better', 'bogeys-or-worse',
+    'goalie-fantasy-points'];
+  assert.equal(p2.length, 28);
+  for (const k of p2) {
+    assert.ok(CANONICAL_MARKET_KEYS.has(k), `${k} is not canonical`);
+    assert.ok(MARKET_LABELS[k] && MARKET_LABELS[k] !== k, `${k} has no label`);
+  }
+  assert.equal(marketLabel('1h-receptions'), '1st half · Receptions');
+  assert.equal(marketLabel('1i-pitcher-strikeouts'), '1st inning · Strikeouts');
+  assert.equal(marketLabel('1q-passing-yards'), '1st quarter · Passing yards');
+  assert.equal(marketLabel('1s-aces'), '1st set · Aces');
 });
