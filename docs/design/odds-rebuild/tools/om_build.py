@@ -232,6 +232,35 @@ for g in mraw["games"]:
                 "openers": ops, "live": live[-1] if live else None})
     print(g["away"], "@", g["home"], {k: len(v["cur"]) for k, v in mk_state.items()}, len(kprops), "k-props")
 
+# ---------------------------------------------------------------- game props card (every rostered player)
+praw = json.load(open(os.path.join(SP, "om_props_raw.json")))
+card = {}
+for who, rows in praw["players"].items():
+    bym = collections.defaultdict(list)
+    for src, b, side, line, price, at, d, mk in rows:
+        b = canon(src, b) if src not in DIRECT else src
+        bym[mk].append([src, b, side_norm(side), line, price, at, d])
+    mk_out = {}
+    for mk, rr in bym.items():
+        st = market_state(rr, [], now, checked, ("over", "under"))
+        main = [c for c in st["cur"] if c[7] == "main"]
+        if len({c[0] for c in main}) < 3:
+            continue
+        first = st["steam"][-1] if st["steam"] else None
+        mk_out[mk] = {"cur": [c[:7] for c in main], "open": st["open"], "moves": len(st["moves"]),
+                      "first": {"book": first["books"][0], "t": first["t"], "n": len(first["books"]) - 1, "from": first["from"], "to": first["to"][0]} if first else None}
+    if mk_out:
+        r = praw["roster"][who]
+        card[who] = {"team": r["team"], "pos": r["pos"], "head": r["head"], "markets": mk_out}
+nfl["card"] = card
+print("props card:", len(card), "players,", sum(len(v["markets"]) for v in card.values()), "markets")
+probs = json.load(open(os.path.join(SP, "espn_mlb_probables.json")))
+for g in mlb:
+    for pl, kp in g["kprops"].items():
+        hit = next((v for k, v in probs.items() if k and k.lower() == pl.lower()), None)
+        if hit:
+            kp["head"] = hit["head"]; kp["team"] = hit["team"]
+
 books = {k: {"n": v[0], "g": v[1], "d": v[2]} for k, v in BOOKS.items() if k in used_books}
 for k in used_books - set(BOOKS):
     books[k] = {"n": k, "g": G_INTL, "d": None}

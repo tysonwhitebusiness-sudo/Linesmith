@@ -382,3 +382,28 @@ Decisions the mockups need from the operator:
    of its books' prices have not changed in 11+ hours (Circa, Kalshi ML via
    comparenbet). "Checked 9 s ago · since 2:25 AM" makes that visible; the edge
    gates must use "since", not "checked", for relayed books.
+
+### Revision 2 (operator review, 2026-09-24)
+
+- **No dark backgrounds** for the sharp strip or the Slate cards' sharp row.
+  The strip is now light: one tile per sharp source (Pinnacle, Circa,
+  exchanges) with the two-sided price, the fair price and a no-vig split bar;
+  the Slate card row is a light green band with the split in both teams'
+  colours.
+- **Edge card made visual**: status badge + EV as the headline, a probability
+  ruler (book-implied vs fair, gap filled green or red), three stat tiles,
+  evidence chips (sources with logos and ages), gates as green/red pills. The
+  no-sharp state offers a one-tap "compare at Pinnacle's line".
+- **Where the money is** bars use the two teams' colours (with logos) on
+  spread and moneyline; totals keep the neutral pair.
+- **Game page player props rebuilt** as a filterable card: team, position,
+  market chips, sort (most books / biggest move / A–Z), three views (Players,
+  By market, Table). 46 players, one label map over ~110 source spellings of 16
+  markets (`tools/om_extract_props.py`, `STAT_MAP` — the seed for B0).
+- **Headshots and team logos are required** in the final build wherever they
+  appear today; the mockup now shows ESPN's real images on every page header,
+  the props card and the Slate's pitcher rows.
+- **Scrolling**: every horizontal scroller (`overflow-x:auto`) was also a
+  vertical scroll container, which can latch a wheel/trackpad gesture over a
+  table. All are now `overflow-y:hidden`; checked: zero vertical scroll traps
+  on every surface at both widths. The build must follow the same rule.
