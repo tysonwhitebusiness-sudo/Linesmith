@@ -66,8 +66,9 @@ Read it next. In short:
    - **P0, daily:** `OddsScraperBackup` at 04:30 local. `data\backup.log`
      should show a new day uploaded and `mismatches: 0`.
 
-   The 17:38 UTC freeze's cause is **still unknown**. The watchdog now caps
-   any freeze at about 5–10 min.
+   **The 17:38 UTC freeze's cause was found** by the new stall dump (21:44
+   UTC): raw pruning listed ~198k files on the writer thread. It is fixed
+   (pruning has its own thread) and loaded at 22:24 UTC. See P0 → Result.
 
    **Operator items from this run:**
    - **Deploy `e8b5a89`** (a fix, not a phase): `tennisStatsJob` fails at

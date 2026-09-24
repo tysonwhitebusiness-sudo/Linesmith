@@ -258,15 +258,25 @@ Written into `docs/CURRENT.md` when started.
     saved `watchdog-20260924-211259.txt`, stopped the processes and
     restarted;
   - 21:14:19: polling again. **Total gap 6 min 22 s, restarted by itself.**
-- **Cause of the 17:38 hang: not yet reproduced.** No freeze has happened
-  since the restart. The logs hold no error, and `server.out.log` has no
-  timestamps. Reading the code, the writer's only unbounded waits are
-  `_store_many` (SQLite with `busy_timeout` 5 s), `RawStore.write` (file I/O)
-  and `_maybe_prune_raw` (unlinks thousands of files on the writer thread;
-  the first prune after the 20:53 restart freed 472 MB). The next freeze
-  leaves `data\stalls\stall-*.txt` with the writer's stack; read it, fix
-  that call, and record it here. Until then the watchdog caps any freeze at
-  about 5–10 min.
+- **Cause of the hang: found and fixed (update 2026-09-24 22:24 UTC).**
+  The new stall monitor caught a real stall at 21:44 UTC
+  (`data/stalls/stall-20260924-214756.txt`). It recovered by itself after
+  about 3 min, inside the watchdog's limit. The writer thread's stack ends in
+  `_maybe_prune_raw → RawStore.prune → Path.iterdir()`: raw pruning ran on
+  the writer thread every 600 s, listing and `stat`-ing a flat `data/raw` of
+  **198,062 files**. For 185 s no batch was written, pending results reached
+  the dispatcher's cap (`pending_writes` 26), and collection stopped with the
+  web server up. That is the 17:38 signature (28 pending, no error); a longer
+  or blocked scan (antivirus, a locked file) explains a freeze that did not
+  end.
+  - **Fix** (odds-scraper `8d0fb08`): pruning runs on its own
+    `raw-pruner` thread, and prune takes a snapshot of the keyframe map.
+  - **Test:** `test_infra p0_prune_off_writer` (with prune blocked, the
+    writer still finishes batches). All 14 groups pass.
+  - **Loaded** with a restart at 22:24 UTC, and the `raw-pruner` thread is
+    live.
+  - The 48 h background check now also tells whether it recurs; a new dump
+    would name a different cause.
 - **Backup:**
   - 62 files (both archived days plus `ref/`), 242.7 MB, in
     `linesmith-corpus/scraper-archive/…`;
