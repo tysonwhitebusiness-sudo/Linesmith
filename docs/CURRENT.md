@@ -42,14 +42,19 @@ Read it next. In short:
    window 14 → 10 days (`2331a56`).**
 7. **Track O — odds section rebuild (2026-09-24): MOCKUP REVIEW IN PROGRESS.**
    **Resume prompt for the whole workstream: `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.**
-   Read `docs/design/odds-rebuild/HANDOFF-OM.md` first — it has how to view
-   and regenerate the mockups, the three review rounds so far, and the
-   operator's two design notes NOT yet applied (no pill "bubbles" as receipts
-   anywhere; the SHARP pill → a normal header with a green live dot +
-   "updated X ago"), plus v3 (final-game props results) still to verify on
-   screen. Plan: `docs/design/odds-section-rebuild-gameplan-2026-09-24.md`
-   (§8 = decisions + revision log). **Nothing in Track O is built until the
-   operator approves (D16).**
+   Read `docs/design/odds-rebuild/HANDOFF-OM.md` first. It covers how to view
+   and regenerate the mockups and the four review rounds so far. Round 4
+   (v4) is done:
+   - no receipt pills anywhere;
+   - "Sharp prices" as a normal header with a live dot;
+   - the live layer (a replay of the real last hour, flashes, trails, pulls,
+     heartbeat);
+   - v3 verified at both widths.
+
+   It waits on the operator's review, plus the §8 answers. Plan:
+   `docs/design/odds-section-rebuild-gameplan-2026-09-24.md` (§8 =
+   decisions + revision log, Revision 4 = the live rules). **Nothing in
+   Track O is built until the operator approves (D16).**
 
 > **VS Code session?** Read `docs/VSCODE-HANDOFF.md` first — it is the
 > running record of the VS Code (Copilot) session's changes and current

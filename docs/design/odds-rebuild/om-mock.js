@@ -4,8 +4,10 @@
    plan describes and marked EXAMPLE. Not app code: a design artefact. */
 (function () {
 'use strict';
-const O = window.OM, BK = O.books;
-const NOW = new Date(O.asof + ':00Z');
+const ORIG = window.OM, BK = ORIG.books;
+const END = new Date(ORIG.asof + ':00Z');   // the snapshot: the newest data the mockup holds
+let NOW = END;                              // the replay clock (moves; see CLK below)
+let O = ORIG;                               // ORIG sliced to NOW (sliceAll)
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -30,13 +32,136 @@ const money = v => v == null ? '—' : v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + '
 const nfmt = v => v == null ? '—' : Math.round(v).toLocaleString('en-US');
 const devig = (a, b) => { const pa = ip(a), pb = ip(b); return pa / (pa + pb); };
 
+// ------------------------------------------------------------------ replay: the data as it stood at NOW
+// Each book's main line and price come from its recorded minute-level history (real). A row that last
+// changed after NOW and has no history is left out, because its earlier state is unknown. During the
+// replay, "checked" follows each source's real poll interval.
+const CAD = { pinnacle: 70, kalshi: 70, polymarket: 70, draftkings: 70, fanduel: 70, betmgm: 128, betrivers: 70, sleeper: 80, underdog: 80,
+  vsin: 90, dknetwork: 480, sao_consensus: 900, covers: 3600, actionnetwork: 90 };
+const cadOf = s => CAD[s] || 50;
+const hsh = s => { let h = 7; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
+const simChecked = (src, t) => (t / 1000 + hsh(src) % cadOf(src)) % cadOf(src);
+const TS = {}; const tsm = x => TS[x] ?? (TS[x] = +tms(x));
+function sliceMarket(m, t) {
+  if (t >= +END || !m || !m.cur) return m;
+  const sideA = m.cur.some(c => c[1] === 'home' || c[1] === 'away') ? 'home' : 'over', sideB = sideA === 'home' ? 'away' : 'under';
+  const hist = {}, later = {};
+  for (const [k, h] of Object.entries(m.hist || {})) {
+    let i = h.length; while (i && tsm(h[i - 1][0]) > t) i--;
+    if (i) hist[k] = i === h.length ? h : h.slice(0, i);
+    later[k] = i < h.length;
+  }
+  const signed = sideA === 'home' && m.cur.some(c => c[1] === 'home' && c[2] != null);
+  const row = (k, side, p, src, x) => { const A = side === sideA; return [k, side, p[1] == null ? null : signed && !A ? -p[1] : p[1], A ? p[2] : p[3], p[0], src, simChecked(src, t), 'main', x]; };
+  const cur = [], done = new Set();
+  for (const c of m.cur) {
+    const k = c[0];
+    if (later[k] && c[7] === 'main') {               // this book's main line moved after NOW: take it from history
+      if (!hist[k] || done.has(k + c[1])) continue;
+      done.add(k + c[1]);
+      cur.push(row(k, c[1], hist[k][hist[k].length - 1], c[5], c[8]));
+      continue;
+    }
+    if (tsm(c[4]) > t && !(m.hist && m.hist[k] && c[7] === 'main')) continue;
+    const r = c.slice(); r[6] = simChecked(c[5], t); cur.push(r);
+  }
+  // a book with history but no row at the snapshot was pulled: it is priced until its last recorded change
+  for (const [k] of Object.entries(m.hist || {})) {
+    if (m.cur.some(c => c[0] === k && c[7] === 'main') || !later[k] || !hist[k]) continue;
+    const p = hist[k][hist[k].length - 1];
+    cur.push(row(k, sideA, p, 'comparenbet', null), row(k, sideB, p, 'comparenbet', null));
+  }
+  const open = {}; for (const [k, o] of Object.entries(m.open || {})) if (tsm(o[0]) <= t) open[k] = o;
+  return Object.assign({}, m, { cur, hist, open, moves: (m.moves || []).filter(x => tsm(x[0]) <= t),
+    steam: (m.steam || []).filter(s => s.times.every(x => tsm(x) <= t)) });
+}
+function sliceSplits(rows, hist, t) {
+  if (t >= +END) return rows;
+  return rows.map(s => {
+    const h = hist[`${s[1]}|${s[3]}|${s[4]}`];
+    if (!h) return tsm(s[0]) <= t ? s : null;
+    let p = null; for (const q of h) if (tsm(q[0]) <= t) p = q;
+    if (!p) return null;
+    const A = s[5] === 'home' || s[5] === 'over', r = s.slice();
+    r[0] = p[0]; r[7] = A ? p[2] : 100 - p[2]; r[8] = p[3] == null ? s[8] : A ? p[3] : 100 - p[3];
+    return r;
+  }).filter(Boolean);
+}
+function sliceAll(t) {
+  if (t >= +END) return ORIG;
+  const n = ORIG.nfl;
+  const mapM = ms => Object.fromEntries(Object.entries(ms).map(([k, m]) => [k, sliceMarket(m, t)]));
+  const players = Object.fromEntries(Object.entries(n.players).map(([k, p]) => [k, Object.assign({}, p, { markets: mapM(p.markets) })]));
+  return Object.assign({}, ORIG, {
+    nfl: Object.assign({}, n, { markets: mapM(n.markets), players, splits: sliceSplits(n.splits, n.splitHist, t),
+      splitHist: Object.fromEntries(Object.entries(n.splitHist).map(([k, h]) => [k, h.filter(p => tsm(p[0]) <= t)])) }),
+    mlb: ORIG.mlb.map(g => Object.assign({}, g, { markets: mapM(g.markets),
+      kprops: Object.fromEntries(Object.entries(g.kprops || {}).map(([k, v]) => [k, sliceMarket(v, t)])) })) });
+}
+
+// ------------------------------------------------------------------ live layer
+// CLK.t is market time. The replay runs at CLK.speed until it reaches the snapshot (END), then at 1×.
+const CLK = { t: +END - 3600e3, play: true, speed: 20, wall: 0, min: null, openT: +END - 3600e3 };
+let LIVE_RENDER = false;          // true while the clock (not a click) is re-rendering: only then do values flash
+let PREV = {}, CHG = {}, ROWST = null, EDGE_ST = {}, SEEN = {}, CHART_N = {}, PULLED = {};
+const TRAIL_S = 120;              // a change's arrow fades over 2 min of market time
+const base = () => Math.min(+NOW, +END);           // ages in the data are relative to this instant
+const atS = sec => base() - sec * 1000;             // "checked N s ago" -> the ms it happened
+const tick$ = (ms, fmt) => `<span data-at="${Math.round(ms)}">${ago(Math.max(0, (+NOW - ms) / 1000))}</span>`;
+const agoS = sec => tick$(atS(sec));                // a ticking "N s" for a relative age
+const agoT = ts => tick$(tsm(ts));                  // a ticking "N min" for a timestamp
+/** A live value: flashes green (up) or red (down) when it changes, then leaves an arrow that fades. */
+function lv(key, v, html, cls) {
+  const k = S.surf + '|' + key, c = CHG[k], age = c ? (+NOW - c.t) / 1000 : 1e9;
+  const tr = c && age < TRAIL_S ? `<span class="trail ${c.d > 0 ? 'up' : 'dn'}" data-trail="${c.t}" style="opacity:${Math.max(0.15, 1 - age / TRAIL_S).toFixed(2)}">${c.d > 0 ? '▲' : '▼'}<span data-at="${c.t}">${ago(age)}</span></span>` : '';
+  return `<span data-lv="${esc(k)}" data-v="${v == null ? '' : esc(v)}" class="${cls || ''}"${c && c.t > CLK.openT ? ' data-recent' : ''}>${html}</span>${tr}`;
+}
+const liveState = (age, cad) => age <= 2 * cad ? '' : age <= 6 * cad ? 'slow' : 'off';
+const liveTxt = (age, st) => st === 'off' ? `no update in ${ago(age)}` : `updated ${ago(age)} ago`;
+/** A card header's liveness: a pulsing green dot while the newest reading is inside twice the source's
+ *  poll interval, amber once it is late, grey once it is far past it. */
+function liveTag(atMs, cad) {
+  if (atMs == null || !isFinite(atMs)) return '';
+  const age = Math.max(0, (+NOW - atMs) / 1000), st = liveState(age, cad || 70);
+  return `<span class="upd ${st === 'slow' ? 'slow' : ''}" data-live="${Math.round(atMs)}" data-cad="${cad || 70}"><i class="ld ${st}"></i><span>${liveTxt(age, st)}</span></span>`;
+}
+/** Price changes per minute across every book, last 30 minutes. */
+function heartbeat(m) {
+  const n = 30, t = +NOW, b = new Array(n).fill(0);
+  for (const h of Object.values(m.hist || {})) for (let i = h.length - 1; i >= 0; i--) { const d = Math.floor((t - tsm(h[i][0])) / 60000); if (d >= n) break; if (d >= 0) b[n - 1 - d]++; }
+  const mx = Math.max(1, ...b), tot = b.reduce((a, x) => a + x, 0);
+  return `<span class="hbw" title="Price changes per minute across every book, last 30 minutes"><span class="hb">${b.map((v, i) => `<i class="${i === n - 1 && v ? 'now' : ''}" style="height:${v ? Math.max(3, 16 * v / mx) : 1}px"></i>`).join('')}</span><span>${tot} changes in 30 min</span></span>`;
+}
+/** "N prices changed since you opened this page" -- clicking it outlines them. */
+function sinceOpened() {
+  const p = S.surf + '|';
+  const n = Object.entries(CHG).filter(([k, c]) => k.startsWith(p) && c.t > CLK.openT).length;
+  const np = Object.entries(PULLED).filter(([k, t]) => k.startsWith(p) && t > CLK.openT).length;
+  if (!n && !np) return `<span class="small muted">No changes since you opened this page</span>`;
+  return `<button class="sinceo" data-recent-toggle="1">${n} price${n === 1 ? '' : 's'} changed since you opened this${np ? ` · ${np} pulled` : ''}${S.showRecent ? ' · hide' : ' · show'}</button>`;
+}
+/** Market-tab badge: changes in this market since you last looked at it. */
+function tabNew(key, m, selected) {
+  if (selected) { SEEN[key] = +NOW; return ''; }
+  const since = SEEN[key] ?? CLK.openT; let n = 0;
+  for (const h of Object.values(m.hist || {})) for (let i = h.length - 1; i >= 0 && tsm(h[i][0]) > since; i--) n++;
+  return n ? `<span class="tnew">${n} new</span>` : '';
+}
+/** When a source was last polled: its real last poll at the snapshot, or its poll rhythm during the replay. */
+const srcChecked = src => +NOW < +END || !ORIG.nfl.checked[src] ? atS(simChecked(src, +NOW)) : tsm(ORIG.nfl.checked[src]);
+const FAILED = new Set();
+window.OMFAIL = el => { FAILED.add(el.getAttribute('src')); el.outerHTML = el.dataset.f || ''; };
+
 const GROUPS = [['sharp', 'Sharp'], ['exchange', 'Exchanges'], ['us', 'US books'], ['nevada', 'Nevada'], ['offshore', 'Offshore'], ['intl', 'International'], ['pickem', "Pick'em"]];
 const GORD = Object.fromEntries(GROUPS.map((g, i) => [g[0], i]));
 const bn = k => (BK[k] && BK[k].n) || k;
 const bg = k => (BK[k] && BK[k].g) || 'intl';
 const USER_BOOK = 'fanduel';
 const tile = (k, s) => `<span class="bl tile" style="width:${s}px;height:${s}px;font-size:${Math.round(s * .62)}px">${esc(bn(k).replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase())}</span>`;
-const logo = (k, s = 16) => BK[k] && BK[k].d ? `<img class="bl" alt="" width="${s}" height="${s}" style="width:${s}px;height:${s}px" src="https://www.google.com/s2/favicons?domain=${BK[k].d}&sz=${s * 2}" onerror="this.outerHTML=this.dataset.f" data-f='${tile(k, s)}'>` : tile(k, s);
+const logo = (k, s = 16) => {
+  const src = BK[k] && BK[k].d ? `https://www.google.com/s2/favicons?domain=${BK[k].d}&sz=${s * 2}` : null;
+  return src && !FAILED.has(src) ? `<img class="bl" alt="" width="${s}" height="${s}" style="width:${s}px;height:${s}px" src="${src}" onerror="OMFAIL(this)" data-f='${tile(k, s)}'>` : tile(k, s);
+};
 const book = (k, s) => `<span class="bk">${logo(k, s)}<span>${esc(bn(k))}</span>${k === USER_BOOK ? '<span class="star" title="Your book">★</span>' : ''}</span>`;
 const PAL = ['#2f6fb3', '#c56a1c', '#00873f', '#8e44ad', '#c4161c', '#0f8b8d', '#9a6200', '#5c6bc0', '#6d4c41', '#d81b60', '#546e7a', '#7cb342'];
 const note = (tag, html) => `<div class="note"><span class="tag">${tag}</span>${html}</div>`;
@@ -44,7 +169,7 @@ const EX = '<span class="ex">example</span>', REAL = '<span class="real">real</s
 
 // ------------------------------------------------------------------ state
 const S = { surf: 'player', w: 'desk', notes: true, pm: 'rec_yds', pline: null, all: false, gper: 'fg', gmk: 'sp', gline: null, gall: false,
-  win: 'open', sel: null, metric: null, hub: 'edges', slateSec: 'games', pf: { team: 'all', pos: 'all', mk: 'all', sort: 'books', view: 'players' }, pfMore: false, fp: { team: 'all', res: 'all', mk: 'all', view: 'players' }, fpMore: false };
+  win: '2h', sel: null, metric: null, hub: 'edges', slateSec: 'games', pf: { team: 'all', pos: 'all', mk: 'all', sort: 'books', view: 'players' }, pfMore: false, fp: { team: 'all', res: 'all', mk: 'all', view: 'players' }, fpMore: false };
 
 // ------------------------------------------------------------------ market model
 const PROPS = [['rec_yds', 'Receiving yards', 'receiving_yards'], ['receptions', 'Receptions', 'receptions'], ['longest_rec', 'Longest reception', 'longest_reception'],
@@ -130,10 +255,12 @@ function fresh(m, rows) {
   const newest = ages.reduce((a, r) => Math.min(a, r.age), 9e9);
   const oldR = rows.filter(r => r.since).sort((a, b) => a.since.localeCompare(b.since))[0];
   const pulled = Object.keys(m.hist).filter(k => !rows.find(r => r.k === k)).length;
-  return `${rows.length} books · checked ${ago(newest)}–${ago(ages.reduce((a, r) => Math.max(a, r.age), 0))} ago · oldest unchanged price ${oldR ? bn(oldR.k) + ' since ' + etd(oldR.since) : '—'}${pulled ? ` · <span class="mv dn">${pulled} pulled</span>` : ''}`;
+  return `${heartbeat(m)} · ${rows.length} books · newest check ${agoS(newest)} ago · oldest unchanged price ${oldR ? bn(oldR.k) + ' since ' + etd(oldR.since) : '—'}${pulled ? ` · <span class="mv dn">${pulled} pulled</span>` : ''}`;
 }
 
-/* O-S sharp strip -- light: one tile per sharp source, each with its no-vig split */
+const boardLive = rows => { const a = rows.filter(r => r.age < 9e9).map(r => r.age); return a.length ? liveTag(atS(Math.min(...a)), 70) : ''; };
+
+/* O-S sharp strip -- a normal card ("Sharp prices"): one tile per sharp source, each with its no-vig split */
 const PROP_COL = ['#2f6fb3', '#c56a1c'];
 function fairBar(p, labels, colors, big) {
   return `<div class="fbar${big ? ' big' : ''}"><i style="width:${(p * 100).toFixed(1)}%;background:${colors[0]}"></i><i style="width:${((1 - p) * 100).toFixed(1)}%;background:${colors[1]}"></i></div>
@@ -142,11 +269,14 @@ function fairBar(p, labels, colors, big) {
 function sharpTile(k, a, b, lab, col, extra) {
   const lim = (a[8] || {}).limit;
   const stale = secs(a[4]) > 6 * 3600;
-  return `<div class="stile"><div class="st-h">${logo(k, 20)}<b>${esc(bn(k))}</b>${lim ? `<span class="chip" style="margin-left:auto">limit $${nfmt(lim)}</span>` : ''}</div>
-    <div class="st-p"><div><div class="ov">${lab[0]}</div><b class="big px">${fa(a[3])}</b></div><div><div class="ov">${lab[1]}</div><b class="big px">${fa(b[3])}</b></div>
-      <div style="margin-left:auto;text-align:right"><div class="ov">fair ${lab[0]}</div><b class="big" style="color:var(--good-ink)">${fa(toAm(devig(a[3], b[3])))}</b></div></div>
-    ${fairBar(devig(a[3], b[3]), lab, col)}
-    <div class="st-f"><span class="pill">checked ${ago(a[6])} ago</span><span class="pill ${stale ? 'warn' : ''}">${stale ? 'unchanged ' + ago(secs(a[4])) : 'since ' + etd(a[4])}</span>${extra || ''}</div></div>`;
+  const fair = devig(a[3], b[3]);
+  return `<div class="stile"><div class="st-h">${logo(k, 20)}<b>${esc(bn(k))}</b></div>
+    <div class="st-p"><div><div class="ov">${lab[0]}</div><b class="big px">${lv('sh|' + k + '|a', a[3], fa(a[3]))}</b></div><div><div class="ov">${lab[1]}</div><b class="big px">${lv('sh|' + k + '|b', b[3], fa(b[3]))}</b></div>
+      <div style="margin-left:auto;text-align:right"><div class="ov">fair ${lab[0]}</div><b class="big" style="color:var(--good-ink)">${lv('sh|' + k + '|f', toAm(fair), fa(toAm(fair)))}</b></div></div>
+    ${fairBar(fair, lab, col)}
+    <div class="kvs"><div class="kvr"><span>Checked</span><span>${agoS(a[6])} ago</span></div>
+      <div class="kvr"><span>${stale ? 'Unchanged for' : 'Price since'}</span><span class="${stale ? 'st warn' : ''}">${stale ? agoT(a[4]) : etd(a[4])}</span></div>
+      ${lim ? `<div class="kvr"><span>Limit</span><span><b>$${nfmt(lim)}</b></span></div>` : ''}${extra || ''}</div></div>`;
 }
 function sharpStrip(m, sp, L, labels, colors) {
   const lab0 = labels || ['Over', 'Under'];
@@ -163,7 +293,7 @@ function sharpStrip(m, sp, L, labels, colors) {
       ${pm != null ? `<div class="age">Pinnacle prices ${sp.signed ? fl(pm, true) : fln(pm)} — <button class="lnk" data-goto="${pm}">go to ${sp.signed ? fl(pm, true) : fln(pm)}</button></div>` : '<div class="age">Pinnacle does not price this market.</div>'}</div>`);
   }
   const ca = find('circa', 0), cb = find('circa', 1);
-  if (ca && cb) tiles.push(sharpTile('circa', ca, cb, lab, col, `<span class="pill">via ${ca[5] === 'vsin' ? 'VSiN' : 'comparenbet'}</span>`));
+  if (ca && cb) tiles.push(sharpTile('circa', ca, cb, lab, col, `<div class="kvr"><span>Source</span><span>${ca[5] === 'vsin' ? 'VSiN line tracker' : 'comparenbet (relayed)'}</span></div>`));
   // exchanges
   const ex = [];
   for (const k of ['kalshi', 'novig', 'prophetx', 'polymarket']) {
@@ -171,14 +301,17 @@ function sharpStrip(m, sp, L, labels, colors) {
     if (!q) continue;
     const x = q[8] || {};
     const ba = x.yes_bid != null ? [x.yes_bid, x.yes_ask] : x.bid != null ? [x.bid, x.ask] : null;
-    ex.push(`<div class="exr">${logo(k, 16)}<span>${esc(bn(k))}</span><b class="px">${fa(q[3])}</b>${ba ? `<span class="pill">${Math.round(ba[0] * 100)}–${Math.round(ba[1] * 100)}¢</span>` : '<span></span>'}<span class="age">${x.volume_24h ? money(x.volume_24h) + ' 24h' : x.liquidity ? money(x.liquidity) + ' liq.' : ''}</span></div>`);
+    ex.push(`<div class="exr">${logo(k, 16)}<span>${esc(bn(k))}</span><b class="px">${lv('sh|' + k + '|x', q[3], fa(q[3]))}</b>${ba ? `<span class="small soft">${Math.round(ba[0] * 100)}–${Math.round(ba[1] * 100)}¢</span>` : '<span></span>'}<span class="age">${x.volume_24h ? money(x.volume_24h) + ' 24h' : x.liquidity ? money(x.liquidity) + ' liq.' : ''}</span></div>`);
   }
   if (!ex.some(e => e.includes('>Kalshi<'))) {
     const near = m.cur.filter(c => c[0] === 'kalshi' && c[1] === sp.sides[0] && c[2] != null && (c[8] || {}).yes_bid != null && !sp.signed).sort((x, y) => Math.abs(x[2] - L) - Math.abs(y[2] - L)).slice(0, 2).sort((x, y) => x[2] - y[2]);
     if (near.length) ex.push(`<div class="age" style="margin-top:4px">${logo('kalshi', 14)} Kalshi has no contract at ${fln(L)} · nearest ${near.map(c => `<b>${Math.ceil(c[2])}+</b> ${Math.round(c[8].yes_bid * 100)}–${Math.round(c[8].yes_ask * 100)}¢`).join(' · ')}</div>`);
   }
   tiles.push(`<div class="stile"><div class="st-h"><b>Exchanges</b><span class="age" style="margin-left:auto">${lab[0]} · bid–ask · volume</span></div>${ex.length ? ex.join('') : '<div class="st-none">No exchange at this line</div>'}</div>`);
-  return `<div class="sharp2"><div class="s2-h"><span class="s2-tag">◆ SHARP</span><span class="small muted">the reference prices · fair = Pinnacle with the vig removed</span></div><div class="s2-grid">${tiles.join('')}</div></div>`;
+  // header liveness = the newest reading among the sharp sources
+  const sharpAges = m.cur.filter(c => ['pinnacle', 'circa', 'kalshi', 'polymarket', 'novig', 'prophetx'].includes(c[0]) && c[6] != null).map(c => c[6]);
+  const live = sharpAges.length ? liveTag(atS(Math.min(...sharpAges)), 70) : '';
+  return `<section class="card">${cardH('Sharp prices', 'fair = Pinnacle with the vig removed', live)}<div class="cb"><div class="s2-grid">${tiles.join('')}</div></div></section>`;
 }
 
 /* O-B best price + hold meter */
@@ -196,15 +329,16 @@ function bestCard(m, sp, L, labels, rows) {
     else {
       const d0 = b0 && me.qa ? Math.round((dec(b0.q[3]) - dec(me.qa[3])) * 100) : null, d1 = b1 && me.qb ? Math.round((dec(b1.q[3]) - dec(me.qb[3])) * 100) : null;
       const lc = x => /^(Over|Under)$/.test(x) ? x.toLowerCase() : x;
-      meLine = `${book(USER_BOOK, 14)} ${lc(lab[0])} ${fa(me.qa && me.qa[3])}${d0 ? ` <span class="muted">(${d0}¢ off best)</span>` : ' <span class="chip gt">best</span>'} · ${lc(lab[1])} ${fa(me.qb && me.qb[3])}${d1 ? ` <span class="muted">(${d1}¢ off best)</span>` : ' <span class="chip gt">best</span>'}`;
+      meLine = `${book(USER_BOOK, 14)} ${lc(lab[0])} ${fa(me.qa && me.qa[3])}${d0 ? ` <span class="muted">(${d0}¢ off best)</span>` : ' <span class="st good">best</span>'} · ${lc(lab[1])} ${fa(me.qb && me.qb[3])}${d1 ? ` <span class="muted">(${d1}¢ off best)</span>` : ' <span class="st good">best</span>'}`;
     }
   }
   const within = side => { const b = side ? b1 : b0; if (!b) return 0; return rows.filter(r => r.at && isPriced(r) && (side ? r.qb : r.qa) && dec(b.q[3]) - dec((side ? r.qb : r.qa)[3]) <= 0.05).length; };
-  const box = (b, l) => b ? `<div class="bpx"><div class="ov">Best ${l.toLowerCase()} ${sp.noLine ? '' : fl(sp.signed && l === lab[1] ? -L : L, sp.signed)}</div><div class="v px">${fa(b.q[3])}</div>
-      <div class="small" style="margin-top:2px">${book(b.k, 14)}</div><div class="age">checked ${ago(b.q[6])} ago · since ${etd(b.q[4])}</div></div>` : `<div class="bpx"><div class="ov">Best ${l.toLowerCase()}</div><div class="v muted">—</div><div class="age">no book at this line</div></div>`;
+  const box = (b, l, i) => b ? `<div class="bpx"><div class="ov">Best ${l.toLowerCase()} ${sp.noLine ? '' : fl(sp.signed && l === lab[1] ? -L : L, sp.signed)}</div><div class="v px">${lv('best|' + L + '|' + i, b.q[3], fa(b.q[3]))}</div>
+      <div class="small" style="margin-top:2px">${book(b.k, 14)}</div><div class="age">checked ${agoS(b.q[6])} ago · since ${etd(b.q[4])}</div></div>` : `<div class="bpx"><div class="ov">Best ${l.toLowerCase()}</div><div class="v muted">—</div><div class="age">no book at this line</div></div>`;
   const W = h => Math.max(2, Math.min(100, (h / 0.1) * 100));
-  return `<section class="card">${cardH('Best price', sp.noLine ? 'Moneyline' : 'at ' + fl(L, sp.signed))}<div class="cb">
-    <div class="bp">${box(b0, lab[0])}${box(b1, lab[1])}</div>
+  const newest = rows.filter(r => r.age < 9e9).reduce((a, r) => Math.min(a, r.age), 9e9);
+  return `<section class="card">${cardH('Best price', sp.noLine ? 'Moneyline' : 'at ' + fl(L, sp.signed), newest < 9e9 ? liveTag(atS(newest), 70) : '')}<div class="cb">
+    <div class="bp">${box(b0, lab[0], 0)}${box(b1, lab[1], 1)}</div>
     <div class="small soft" style="margin-top:10px">${meLine}</div>
     <div class="small muted" style="margin-top:2px">${within(0)} books within 5¢ of the best ${/^(Over|Under)$/.test(lab[0]) ? lab[0].toLowerCase() : lab[0]} · ${within(1)} of the best ${/^(Over|Under)$/.test(lab[1]) ? lab[1].toLowerCase() : lab[1]}</div>
     <div style="margin-top:12px"><div class="lbl" style="display:flex;justify-content:space-between"><span>Market hold</span><span class="muted">vig you pay</span></div>
@@ -228,19 +362,26 @@ function ruler(imp, fair, labImp) {
   </div>`;
 }
 function edgeCard(e) {
-  if (e.nosharp) return `<section class="card">${cardH('Edge', e.scope)}<div class="cb"><div class="e-top"><span class="e-badge off">NO EDGE</span><b>No sharp price at this line</b></div>
+  const sk = S.surf === 'player' ? `p|${S.pm}|${S.pline}` : `g|${S.gper}|${S.gmk}|${S.gline}`, was = EDGE_ST[sk];
+  EDGE_ST[sk] = !!e.on;
+  const fx = LIVE_RENDER && was != null && was !== !!e.on ? (e.on ? 'eopen' : 'eclose') : '';
+  const gates = gs => { const pass = gs.filter(g => g[1]).length;
+    return `<div class="glh"><b>Gates</b><span class="st ${pass === gs.length ? 'good' : 'bad'}">${pass} of ${gs.length} pass</span></div><div class="gl">${gs.map(g => `<div class="${g[1] ? 'ok' : 'no'}">${g[0]}</div>`).join('')}</div>`; };
+  const ages = (e.refs || []).map(r => r[2]).filter(v => v != null);
+  const live = ages.length ? liveTag(atS(Math.min(...ages)), 70) : '';
+  if (e.nosharp) return `<section class="card" data-fx="${fx}">${cardH('Edge', e.scope, live)}<div class="cb"><div class="e-top"><span class="e-badge off">NO EDGE</span><b>No sharp price at this line</b></div>
     <div class="e-empty">${logo('pinnacle', 22)}<div><div class="small">${e.why}</div>${e.goto != null ? `<button class="btn" style="margin-top:8px" data-goto="${e.goto}">Compare at ${e.gotoTxt}</button>` : ''}</div></div>
-    <div class="e-gates">${e.gates.map(g => `<span class="gp ${g[1] ? 'ok' : 'no'}">${g[1] ? '✓' : '✕'} ${g[0]}</span>`).join('')}</div></div></section>`;
-  const pass = e.gates.filter(g => g[1]).length;
-  return `<section class="card edge ${e.on ? 'on' : 'off'}">${cardH('Edge' + (e.on ? ' ' + EX : ''), e.scope)}<div class="cb">
+    ${gates(e.gates)}</div></section>`;
+  return `<section class="card edge ${e.on ? 'on' : 'off'}" data-fx="${fx}">${cardH('Edge' + (e.on ? ' ' + EX : ''), e.scope, live)}<div class="cb">
     <div class="e-top"><span class="e-badge ${e.on ? 'on' : 'off'}">${e.on ? 'EDGE' : 'NO EDGE'}</span><div class="e-title">${logo(e.k, 20)}<b>${e.title}</b></div>
-      <div class="e-ev ${e.ev > 0 ? 'pos' : 'neg'}">${e.ev >= 0 ? '+' : ''}${pct(e.ev)}<span>EV</span></div></div>
+      <div class="e-ev ${e.ev > 0 ? 'pos' : 'neg'}">${lv('edge|' + e.scope, (e.ev * 100).toFixed(1), (e.ev >= 0 ? '+' : '') + pct(e.ev))}<span>EV</span></div></div>
     ${ruler(e.imp, e.fair, esc(bn(e.k)))}
-    <div class="e-stats"><div><div class="ov">${esc(bn(e.k))} price</div><b>${fa(e.price)}</b></div><div><div class="ov">Fair price</div><b style="color:var(--good-ink)">${fa(toAm(e.fair))}</b></div>
+    <div class="e-stats"><div><div class="ov">${esc(bn(e.k))} price</div><b>${lv('edge|' + e.scope + '|p', e.price, fa(e.price))}</b></div><div><div class="ov">Fair price</div><b style="color:var(--good-ink)">${lv('edge|' + e.scope + '|f', toAm(e.fair), fa(toAm(e.fair)))}</b></div>
       <div><div class="ov">Gap</div><b class="${e.fair > e.imp ? 'mv up' : 'mv dn'}">${e.fair > e.imp ? '+' : ''}${((e.fair - e.imp) * 100).toFixed(1)} pts</b></div></div>
-    ${e.refs && e.refs.length ? `<div class="e-refs">${e.refs.map(r => `<span class="ref">${logo(r[0], 16)}<span>${r[1]}</span>${r[2] != null ? `<span class="pill">${r[2]}</span>` : ''}</span>`).join('')}</div>` : ''}
+    ${e.on && e.since ? `<div class="e-held"><i class="ld"></i><span>Passing for <b>${agoT(e.since)}</b> · since its last input changed at ${etd(e.since)}</span></div>` : ''}
+    ${e.refs && e.refs.length ? `<div class="evl"><div class="glh" style="margin-top:0"><b>Evidence</b><span class="age">checked</span></div>${e.refs.map(r => `<div class="evr">${logo(r[0], 16)}<span>${r[1]}</span><span class="age">${r[2] != null ? agoS(r[2]) + ' ago' : ''}</span></div>`).join('')}</div>` : ''}
     ${e.why ? `<div class="small soft" style="margin-top:8px">${e.why}</div>` : ''}
-    <div class="e-gates"><span class="gsum ${pass === e.gates.length ? 'ok' : 'no'}">${pass}/${e.gates.length} gates</span>${e.gates.map(g => `<span class="gp ${g[1] ? 'ok' : 'no'}">${g[1] ? '✓' : '✕'} ${g[0]}</span>`).join('')}</div>
+    ${gates(e.gates)}
     ${e.on ? '<div class="age" style="margin-top:8px">Logged to the edge log · hidden the moment any gate fails · kill switch hides the card</div>' : ''}
   </div></section>`;
 }
@@ -261,7 +402,7 @@ function edgeEmpty(m, sp, L, labels, scope) {
   if (!b) return { nosharp: true, scope, why: 'No soft book prices this line.', gates: [['A soft price at this line', false]] };
   const lbl = sp.noLine ? lab[side] : sp.signed ? `${lab[side]} ${fl(side ? -L : L, true)}` : `${lab[side]} ${fln(L)}`;
   return { on: false, scope, k: b.k, title: `Best soft price: ${lbl} ${fa(b.q[3])}`, price: b.q[3], imp: ip(b.q[3]), fair: side ? 1 - p.fa : p.fa, ev: side ? e1 : e0,
-    refs: [['pinnacle', `Pinnacle ${fa(p.a[3])} / ${fa(p.b[3])}`, ago(p.a[6])]],
+    refs: [['pinnacle', `Pinnacle ${fa(p.a[3])} / ${fa(p.b[3])}`, p.a[6]]],
     why: 'No soft book beats the no-vig price on either side.', gates: [['Sharp two-sided', true], ['Soft price beats fair', false]] };
 }
 
@@ -273,13 +414,14 @@ function boardCard(m, sp, L, labels, rows, opts) {
   for (const c of m.steam || []) if (c.books[0] === 'pinnacle') c.books.forEach((k, i) => { if (i) lead[k] = Math.round((tms(c.times[i]) - tms(c.times[0])) / 60000); });
   const pulled = Object.keys(m.hist).filter(k => !rows.find(r => r.k === k));
   const collapsed = opts.collapse || {};
+  const ctx = S.surf === 'player' ? S.pm : S.gper + S.gmk;
   let html = '', grp = null, hidden = {};
   const cell = (r, q, i) => {
     if (!q) return `<span class="px na">—</span>`;
     if (noPrice(r.k, q)) return `<span class="px na" title="Pick'em line, no price">line</span>`;
     const best = r.at && ((i === 0 && b0 && b0.k === r.k) || (i === 1 && b1 && b1.k === r.k));
-    if (r['out' + i]) return `<span class="chip warn" style="font-size:11px;padding:0 6px" title="Far from every other book: probably a different market relayed under this name (edge gate 8). Kept, never used as best.">check</span> <span class="px" style="min-width:0;color:var(--ink3)">${fa(q[3])}</span>`;
-    return `<span class="px ${best ? 'best' : ''}">${fa(q[3])}</span>${r.at || sp.noLine ? '' : `<span class="lt">${fl(i === 0 || !sp.signed ? r.line : -r.line, sp.signed)}</span>`}`;
+    if (r['out' + i]) return `<span class="st warn" title="Far from every other book: probably a different market relayed under this name (edge gate 8). Kept, never used as best.">⚠ check</span> <span class="px" style="min-width:0;color:var(--ink3)">${fa(q[3])}</span>`;
+    return `${lv(`b|${ctx}|${L}|${r.k}|${i}`, q[3], fa(q[3]), 'px' + (best ? ' best' : ''))}${r.at || sp.noLine ? '' : `<span class="lt">${fl(i === 0 || !sp.signed ? r.line : -r.line, sp.signed)}</span>`}`;
   };
   for (const r of rows) {
     if (collapsed[r.g] && r.k !== USER_BOOK) { hidden[r.g] = (hidden[r.g] || 0) + 1; continue; }
@@ -298,16 +440,16 @@ function boardCard(m, sp, L, labels, rows, opts) {
     if (pick && opts.picks && opts.picks[r.k]) extra = `<div class="age">${opts.picks[r.k]}</div>`;
     if (pick && r.k === 'underdog' && x.mult) extra = `<div class="age">payout-implied price${x.mult !== 1 ? ' · ×' + x.mult : ''}</div>`;
     if (pick && r.k === 'prizepicks') extra = `<div class="age">line only — PrizePicks posts no price (via comparenbet)</div>`;
-    const lat = lead[r.k] != null ? `<span class="chip" style="font-size:11px;padding:0 6px" title="EXAMPLE, T0 method: minutes behind Pinnacle on the last move Pinnacle led">⏱ ${lead[r.k]} min behind Pinnacle</span>` : '';
+    const lat = lead[r.k] != null ? `<span class="age" title="EXAMPLE, T0 method: minutes behind Pinnacle on the last move Pinnacle led">⏱ follows Pinnacle by ~${lead[r.k]} min</span>` : '';
     const stale = r.since && secs(r.since) > 12 * 3600;
-    html += `<tr class="${r.k === USER_BOOK ? 'me' : ''} ${r.at || sp.noLine ? '' : 'dim'}"><td><div>${book(r.k)}</div>${extra}${lat ? `<div style="margin-top:2px">${lat}</div>` : ''}</td>
+    html += `<tr class="${r.k === USER_BOOK ? 'me' : ''} ${r.at || sp.noLine ? '' : 'dim'}" data-row="${S.surf}|br|${ctx}|${r.k}" data-st="on"><td><div>${book(r.k)}</div>${extra}${lat ? `<div style="margin-top:1px">${lat}</div>` : ''}</td>
       <td class="r">${cell(r, r.qa, 0)}</td><td class="r">${cell(r, r.qb, 1)}</td>
       <td class="hide-ph">${mv}</td>
-      <td class="r" style="white-space:nowrap"><span class="age">${ago(r.age)}</span> <span class="age hide-ph ${stale ? 'stale' : ''}">· since ${etd(r.since)}</span></td></tr>`;
+      <td class="r" style="white-space:nowrap"><span class="age">${r.age < 9e9 ? agoS(r.age) : '—'}</span> <span class="age hide-ph ${stale ? 'stale' : ''}">· since ${etd(r.since)}</span></td></tr>`;
   }
   for (const k of pulled) {
     const h = m.hist[k], last = h[h.length - 1];
-    html += `<tr class="pulled"><td>${book(k)} <span class="chip bad" style="font-size:11px;padding:0 6px">pulled</span></td><td class="r"><span class="px">${fa(last[2])}</span></td><td class="r"><span class="px">${fa(last[3])}</span></td><td class="hide-ph muted">last at ${fl(last[1], sp.signed)}</td><td class="r age">last seen ${etd(last[0])}</td></tr>`;
+    html += `<tr class="pulled" data-row="${S.surf}|br|${ctx}|${k}" data-st="pulled"><td>${book(k)} <span class="st bad">Pulled</span></td><td class="r"><span class="px">${fa(last[2])}</span></td><td class="r"><span class="px">${fa(last[3])}</span></td><td class="hide-ph muted">last at ${fl(last[1], sp.signed)}</td><td class="r age">${PULLED[`${S.surf}|br|${ctx}|${k}`] ? `pulled ${tick$(PULLED[`${S.surf}|br|${ctx}|${k}`])} ago` : 'last seen ' + etd(last[0])}</td></tr>`;
   }
   const more = Object.entries(hidden).map(([g, n]) => `<button class="btn" data-expand="${g}">+ ${n} ${GROUPS[GORD[g]][1].toLowerCase()} books</button>`).join(' ');
   return `<div class="scrollx"><table class="t board"><thead><tr><th>Book</th><th class="r">${lab[0]}</th><th class="r">${lab[1]}</th><th class="hide-ph">Open → now</th><th class="r">Checked</th></tr></thead><tbody>${html}</tbody></table></div>
@@ -362,7 +504,9 @@ function moveCard(m, sp, id, labels) {
     mvList = mvList.sort((a, b) => b[0].localeCompare(a[0])).slice(0, 40);
   }
   const starters = new Set(steams.map(c => c.t + c.books[0]));
-  return `<section class="card">${cardH('Line movement', `${lab[0]} · ${metric === 'line' ? 'the line' : 'implied probability, ' + lab[0]}`)}
+  const newest = Math.min(...m.cur.map(c => c[6]).filter(v => v != null));
+  const just = t => +NOW - tsm(t) < 120e3 ? '<span class="just">just now</span>' : '';
+  return `<section class="card">${cardH('Line movement', `${lab[0]} · ${metric === 'line' ? 'the line' : 'implied probability, ' + lab[0]}`, isFinite(newest) && id !== 'f' ? liveTag(atS(newest), 70) : id === 'f' ? '<span class="upd"><i class="ld off"></i><span>closed</span></span>' : '')}
     <div class="cb" style="padding-bottom:6px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         <div class="seg">${['2h', '6h', '12h', '48h', 'open'].map(w => `<button data-win="${w}" aria-pressed="${S.win === w}">${w === 'open' ? 'Since open' : w}</button>`).join('')}</div>
@@ -370,14 +514,14 @@ function moveCard(m, sp, id, labels) {
         <div class="seg"><button data-preset="sharp">Sharp</button><button data-preset="mine">My book</button><button data-preset="most">Most moves</button><button data-preset="all">All</button><button data-preset="none">Clear</button></div>
       </div>
       <div class="picker">${chips}${books.length > shown.length ? `<button class="pk" data-allchips="1">+ ${books.length - shown.length} offshore &amp; international</button>` : S.allChips ? '<button class="pk" data-allchips="0">fewer books</button>' : ''}</div>
-      <div class="chart" data-chart="${id}" data-metric="${metric}" style="height:250px;position:relative"></div>
+      <div class="chart" data-chart="${id}" data-metric="${metric}" data-keep="1" style="height:250px;position:relative"></div>
       ${steams.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">${steams.slice(-3).reverse().map(c => {
         const mins = Math.round((tms(c.times[c.times.length - 1]) - tms(c.times[0])) / 60000);
-        return `<div class="small"><span class="chip dark" style="font-size:11px">First mover</span> <b>${esc(bn(c.books[0]))}</b> moved ${fl(c.from, sp.signed)} → ${fl(c.to[0], sp.signed)} at ${etd(c.t)}; ${c.books.length - 1} book${c.books.length > 2 ? 's' : ''} followed within ${mins} min <span class="muted">(${c.books.slice(1).map(bn).join(', ')})</span></div>`;
+        return `<div class="small" data-row="${S.surf}|fm|${id}|${c.t}|${c.books[0]}"><b>First mover:</b> <b>${esc(bn(c.books[0]))}</b> moved ${fl(c.from, sp.signed)} → ${fl(c.to[0], sp.signed)} at ${etd(c.t)}; ${c.books.length - 1} book${c.books.length > 2 ? 's' : ''} followed within ${mins} min <span class="muted">(${c.books.slice(1).map(bn).join(', ')})</span>${just(c.times[c.times.length - 1])}</div>`;
       }).join('')}</div>` : ''}
       <details style="margin-top:8px"><summary class="small soft" style="cursor:pointer">Every move in this window (${mvList.length} ${sp.noLine ? 'price changes of 5¢+ on the selected books' : 'line changes'})</summary>
         <table class="t" style="margin-top:6px"><thead><tr><th>Time</th><th>Book</th><th>From → to</th><th></th></tr></thead><tbody>
-        ${mvList.map(x => `<tr><td class="age">${etd(x[0])}</td><td>${book(x[1], 14)}</td><td>${sp.noLine ? `${fa(x[2])} → <b>${fa(x[3])}</b>` : `${fl(x[2], sp.signed)} → <b>${fl(x[3], sp.signed)}</b>`}</td><td>${starters.has(x[0] + x[1]) ? '<span class="chip dark" style="font-size:11px">first mover</span>' : ''}</td></tr>`).join('')}
+        ${mvList.map(x => `<tr data-row="${S.surf}|mv|${id}|${x[0]}|${x[1]}|${x[3]}"><td class="age">${etd(x[0])}${just(x[0])}</td><td>${book(x[1], 14)}</td><td>${sp.noLine ? `${fa(x[2])} → <b>${fa(x[3])}</b>` : `${fl(x[2], sp.signed)} → <b>${fl(x[3], sp.signed)}</b>`}</td><td>${starters.has(x[0] + x[1]) ? '<span class="st ink">First mover</span>' : ''}</td></tr>`).join('')}
         </tbody></table></details>
     </div></section>`;
 }
@@ -423,6 +567,9 @@ function drawChart(el) {
     const t = +tms(c.t); const room = lastLbl - X(t) > 110; if (room) lastLbl = X(t);
     g += `<line x1="${X(t)}" x2="${X(t)}" y1="${pt}" y2="${H - pb}" stroke="#00873f" stroke-dasharray="3 3"/><circle cx="${X(t)}" cy="${pt + 4}" r="4" fill="#00d26a" stroke="#04311a"/>${room ? `<text x="${X(t) - 6}" y="${pt + 8}" text-anchor="end" font-size="10" fill="#04311a" font-weight="600">${esc(bn(c.books[0]))} first</text>` : ''}`;
   }
+  // the live edge: a "now" guide at the right; each series' newest point pulses, a point that just arrived pops in
+  const liveC = el.dataset.chart !== 'f';   // a finished game's chart is history, not live
+  if (liveC) g += `<line x1="${X(t1)}" x2="${X(t1)}" y1="${pt}" y2="${H - pb}" stroke="oklch(72% .004 260)" stroke-dasharray="2 3"/><text x="${X(t1) - 4}" y="${H - pb - 4}" text-anchor="end" font-size="10" fill="oklch(47% .005 260)">now</text>`;
   for (const s of series) {
     let d = '';
     s.pts.forEach((p, i) => { const x = X(+tms(p[0])), y = Y(val(p)); d += i ? `H${x.toFixed(1)}V${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`; });
@@ -432,13 +579,18 @@ function drawChart(el) {
     g += `<path d="${d}" fill="none" stroke="${col[s.k]}" stroke-width="${wgt}" stroke-linejoin="round"/>`;
     const op = s.pts[0];
     g += `<circle cx="${X(+tms(op[0]))}" cy="${Y(val(op))}" r="2.5" fill="${col[s.k]}"/>`;
+    const nk = el.dataset.chart + '|' + s.k, n = m.hist[s.k].length, grew = CHART_N[nk] != null && n > CHART_N[nk] && LIVE_RENDER;
+    CHART_N[nk] = n;
+    const lx = X(+tms(last[0])), ly = Y(val(last));
+    if (grew && +tms(last[0]) >= t0) g += `<circle class="svpop" cx="${lx}" cy="${ly}" r="5" fill="${col[s.k]}" opacity=".9"/>`;
+    if (liveC) g += `<circle class="svp" cx="${X(t1)}" cy="${Y(val(last))}" r="3.5" fill="${col[s.k]}" opacity=".35"/>`;
     g += `<circle cx="${X(t1)}" cy="${Y(val(last))}" r="3.5" fill="#fff" stroke="${col[s.k]}" stroke-width="2"><title>${esc(bn(s.k))}: ${metric === 'line' ? fl(last[1], sp.signed) + ' ' : ''}${fa(last[2])} / ${fa(last[3])}</title></circle>`;
   }
   el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Line movement">${g}</svg>`;
 }
 
 /* O-E where the money is */
-const bar2 = (a, b, la, lb, cA = 'var(--cmp-a)', cB = 'var(--cmp-b)') => `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line-soft);margin:4px 0;gap:2px"><i style="width:${a}%;background:${cA}"></i><i style="width:${b}%;background:${cB}"></i></div><div class="age bl2" style="display:flex;justify-content:space-between;align-items:center"><span>${la}</span><span>${lb}</span></div>`;
+const bar2 = (a, b, la, lb, cA = 'var(--cmp-a)', cB = 'var(--cmp-b)') => `<div class="b2" style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line-soft);margin:4px 0;gap:2px"><i style="width:${a}%;background:${cA}"></i><i style="width:${b}%;background:${cB}"></i></div><div class="age bl2" style="display:flex;justify-content:space-between;align-items:center"><span>${la}</span><span>${lb}</span></div>`;
 function moneyGame(mk, sp, labels, colors) {
   const lab = labels, cA = colors ? colors[0] : 'var(--cmp-a)', cB = colors ? colors[1] : 'var(--cmp-b)';
   const tl = i => mk === 'tot' ? '' : `<img class="tlogo" src="${i ? TEAM.away.logo : TEAM.home.logo}" alt="">`;
@@ -449,10 +601,11 @@ function moneyGame(mk, sp, labels, colors) {
     const a = get(src, book, sp.sides[0]), b = get(src, book, sp.sides[1]);
     if (!a || !b) return;
     const split = a[8] != null && a[7] != null && Math.abs(a[8] - a[7]) >= 15;
-    rows.push(`<div style="padding:8px 0;border-bottom:1px solid var(--line-soft)"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b class="small">${name}</b><span class="age">${note2} · ${ago(secs(a[0]))} ago</span></div>
-      <div class="grid2" style="gap:12px;margin-top:2px"><div><div class="age">Money</div>${a[8] != null ? bar2(a[8], b[8], tl(0) + lab[0] + ' <b>' + a[8] + '%</b>', '<b>' + b[8] + '%</b> ' + lab[1] + tl(1), cA, cB) : '<div class="age">not published</div>'}</div>
-      <div><div class="age">Bets</div>${bar2(a[7], b[7], tl(0) + lab[0] + ' <b>' + a[7] + '%</b>', '<b>' + b[7] + '%</b> ' + lab[1] + tl(1), cA, cB)}</div></div>
-      ${split ? `<div class="small" style="margin-top:4px"><span class="chip warn">money ≠ bets</span> ${a[8] > a[7] ? lab[0] : lab[1]} draws ${Math.abs(a[8] - a[7])} pts more of the money than of the bets</div>` : ''}</div>`);
+    const k2 = `mo|${mk}|${src}|${book}`;
+    rows.push(`<div style="padding:8px 0;border-bottom:1px solid var(--line-soft)"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b class="small">${name}</b><span class="age">${note2} · ${agoT(a[0])} ago</span></div>
+      <div class="grid2" style="gap:12px;margin-top:2px"><div><div class="age">Money</div>${a[8] != null ? bar2(a[8], b[8], tl(0) + lab[0] + ' <b>' + lv(k2 + '|m', a[8], a[8] + '%') + '</b>', '<b>' + b[8] + '%</b> ' + lab[1] + tl(1), cA, cB) : '<div class="age">not published</div>'}</div>
+      <div><div class="age">Bets</div>${bar2(a[7], b[7], tl(0) + lab[0] + ' <b>' + lv(k2 + '|b', a[7], a[7] + '%') + '</b>', '<b>' + b[7] + '%</b> ' + lab[1] + tl(1), cA, cB)}</div></div>
+      ${split ? `<div class="small" style="margin-top:4px"><span class="st warn">Money and bets split:</span> ${a[8] > a[7] ? lab[0] : lab[1]} draws ${Math.abs(a[8] - a[7])} pts more of the money than of the bets</div>` : ''}</div>`);
   };
   add('DraftKings customers', 'dknetwork', 'draftkings', 'DK Network');
   if (!get('dknetwork', 'draftkings', sp.sides[0])) add('DraftKings customers', 'vsin', 'draftkings', 'VSiN');
@@ -473,7 +626,7 @@ function moneyGame(mk, sp, labels, colors) {
     const d = h.map((p, i) => `${i ? 'L' : 'M'}${(W * (+tms(p[0]) - t0) / Math.max(1, t1 - t0)).toFixed(1)},${(H - H * p[3] / 100).toFixed(1)}`).join('');
     spark = `<div style="margin-top:6px"><div class="age">DraftKings money on ${lab[0]}: ${h[0][3]}% (${etd(h[0][0])}) → ${h[h.length - 1][3]}% now</div><svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="oklch(89% .004 260)" stroke-dasharray="2 3"/><path d="${d}" fill="none" stroke="#2f6fb3" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>`;
   }
-  return `<section class="card">${cardH('Where the money is', 'each row names whose customers')}<div class="cb" style="padding-top:4px">${rows.join('')}${spark}
+  return `<section class="card">${cardH('Where the money is', 'each row names whose customers', liveTag(srcChecked('dknetwork'), 480))}<div class="cb" style="padding-top:4px">${rows.join('')}${spark}
     <div class="age" style="margin-top:6px">Never called "the public" or "sharp money"; never presented as total handle.</div></div></section>`;
 }
 function moneyProp(mkKey, m) {
@@ -484,7 +637,7 @@ function moneyProp(mkKey, m) {
   let h = '';
   if (ov && un) {
     const tot = ov[9] + un[9], po = Math.round(100 * ov[9] / tot);
-    h += `<div style="padding:4px 0 10px;border-bottom:1px solid var(--line-soft)"><div style="display:flex;justify-content:space-between"><b class="small">${logo('sleeper', 14)} Sleeper pick counts at ${fln(ov[6])}</b><span class="age">${ago(secs(ov[0]))} ago</span></div>
+    h += `<div style="padding:4px 0 10px;border-bottom:1px solid var(--line-soft)"><div style="display:flex;justify-content:space-between"><b class="small">${logo('sleeper', 14)} Sleeper pick counts at ${fln(ov[6])}</b><span class="age">${agoT(ov[0])} ago</span></div>
       ${bar2(po, 100 - po, `Over ${nfmt(ov[9])} (${po}%)`, `${nfmt(un[9])} (${100 - po}%) Under`, 'var(--good)', 'var(--line)')}<div class="age">Entries in Sleeper's pick'em — counts, not money</div></div>`;
   } else h += `<div class="small muted" style="padding:6px 0 10px;border-bottom:1px solid var(--line-soft)">Sleeper pick counts: no data available for this market.</div>`;
   if (kal.length) {
@@ -493,7 +646,7 @@ function moneyProp(mkKey, m) {
       ${kal.slice(0, 6).map(c => `<tr><td>${Math.ceil(c[2])}+</td><td class="r">${Math.round(c[8].yes_bid * 100)}–${Math.round(c[8].yes_ask * 100)}¢</td><td class="r">${money(c[8].volume_24h)}</td><td class="r">${money(c[8].open_interest)}</td></tr>`).join('')}</tbody></table></div>`;
   } else h += `<div class="small muted" style="padding:8px 0;border-bottom:1px solid var(--line-soft)">Kalshi volume: no Kalshi contract for this market.</div>`;
   h += `<div class="small" style="padding:8px 0"><b>Money % / bets %</b> <span class="muted">— No data available. No source publishes money or bet share for player props.</span></div>`;
-  return `<section class="card">${cardH('Where the money is', 'props: pick counts + exchange volume')}<div class="cb" style="padding-top:6px">${h}</div></section>`;
+  return `<section class="card">${cardH('Where the money is', 'props: pick counts + exchange volume', liveTag(srcChecked('sleeper'), 900))}<div class="cb" style="padding-top:6px">${h}</div></section>`;
 }
 
 /* O-F opening → now */
@@ -530,12 +683,12 @@ function depthCard(m, sp, L, labels) {
       <div><div class="ov" style="margin-bottom:2px">Asks (sell yes)</div>${asks.slice(0, 8).map(l => lv(l, 'var(--bad)')).join('')}</div></div>
       <div class="age" style="margin-top:6px">${x.volume_24h != null ? money(x.volume_24h) + ' traded 24h · ' : ''}${x.open_interest != null ? money(x.open_interest) + ' open interest · ' : ''}${x.liquidity != null ? money(x.liquidity) + ' liquidity · ' : ''}top ${bids.length} levels stored</div>`;
   }
-  return `<section class="card">${cardH('Depth, limits & order book', 'confidence behind the prices')}<div class="cb">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      <span class="chip">${logo('pinnacle', 14)} Pinnacle limit ${lim ? '$' + nfmt(lim) : '—'}</span>
-      <span class="chip">${n} books price this market</span>
-      ${lad ? `<span class="chip">${lad[5] === 'kalshi' ? 'Kalshi' : 'Polymarket'} spread ${Math.round(((lad[8].yes_ask ?? lad[8].ask) - (lad[8].yes_bid ?? lad[8].bid)) * 100)}¢</span>` : ''}
-    </div>${ob}</div></section>`;
+  return `<section class="card">${cardH('Depth, limits & order book', 'confidence behind the prices', lad ? liveTag(srcChecked(lad[5] === 'kalshi' ? 'kalshi' : 'polymarket'), 70) : '')}<div class="cb">
+    <div class="mstats" style="margin-bottom:12px">
+      <div class="mstat"><div class="ov">Pinnacle limit</div><b>${logo('pinnacle', 14)}${lim ? '$' + nfmt(lim) : '—'}</b></div>
+      <div class="mstat"><div class="ov">Books pricing it</div><b>${n}</b></div>
+      ${lad ? `<div class="mstat"><div class="ov">${lad[5] === 'kalshi' ? 'Kalshi' : 'Polymarket'} spread</div><b>${Math.round(((lad[8].yes_ask ?? lad[8].ask) - (lad[8].yes_bid ?? lad[8].bid)) * 100)}¢</b></div>` : ''}
+    </div>${ob}<div class="age" style="margin-top:6px">Bars slide to their new size when a level changes. This snapshot holds one stored ladder per contract, so the replay has no ladder changes to show.</div></div></section>`;
 }
 
 /* O-K coverage map */
@@ -555,22 +708,24 @@ function coverageCard(P) {
     ${rows.map(r => `<tr><td><b>${r.name}</b></td><td class="r">${r.n}</td><td class="r hide-ph">${r.lines}</td>${gcols.map(g => `<td class="cell"><span class="sq" style="${heat(r.per[g].length)}" title="${esc(r.per[g].map(bn).join(', '))}">${r.per[g].length}</span></td>`).join('')}</tr>`).join('')}
     </tbody></table></div>
     <div class="cb" style="border-top:1px solid var(--line-soft)"><div class="lbl">Priced by a source, not in the app yet <span class="muted">(D15 — ${unm.length} markets)</span></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${unm.slice(0, 40).map(([s, src]) => `<span class="chip" title="${esc(src.join(', '))}">${esc(s.replace(/^player_/, '').replace(/_/g, ' '))} <span class="muted">· ${src.length}</span></span>`).join('')}</div></div></section>`;
+    <div class="cols" style="margin-top:8px">${unm.slice(0, 40).map(([s, src]) => `<div title="${esc(src.join(', '))}"><span>${esc(s.replace(/^player_/, '').replace(/_/g, ' '))}</span><span>${src.length} source${src.length === 1 ? '' : 's'}</span></div>`).join('')}</div></div></section>`;
 }
 
 /* compact game-line card (player page + team page) */
 function gameLineCompact(title) {
   const mk = [['fg_sp', spec('sp'), 'Spread'], ['fg_tot', spec('tot'), 'Total'], ['fg_ml', spec('ml'), 'Moneyline']];
+  const AGES = [];
   const rowsH = mk.map(([k, sp, name]) => {
     const m = O.nfl.markets[k]; const L = sp.noLine ? null : mainLines(m, sp).modal;
     const rows = boardRows(m, sp, L); const b0 = bestOf(rows, 0), b1 = bestOf(rows, 1); const p = sp.noLine ? (() => { const a = m.cur.find(c => c[0] === 'pinnacle' && c[1] === 'home' && c[7] === 'main'), b = m.cur.find(c => c[0] === 'pinnacle' && c[1] === 'away' && c[7] === 'main'); return a && b ? { a, b, fa: devig(a[3], b[3]) } : null; })() : pinAt(m, sp, L);
     const sl = sp.kind === 'tot' ? ['O', 'U'] : [TEAM.home.abbr, TEAM.away.abbr];
     const ln = (i) => sp.noLine ? '' : sp.kind === 'tot' ? fln(L) + ' ' : fl(i ? -L : L, true) + ' ';
+    AGES.push(...rows.filter(r => r.age < 9e9).map(r => r.age));
     return `<tr><td><b>${name}</b><div class="age">${rows.length} books</div></td>
-      <td>${b0 ? `${sl[0]} ${ln(0)}<b class="px" style="min-width:0">${fa(b0.q[3])}</b> ${logo(b0.k, 14)}` : '—'}<br>${b1 ? `${sl[1]} ${ln(1)}<b class="px" style="min-width:0">${fa(b1.q[3])}</b> ${logo(b1.k, 14)}` : '—'}</td>
-      <td class="hide-ph">${p ? `<span class="small">${fa(p.a[3])} / ${fa(p.b[3])}</span><div class="age">fair ${pct(p.fa)}</div>` : '<span class="muted small">—</span>'}</td></tr>`;
+      <td>${b0 ? `${sl[0]} ${ln(0)}<b class="px" style="min-width:0">${lv('gl|' + k + '|0', b0.q[3], fa(b0.q[3]))}</b> ${logo(b0.k, 14)}` : '—'}<br>${b1 ? `${sl[1]} ${ln(1)}<b class="px" style="min-width:0">${lv('gl|' + k + '|1', b1.q[3], fa(b1.q[3]))}</b> ${logo(b1.k, 14)}` : '—'}</td>
+      <td class="hide-ph">${p ? `<span class="small">${lv('gl|' + k + '|pa', p.a[3], fa(p.a[3]))} / ${fa(p.b[3])}</span><div class="age">fair ${pct(p.fa)}</div>` : '<span class="muted small">—</span>'}</td></tr>`;
   }).join('');
-  return `<section class="card">${cardH(title || 'Game line', `${TEAM.away.abbr} @ ${TEAM.home.abbr} · ${et(G.start)} ET`, '')}<table class="t"><thead><tr><th>Market</th><th>Best price</th><th class="hide-ph">Pinnacle</th></tr></thead><tbody>${rowsH}</tbody></table>
+  return `<section class="card">${cardH(title || 'Game line', `${TEAM.away.abbr} @ ${TEAM.home.abbr} · ${et(G.start)} ET`, AGES.length ? liveTag(atS(Math.min(...AGES)), 70) : '')}<table class="t"><thead><tr><th>Market</th><th>Best price</th><th class="hide-ph">Pinnacle</th></tr></thead><tbody>${rowsH}</tbody></table>
     <div class="cb" style="border-top:1px solid var(--line-soft);padding:8px 16px"><a href="#" data-go="game" class="small" style="color:var(--ink)">All game lines, movement and splits →</a></div></section>`;
 }
 
@@ -580,15 +735,16 @@ function propEdge(mkKey, m, sp, L) {
   if (mkKey === 'receptions' && L === 5.5 && p) {
     const ud = m.cur.find(c => c[0] === 'underdog' && c[1] === 'over' && c[2] === 5.5);
     const nv = m.cur.find(c => c[0] === 'novig' && c[1] === 'over' && c[2] === 5.5), nvu = m.cur.find(c => c[0] === 'novig' && c[1] === 'under' && c[2] === 5.5);
-    if (ud) return { on: true, scope: 'Receptions 5.5', k: 'underdog', title: 'Over 5.5 · Underdog (higher)', price: ud[3], imp: ip(ud[3]), fair: p.fa, ev: p.fa * dec(ud[3]) - 1,
-      refs: [['pinnacle', `Pinnacle ${fa(p.a[3])} / ${fa(p.b[3])} · limit $${nfmt((p.a[8] || {}).limit || 0)}`, ago(p.a[6])], ...(nv && nvu ? [['novig', `Novig agrees · fair ${pct(devig(nv[3], nvu[3]))}`, ago(nv[6])]] : []), ['underdog', `Underdog unchanged since ${etd(ud[4])}`, ago(ud[6])]],
+    if (ud && p.fa * dec(ud[3]) - 1 > 0) return { on: true, scope: 'Receptions 5.5', k: 'underdog', title: 'Over 5.5 · Underdog (higher)', price: ud[3], imp: ip(ud[3]), fair: p.fa, ev: p.fa * dec(ud[3]) - 1,
+      since: [p.a[4], p.b[4], ud[4]].sort().pop(),
+      refs: [['pinnacle', `Pinnacle ${fa(p.a[3])} / ${fa(p.b[3])} · limit $${nfmt((p.a[8] || {}).limit || 0)}`, p.a[6]], ...(nv && nvu ? [['novig', `Novig agrees · fair ${pct(devig(nv[3], nvu[3]))}`, nv[6]]] : []), ['underdog', `Underdog unchanged since ${etd(ud[4])}`, ud[6]]],
       gates: [['Pinnacle two-sided at 5.5', 1], ['Second sharp agrees', 1], ['Re-checked < 5 min', 1], ['Not pulled', 1], ['Pre-game', 1], ['Under the 8% cap', 1]] };
   }
   return edgeEmpty(m, sp, L, ['Over', 'Under'], (mkKey === 'anytime_td' ? 'Yes' : 'at ' + fln(L)));
 }
 
 // ------------------------------------------------------------------ surfaces
-const P = O.nfl.players['drake london'];
+let P = O.nfl.players['drake london'];
 function renderPlayer() {
   const mkList = PROPS.filter(p => P.markets[p[0]] && new Set(P.markets[p[0]].cur.map(c => c[0])).size >= 4);
   const mkKey = S.pm, m = P.markets[mkKey], sp = spec('prop');
@@ -602,9 +758,10 @@ function renderPlayer() {
     const mm = P.markets[k], ml = mainLines(mm, sp).modal, rr = boardRows(mm, sp, ml), b0 = bestOf(rr, 0), b1 = bestOf(rr, 1);
     const pin = pinAt(mm, sp, ml) || pinAt(mm, sp, pinMain(mm, sp));
     const edge = k === 'receptions';
+    const nw = tabNew('p|' + k, mm, k === mkKey);
     return `<button class="mtab" data-pm="${k}" aria-pressed="${k === mkKey}"><div class="n">${name}${edge ? '<span class="dot" style="background:var(--good)" title="Edge (example)"></span>' : ''}</div>
-      <div class="l">${k === 'anytime_td' ? 'Yes' : fln(ml)} · O ${fa(b0 && b0.q[3])} / U ${fa(b1 && b1.q[3])}</div>
-      <div class="s"><span>${new Set(mm.cur.map(c => c[0])).size} books</span>${pin ? `<span>· Pin ${fa(pin.a[3])}/${fa(pin.b[3])}</span>` : '<span>· no sharp</span>'}</div></button>`;
+      <div class="l">${k === 'anytime_td' ? 'Yes' : fln(ml)} · O ${lv('tab|' + k + '|o', b0 && b0.q[3], fa(b0 && b0.q[3]))} / U ${lv('tab|' + k + '|u', b1 && b1.q[3], fa(b1 && b1.q[3]))}</div>
+      <div class="s">${nw || `<span>${new Set(mm.cur.map(c => c[0])).size} books</span>${pin ? `<span>· Pin ${fa(pin.a[3])}/${fa(pin.b[3])}</span>` : '<span>· no sharp</span>'}`}</div></button>`;
   }).join('') + `<button class="mtab" disabled style="opacity:.7"><div class="n">+ ${PROPS.length - mkList.length + Object.keys(P.coverage).filter(k => k.startsWith('~')).length} more</div><div class="l">targets, 1H, 1Q, fantasy, first TD…</div><div class="s">see Coverage</div></button>`;
   const picks = {};
   const sl = O.nfl.propSplits.filter(s => s[4] === (PROPS.find(p => p[0] === mkKey) || [])[2]);
@@ -617,7 +774,8 @@ function renderPlayer() {
   <div class="stub hero-stub" style="--tc:${TEAM.away.color}">${head('https://a.espncdn.com/i/headshots/nfl/players/full/4426502.png', 'Drake London', 64, TEAM.away.color)}<div><div style="display:flex;gap:8px;align-items:center"><b style="color:var(--ink);font-size:18px">Drake London</b><img class="tlogo lg" src="${TEAM.away.logo}" alt=""></div>
     <div class="small">WR #5 · Atlanta Falcons — at Green Bay · Tonight ${et(G.start)} ET</div><div class="age">Hero (headshot, team colour, logo), the prop analysis block and the research cards above are unchanged. The prop block's line stepper and this section's are the same control.</div></div></div>
   ${note('PLAYER · ODDS & PRICES', `Replaces "Prices by market", "Line movement", "All books" and "Game line". The section header's subtitle is the freshness strip (O-I). Market tabs carry best O/U, book count and the sharp price; a green dot = an edge passed the gates. Data: ${REAL} ${P.markets[mkKey].cur.length} live quotes for this market from ${new Set(m.cur.map(c => c[5])).size} sources.`)}
-  <section class="sec">${secHead('Odds &amp; prices', fresh(m, rows))}
+  ${note('LIVE (round 4)', `Everything that updates says so. <b>Card headers</b>: a green dot pulses while the newest reading is inside twice its source's poll interval, turns amber when late and grey when well past it, and pings when the card's data changes. <b>Values</b> roll to the new number with a green (up) or red (down) flash, then leave a ▲/▼ with its age that fades over 2 minutes. <b>Section header</b>: a 30-minute heartbeat of price changes across every book, and "N prices changed since you opened this" (click it to outline them). <b>Market tabs</b> count changes you haven't looked at. <b>Board rows</b> flash red and strike through when a book pulls, and fade back in if it returns. <b>Chart</b>: a "now" guide, the newest points pulse, and a new point pops in. <b>Edge</b>: "passing for N min", and the card folds open or shut as the gates change.`)}
+  <section class="sec">${secHead('Odds &amp; prices', fresh(m, rows), sinceOpened())}
     <div class="mtabs">${tabs}</div>
     ${note('O-S SHARP STRIP', 'Heads every board. Pinnacle with its no-vig fair %, age and limit; Circa where it prices the market; exchanges at this exact line with bid/ask and volume. When the selected line has no sharp price it says so in the same place — step the line to see it.')}
     <div style="display:flex;gap:10px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><span class="lbl">Line</span>
@@ -626,14 +784,14 @@ function renderPlayer() {
     ${sharpStrip(m, sp, L)}
     <div class="grid2" style="margin-top:14px">${bestCard(m, sp, L, null, rows)}${edgeCard(edge)}</div>
     ${note('O-B / O-C', `Best price shows your book (★ FanDuel) against the best, and the hold meter (approved idea 1). Edge ${EX}: gates applied by hand to real prices — try <b>Receptions</b> for a passing example and <b>Receiving yards</b> for the honest empty state.`)}
-    <section class="card" style="margin-top:14px">${cardH('Every book', 'at ' + (mkKey === 'anytime_td' ? 'Yes' : fln(L)), `<span style="margin-left:10px" class="seg"><button data-all="0" aria-pressed="${!S.all}">This line</button><button data-all="1" aria-pressed="${S.all}">All lines</button></span>`)}
+    <section class="card" style="margin-top:14px">${cardH('Every book', 'at ' + (mkKey === 'anytime_td' ? 'Yes' : fln(L)), boardLive(rows) + `<span style="margin-left:10px" class="seg"><button data-all="0" aria-pressed="${!S.all}">This line</button><button data-all="1" aria-pressed="${S.all}">All lines</button></span>`)}
       ${S.all ? ladderCard(m, sp, mkKey === 'anytime_td' ? 0 : 8, null, L) : boardCard(m, sp, L, null, rows, { picks, collapse })}</section>
-    ${note('O-A PRICE BOARD', `Groups in the fixed order; your book pinned and highlighted. A book that is not at the selected line shows its own line in grey (never dropped). Filled chip = best price. "Checked" is when we last confirmed the price; "since" is when it last changed. ⏱ badges ${EX}: the T0 method on the last move Pinnacle led. Pick'em rows are shown as prices but never enter "best". International books are collapsed behind a button.`)}
+    ${note('O-A PRICE BOARD', `Groups in the fixed order; your book pinned and highlighted. A book that is not at the selected line shows its own line in grey (never dropped). Filled = best price. "Checked" is when we last confirmed the price; "since" is when it last changed. ⏱ badges ${EX}: the T0 method on the last move Pinnacle led. Pick'em rows are shown as prices but never enter "best". International books are collapsed behind a button.`)}
     <div class="g-mv" style="margin-top:14px">${moveCard(m, sp, 'p')}${moneyProp(mkKey, m)}</div>
     ${note('O-D / O-E', `Pick any books (chips show moves in the window); presets Sharp · My book · Most moves · All. Pinnacle is drawn heaviest. The green marker is the first mover (approved idea 3): who moved first and how many followed. Props money: Sleeper pick counts and Kalshi volume only, and "No data available" for money/bets %.`)}
     <div class="grid2" style="margin-top:14px">${openCard(m, sp)}${depthCard(m, sp, L)}</div>
     <div style="margin-top:14px">${coverageCard(P)}</div>
-    ${note('O-K COVERAGE', `Markets × book groups (approved idea 5). The chip list below is every market a source prices that the app does not show yet — the D15 backlog, straight from the data.`)}
+    ${note('O-K COVERAGE', `Markets × book groups (approved idea 5). The list below is every market a source prices that the app does not show yet — the D15 backlog, straight from the data.`)}
     <div style="margin-top:14px">${gameLineCompact()}</div>
     ${note('GAME LINE (O0 fix)', 'Today this card says "No game line yet" while the game page shows DraftKings — a bug. Rebuilt: best price per side across every book plus Pinnacle, linking to the game page.')}
   </section>`;
@@ -659,16 +817,18 @@ function renderGame() {
     const rr = boardRows(mm, sp2, ml), b0 = bestOf(rr, 0), b1 = bestOf(rr, 1);
     const l2 = sp2.kind === 'tot' ? ['O', 'U'] : [TEAM.home.abbr, TEAM.away.abbr];
     const pn = sp2.noLine ? mm.cur.find(c => c[0] === 'pinnacle' && c[7] === 'main') : pinAt(mm, sp2, ml);
+    const nw = tabNew('g|' + S.gper + k, mm, k === S.gmk);
     return `<button class="mtab" data-gmk="${k}" aria-pressed="${k === S.gmk}"><div class="n">${name}${k === 'sp' && S.gper === 'fg' ? '<span class="dot" style="background:var(--good)" title="Edge (example)"></span>' : ''}</div>
-      <div class="l">${sp2.noLine ? '' : (sp2.signed ? TEAM.home.abbr + ' ' + fl(ml, true) : fln(ml)) + ' · '}${l2[0]} ${fa(b0 && b0.q[3])} / ${l2[1]} ${fa(b1 && b1.q[3])}</div>
-      <div class="s">${new Set(mm.cur.map(c => c[0])).size} books ${pn ? '· sharp ✓' : '· no sharp'}</div></button>`;
+      <div class="l">${sp2.noLine ? '' : (sp2.signed ? TEAM.home.abbr + ' ' + fl(ml, true) : fln(ml)) + ' · '}${l2[0]} ${lv('gtab|' + S.gper + k + '|0', b0 && b0.q[3], fa(b0 && b0.q[3]))} / ${l2[1]} ${lv('gtab|' + S.gper + k + '|1', b1 && b1.q[3], fa(b1 && b1.q[3]))}</div>
+      <div class="s">${nw || `${new Set(mm.cur.map(c => c[0])).size} books ${pn ? '· sharp ✓' : '· no sharp'}`}</div></button>`;
   }).join('');
   let edge;
   if (key === 'fg_sp' && L === -4.5) {
     const p = pinAt(m, sp, L), q = m.cur.find(c => c[0] === 'betmgm' && c[1] === 'home' && c[2] === -4.5 && c[7] === 'main') || m.cur.find(c => c[0] === 'betmgm' && c[1] === 'home' && c[2] === -4.5);
     const nv = m.cur.find(c => c[0] === 'betmgmnv' && c[1] === 'home' && c[2] === -4.5);
-    if (p && q) edge = { on: true, scope: 'GB −4.5', k: 'betmgm', title: `GB −4.5 · BetMGM`, price: q[3], imp: ip(q[3]), fair: p.fa, ev: p.fa * dec(q[3]) - 1,
-      refs: [['pinnacle', `Pinnacle ${fa(p.a[3])} / ${fa(p.b[3])} · limit $${nfmt((p.a[8] || {}).limit || 0)}`, ago(p.a[6])], ['betmgm', `BetMGM ${fa(q[3])} on 3 sources: own feed, comparenbet${nv ? ', BetMGM NV (VSiN)' : ''}`, ago(q[6])]],
+    if (p && q && p.fa * dec(q[3]) - 1 > 0) edge = { on: true, scope: 'GB −4.5', k: 'betmgm', title: `GB −4.5 · BetMGM`, price: q[3], imp: ip(q[3]), fair: p.fa, ev: p.fa * dec(q[3]) - 1,
+      since: [p.a[4], p.b[4], q[4]].sort().pop(),
+      refs: [['pinnacle', `Pinnacle ${fa(p.a[3])} / ${fa(p.b[3])} · limit $${nfmt((p.a[8] || {}).limit || 0)}`, p.a[6]], ['betmgm', `BetMGM ${fa(q[3])} on 3 sources: own feed, comparenbet${nv ? ', BetMGM NV (VSiN)' : ''}`, q[6]]],
       why: 'Game-line edges should be rare and around 1–3%. This one is.',
       gates: [['Pinnacle two-sided at −4.5', 1], ['Limit above floor', 1], ['Both re-checked < 1 min', 1], ['3 sources agree', 1], ['Pre-game', 1], ['Under the 8% cap', 1]] };
   }
@@ -679,7 +839,7 @@ function renderGame() {
   return `
   <div class="stub hero-stub"><img class="tlogo xl" src="${TEAM.away.logo}" alt=""><div><b style="color:var(--ink);font-size:18px">Falcons @ Packers</b><div class="small">${TEAM.away.rec} · ${TEAM.home.rec} · Thursday Night Football · ${et(G.start)} ET · Lambeau Field</div><div class="age">Game hero with both logos and the research cards above are unchanged.</div></div><img class="tlogo xl" src="${TEAM.home.logo}" alt="" style="margin-left:auto"></div>
   ${note('GAME · LINES', `Replaces the DraftKings-via-ESPN-only "Game lines" card. ${REAL} ${m.cur.length} live quotes for this market; ${Object.keys(O.nfl.markets).length} game markets across full game, 1st half, 1st quarter and team totals. Market keys are always labelled (O0 fix for raw keys like <code>longest-rush</code>).`)}
-  <section class="sec">${secHead('Lines', fresh(m, rows))}
+  <section class="sec">${secHead('Lines', fresh(m, rows), sinceOpened())}
     <div class="ptabs"><div class="seg">${PER.map(([k, n]) => `<button data-gper="${k}" aria-pressed="${S.gper === k}">${n}</button>`).join('')}</div></div>
     <div class="mtabs">${mtabs}</div>
     ${sp.noLine ? '' : `<div style="display:flex;gap:10px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><span class="lbl">Line</span>
@@ -688,13 +848,13 @@ function renderGame() {
     ${sharpStrip(m, sp, L, labels, kind === 'tot' ? PROP_COL : [TEAM.home.color, TEAM.away.color])}
     <div class="grid2" style="margin-top:14px">${bestCard(m, sp, L, labels, rows)}${edgeCard(edge)}</div>
     ${note('O-C EDGE ' + EX, 'Full game spread at GB −4.5 shows a real price that passes every gate when applied by hand (BetMGM −105 vs Pinnacle −113/+102). Step the line or switch markets for the empty states.')}
-    <section class="card" style="margin-top:14px">${cardH('Every book', sp.noLine ? 'Moneyline' : 'at ' + (sp.signed ? TEAM.home.abbr + ' ' : '') + fl(L, sp.signed), sp.noLine ? '' : `<span style="margin-left:10px" class="seg"><button data-gall="0" aria-pressed="${!S.gall}">This line</button><button data-gall="1" aria-pressed="${S.gall}">All lines</button></span>`)}
+    <section class="card" style="margin-top:14px">${cardH('Every book', sp.noLine ? 'Moneyline' : 'at ' + (sp.signed ? TEAM.home.abbr + ' ' : '') + fl(L, sp.signed), boardLive(rows) + (sp.noLine ? '' : `<span style="margin-left:10px" class="seg"><button data-gall="0" aria-pressed="${!S.gall}">This line</button><button data-gall="1" aria-pressed="${S.gall}">All lines</button></span>`))}
       ${S.gall && !sp.noLine ? ladderCard(m, sp, kind === 'sp' ? 6 : 6, labels, L) : boardCard(m, sp, L, labels, rows, { collapse })}</section>
     <div class="g-mv" style="margin-top:14px">${moveCard(m, sp, 'g', labels)}${S.gmk.startsWith('tt') || S.gper !== 'fg' ? `<section class="card">${cardH('Where the money is', '')}<div class="cb small muted">No splits source publishes ${S.gper !== 'fg' ? 'period' : 'team-total'} splits. Full-game spread, total and moneyline have them.</div></section>` : moneyGame(mkShort, sp, labels, kind === 'tot' ? null : [TEAM.home.color, TEAM.away.color])}</div>
-    ${note('O-E MONEY (game lines)', `Every row is labelled by whose customers it describes: DraftKings (DK Network), Circa (VSiN), ScoresAndOdds (source unstated), Covers contest picks, Action Network's tracked-bet count, exchange volume. The "money ≠ bets" chip flags a 15+ point gap. ${REAL}`)}
+    ${note('O-E MONEY (game lines)', `Every row is labelled by whose customers it describes: DraftKings (DK Network), Circa (VSiN), ScoresAndOdds (source unstated), Covers contest picks, Action Network's tracked-bet count, exchange volume. A 15+ point gap between money and bets is called out in words. ${REAL}`)}
     <div class="grid2" style="margin-top:14px">${vegasCard(mkShort)}${depthCard(m, sp, L ?? 0, labels)}</div>
     <div style="margin-top:14px">${propsCard()}</div>
-    ${note('PLAYER PROPS (rebuilt)', `Was a long unstyled list. Now a card with filters — team, position, market — sort (most books, biggest move, A–Z) and three views: <b>Players</b> (a card per player, headshot and team colour), <b>By market</b> (every player ranked by the line, bars in team colour) and <b>Table</b>. Each market: consensus line, best over/under with its book, the sharp price (◆), books, moved since open, an edge dot where one passes. ${REAL} ${Object.keys(O.nfl.card).length} players, labels from one label map (16 markets; the scraper's sources use ~110 spellings).`)}
+    ${note('PLAYER PROPS (rebuilt)', `Was a long unstyled list. Now a card with filters — team, position, market — sort (most books, biggest move, A–Z) and three views: <b>Players</b> (a card per player, headshot and team colour), <b>By market</b> (every player ranked by the line, bars in team colour) and <b>Table</b>. Each market: consensus line, best over/under with its book, the sharp price, books, moved since open, an edge dot where one passes. ${REAL} ${Object.keys(O.nfl.card).length} players, labels from one label map (16 markets; the scraper's sources use ~110 spellings).`)}
   </section>`;
 }
 function vegasCard(mk) {
@@ -707,7 +867,7 @@ function vegasCard(mk) {
     const o = ops[k], c = cur(k);
     const oSp = o ? o.spread_away.split(' ')[0] : null;
     const odd = o && (o.spread_away.startsWith('-') || +o.total > 50);
-    return `<tr${odd ? ' class="dim"' : ''}><td>${book(k, 14)}${odd ? ' <span class="chip warn" style="font-size:11px;padding:0 6px" title="Opener looks wrong vs every other book">check</span>' : ''}</td>
+    return `<tr${odd ? ' class="dim"' : ''}><td>${book(k, 14)}${odd ? ' <span class="st warn" title="Opener looks wrong vs every other book">⚠ check</span>' : ''}</td>
       <td class="r">${o ? `ATL ${esc(oSp)}` : '—'}</td><td class="r"><b>${c.s ? 'ATL ' + fl(-c.s[2], true) : '—'}</b></td>
       <td class="r hide-ph">${o ? esc(o.total) : '—'}</td><td class="r hide-ph"><b>${c.t ? fln(c.t[2]) : '—'}</b></td>
       <td class="r hide-ph">${o ? esc(o.ml_away) : '—'}</td><td class="r hide-ph"><b>${c.ml ? fa(c.ml[3]) : '—'}</b></td></tr>`;
@@ -722,7 +882,7 @@ const MK_LABEL = { pass_yds: 'Passing yards', pass_tds: 'Passing TDs', completio
 const MK_ORDER = Object.keys(MK_LABEL);
 const POSG = p => p === 'QB' ? 'QB' : ['RB', 'FB'].includes(p) ? 'RB' : p === 'WR' ? 'WR' : p === 'TE' ? 'TE' : ['PK', 'K', 'P'].includes(p) ? 'K' : 'DEF';
 const TEAMS = { ATL: TEAM.away, GB: TEAM.home };
-const head = (url, name, s, tc) => `<span class="hs" style="width:${s}px;height:${s}px;${tc ? `box-shadow:0 0 0 2px ${tc}` : ''}"><img src="${url}" alt="" onerror="this.remove()"><span>${esc(name.split(' ').map(w => w[0]).join('').slice(0, 2))}</span></span>`;
+const head = (url, name, s, tc) => `<span class="hs" style="width:${s}px;height:${s}px;${tc ? `box-shadow:0 0 0 2px ${tc}` : ''}">${url && !FAILED.has(url) ? `<img src="${url}" alt="" onerror="OMFAIL(this)" data-f="">` : ''}<span>${esc(name.split(' ').map(w => w[0]).join('').slice(0, 2))}</span></span>`;
 function cardRows() {
   const out = [];
   for (const [name, P2] of Object.entries(O.nfl.card)) for (const [mk, pm] of Object.entries(P2.markets)) {
@@ -747,8 +907,8 @@ function propsCard() {
   rows.sort(sorters[F.sort]);
   const ln = r => r.mk === 'anytime_td' ? 'Yes' : fln(r.L);
   const pr = (b, u) => b ? `<span class="px" style="min-width:0">${fa(b.q[3])}</span> ${logo(b.k, 14)}` : (u ? '<span class="muted">—</span>' : '<span class="muted">—</span>');
-  const mvChip = r => r.mv ? `<span class="chip ${r.mv > 0 ? 'gt' : 'bad'}" style="font-size:11px;padding:0 6px">${r.mv > 0 ? '↑' : '↓'} ${fln(Math.abs(r.mv))} since open</span>` : '';
-  const sharp = r => r.p ? `<span class="shm">◆ ${fa(r.p.a[3])}/${fa(r.p.b[3])}</span>` : '<span class="muted small">no sharp</span>';
+  const mvChip = r => r.mv ? `<span class="small mv ${r.mv > 0 ? 'up' : 'dn'}">${r.mv > 0 ? '↑' : '↓'} ${fln(Math.abs(r.mv))} since open</span>` : '';
+  const sharp = r => r.p ? `<span class="shm">Sharp ${fa(r.p.a[3])}/${fa(r.p.b[3])}</span>` : '<span class="muted small">no sharp</span>';
   const teamSeg = `<div class="seg">${[['all', 'Both teams'], ['ATL', 'ATL'], ['GB', 'GB']].map(([k, n]) => `<button data-pft="${k}" aria-pressed="${F.team === k}">${k !== 'all' ? `<img class="tlogo" src="${TEAMS[k].logo}" alt="">` : ''}${n}</button>`).join('')}</div>`;
   const posSeg = `<div class="seg">${['all', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(k => `<button data-pfp="${k}" aria-pressed="${F.pos === k}">${k === 'all' ? 'All' : k}</button>`).join('')}</div>`;
   const mkChips = `<div class="mkchips"><button class="pk" data-pfm="all" aria-pressed="${F.mk === 'all'}">All markets <span class="ct">${Object.values(mkCount).reduce((a, b) => a + b, 0)}</span></button>${MK_ORDER.filter(k => mkCount[k]).map(k => `<button class="pk" data-pfm="${k}" aria-pressed="${F.mk === k}">${MK_LABEL[k]} <span class="ct">${mkCount[k]}</span></button>`).join('')}</div>`;
@@ -763,7 +923,7 @@ function propsCard() {
       const rr = by[n], r0 = rr[0], T = TEAMS[r0.team];
       const show = rr.slice(0, 5);
       return `<div class="pc" style="--tc:${T.color}"><div class="pc-h">${head(r0.head, n, 44, T.color)}<div style="min-width:0"><b class="pc-n">${esc(n)}</b><div class="age"><img class="tlogo" src="${T.logo}" alt="">${r0.team} · ${r0.pos}</div></div>
-        <span class="chip" style="margin-left:auto">${rr.length} market${rr.length > 1 ? 's' : ''}</span></div>
+        <span class="small muted" style="margin-left:auto;white-space:nowrap">${rr.length} market${rr.length > 1 ? 's' : ''}</span></div>
         <table class="pc-t"><tbody>${show.map(r => `<tr><td><div class="small"><b>${MK_LABEL[r.mk]}</b>${r.edge ? ' <span class="dot" style="background:var(--good)" title="Edge (example)"></span>' : ''}</div><div class="age">${r.n} books · ${sharp(r)}</div></td>
           <td class="r"><b class="lnum">${ln(r)}</b>${r.mv ? `<div class="mv ${r.mv > 0 ? 'up' : 'dn'}" style="font-size:11px">${r.mv > 0 ? '↑' : '↓'}${fln(Math.abs(r.mv))}</div>` : ''}</td>
           <td class="r"><div class="ou"><span class="ov">O</span>${pr(r.b0)}</div>${r.mk !== 'anytime_td' ? `<div class="ou"><span class="ov">U</span>${pr(r.b1)}</div>` : ''}</td></tr>`).join('')}</tbody></table>
@@ -833,8 +993,8 @@ function finalPropsCard(g) {
   const tiles = `<div class="fr-tiles">
     <div class="frt"><div class="ov">Overs that hit</div><div class="frt-v">${overs}<span>/ ${played.length}</span></div>${fairBar(overs / Math.max(1, overs + unders), ['Over', 'Under'], ['var(--good)', 'oklch(80% .01 260)'])}</div>
     <div class="frt"><div class="ov">Longest price that hit</div>${longest ? `<div class="frt-v sm">${fa(longest.bo[3])} ${logo(longest.bo[0], 16)}</div><div class="small">${esc(longest.name)} · ${FMK[longest.mk]} over ${fln(longest.L)}</div>` : '—'}</div>
-    <div class="frt"><div class="ov">Pinnacle's favourite side</div><div class="frt-v">${pinRight}<span>/ ${pinRows.length}</span></div><div class="small muted">markets where the side Pinnacle priced above 50% came in</div></div>
-    <div class="frt"><div class="ov">By market · overs hit</div><div class="frm">${Object.entries(byMk).sort((a, b) => b[1][0] - a[1][0]).slice(0, 5).map(([k, v]) => `<div><span>${FMK[k]}</span><span class="frm-b"><i style="width:${100 * v[1] / v[0]}%"></i></span><b>${v[1]}/${v[0]}</b></div>`).join('')}</div></div></div>`;
+    <div class="frt wide"><div class="ov">Pinnacle's favourite side</div><div class="frt-v">${pinRight}<span>/ ${pinRows.length}</span></div><div class="small muted">markets where the side Pinnacle priced above 50% came in</div></div>
+    <div class="frt wide"><div class="ov">By market · overs hit</div><div class="frm">${Object.entries(byMk).sort((a, b) => b[1][0] - a[1][0]).slice(0, 5).map(([k, v]) => `<div><span>${FMK[k]}</span><span class="frm-b"><i style="width:${100 * v[1] / v[0]}%"></i></span><b>${v[1]}/${v[0]}</b></div>`).join('')}</div></div></div>`;
   const tseg = `<div class="seg">${[['all', 'Both teams'], ['TOR', 'TOR'], ['BAL', 'BAL']].map(([k, n]) => `<button data-fpt="${k}" aria-pressed="${F.team === k}">${k !== 'all' ? `<img class="tlogo" src="${FTEAM[k].logo}" alt="">` : ''}${n}</button>`).join('')}</div>`;
   const rseg = `<div class="seg">${[['all', 'All results'], ['over', 'Over hit'], ['under', 'Under hit'], ['dnp', 'Did not play']].map(([k, n]) => `<button data-fpr="${k}" aria-pressed="${F.res === k}">${n}</button>`).join('')}</div>`;
   const vseg = `<div class="seg" style="margin-left:auto"><span class="seg-l">View</span>${[['players', 'Players'], ['table', 'Table']].map(([k, n]) => `<button data-fpv="${k}" aria-pressed="${F.view === k}">${n}</button>`).join('')}</div>`;
@@ -849,9 +1009,9 @@ function finalPropsCard(g) {
       const hit = rr.filter(r => r.res === 'over').length;
       return `<div class="pc" style="--tc:${T.color}"><div class="pc-h">${head(mlbHead(r0.id), n, 44, T.color)}<div style="min-width:0"><b class="pc-n">${esc(n)}</b>
         <div class="age">${T.logo ? `<img class="tlogo" src="${T.logo}" alt="">` : ''}${r0.team || '—'}${r0.pos ? ' · ' + r0.pos : ''} · <b style="color:var(--ink)">${esc(r0.box)}</b></div></div>
-        ${r0.res === 'dnp' ? '<span class="rchip dnp" style="margin-left:auto">DNP</span>' : `<span class="chip ${hit ? 'gt' : ''}" style="margin-left:auto">${hit}/${rr.length} overs</span>`}</div>
+        ${r0.res === 'dnp' ? '<span class="rchip dnp" style="margin-left:auto">DNP</span>' : `<span class="small" style="margin-left:auto;white-space:nowrap"><b class="${hit ? 'st good' : ''}" style="font-size:13px">${hit}/${rr.length}</b> <span class="muted">overs</span></span>`}</div>
         <table class="pc-t"><tbody>${rr.slice(0, 6).map(r => `<tr class="${r.res === 'dnp' ? 'dim' : ''}"><td><div class="small"><b>${FMK[r.mk]}</b> <span class="muted">${fln(r.L)}</span></div><div class="age">${r.n} books · over ${pr(r.bo)}</div></td>
-          <td class="r" style="width:74px">${resTrack(r)}</td><td class="r" style="width:54px"><b class="lnum">${r.r ?? '—'}</b></td><td class="r" style="width:96px">${resChip(r)}</td></tr>`).join('')}</tbody></table>
+          <td class="r trk" style="width:74px">${resTrack(r)}</td><td class="r" style="width:54px"><b class="lnum">${r.r ?? '—'}</b></td><td class="r" style="width:96px">${resChip(r)}</td></tr>`).join('')}</tbody></table>
         ${rr.length > 6 ? `<div class="pc-more">+ ${rr.length - 6} more markets</div>` : ''}</div>`;
     }).join('')}</div>${names.length > (S.w === 'phone' ? 4 : 9) && !S.fpMore ? `<div style="padding:0 16px 14px"><button class="btn" data-fpmore="1">Show all ${names.length} players</button></div>` : ''}`;
   } else {
@@ -917,19 +1077,21 @@ function renderTeam() {
   ${note('TEAM · ODDS', `The team's next game (compact board + movement), its team total, and its record against the closing number. ${REAL} lines from the scraper; closes for past games = DraftKings' close via ESPN (the stored-close table fills this once the bridge runs).`)}
   <section class="sec">${secHead('Odds', 'next game · team total · against the close')}
     <div class="grid2">${gameLineCompact('Next game · vs ATL · tonight')}
-      <section class="card">${cardH('GB team total', `${rows.length} books`)}<div class="cb"><div class="bp">
+      <section class="card">${cardH('GB team total', `${rows.length} books`, boardLive(rows))}<div class="cb"><div class="bp">
         <div class="bpx"><div class="ov">Best over ${fln(L)}</div><div class="v px">${fa(b0 && b0.q[3])}</div><div class="small">${b0 ? book(b0.k, 14) : ''}</div></div>
         <div class="bpx"><div class="ov">Best under ${fln(L)}</div><div class="v px">${fa(b1 && b1.q[3])}</div><div class="small">${b1 ? book(b1.k, 14) : ''}</div></div></div>
         <div class="small soft" style="margin-top:10px">${p ? `Pinnacle ${fa(p.a[3])}/${fa(p.b[3])} · fair over ${pct(p.fa)}` : 'No Pinnacle price at ' + fln(L)} · consensus ${fln(L)}</div></div></section></div>
     <div class="g-mv" style="margin-top:14px">${moveCard(O.nfl.markets.fg_sp, spec('sp'), 't', ['GB', 'ATL'])}
       <section class="card">${cardH('Against the closing number', '2026 season')}<table class="t"><thead><tr><th>Game</th><th>Close</th><th>ATS</th><th class="hide-ph">Total</th></tr></thead><tbody>
-      ${hist.map(r => `<tr><td><b>${r[1]}</b> <span class="age">${r[0]}</span><div class="small">${r[2]}</div></td><td>${r[3]}</td><td><span class="chip bad">${r[4]}</span></td><td class="hide-ph">${r[5]} · ${r[6]}</td></tr>`).join('')}
+      ${hist.map(r => `<tr><td><b>${r[1]}</b> <span class="age">${r[0]}</span><div class="small">${r[2]}</div></td><td>${r[3]}</td><td><span class="st bad" style="font-size:12px">${r[4]}</span></td><td class="hide-ph">${r[5]} · ${r[6]}</td></tr>`).join('')}
       </tbody></table><div class="cb" style="border-top:1px solid var(--line-soft)"><div class="small"><b>0–2 ATS</b> · <b>1–1 O/U</b> against the close <span class="muted">· research, not a pick</span></div></div></section></div>
   </section>`;
 }
 
 // ------------------------------------------------------------------ slate
-const MLB = O.mlb.filter(g => !g.final && g.espn);
+let MLB = O.mlb.filter(g => !g.final && g.espn);
+function setTime(t) { NOW = new Date(t); O = sliceAll(t); P = O.nfl.players['drake london']; MLB = O.mlb.filter(g => !g.final && g.espn); }
+const slateLive = () => { const a = MLB.flatMap(g => g.markets.ml.cur.map(c => c[6])).filter(v => v != null); return a.length ? liveTag(atS(Math.min(...a)), 70) : ''; };
 function mlbView(g) {
   const ml = g.markets.ml, spL = g.markets.sp, tot = g.markets.tot;
   const s = spec('ml'), rows = boardRows(ml, s, null), b0 = bestOf(rows, 0), b1 = bestOf(rows, 1);
@@ -955,19 +1117,23 @@ function slateGames() {
     const v = mlbView(g), e = g.espn;
     const live = e.status !== 'Scheduled';
     const mvd = v.po && v.pa ? Math.round((dec(v.po[2]) - dec(v.pa[3])) * 100) : 0;
-    const team = (t, q, best) => `<img src="${t.logo}" alt="" loading="lazy"><div><div class="nm">${esc(t.name.split(' ').slice(-1)[0] === 'Sox' ? t.name.split(' ').slice(-2).join(' ') : t.name.split(' ').slice(-1)[0])} ${live ? `<b style="margin-left:4px">${t.score}</b>` : ''}</div><div class="spn">${esc(t.sp || 'TBD')} · ${t.rec}</div></div>
-      <span class="px ${best ? '' : ''}" style="font-size:14px">${best ? fa(best.q[3]) : '—'}</span><span>${best ? logo(best.k, 14) : ''}</span>`;
+    const team = (t, q, best, side) => `<img src="${t.logo}" alt="" loading="lazy"><div><div class="nm">${esc(t.name.split(' ').slice(-1)[0] === 'Sox' ? t.name.split(' ').slice(-2).join(' ') : t.name.split(' ').slice(-1)[0])} ${live ? `<b style="margin-left:4px">${t.score}</b>` : ''}</div><div class="spn">${esc(t.sp || 'TBD')} · ${t.rec}</div></div>
+      <span style="font-size:14px">${best ? lv(`sl|${g.key}|${side}`, best.q[3], fa(best.q[3]), 'px') : '—'}</span><span>${best ? logo(best.k, 14) : ''}</span>`;
     const edgeDot = gi === 3;
-    return `<div class="gc"><div class="top"><span>${live ? '<span class="chip bad" style="font-size:11px;padding:0 6px">LIVE</span> ' + esc(e.detail || '') : et(e.date.replace('T', ' ').replace('Z', ''))}</span><span>${v.nbooks} books${edgeDot ? ' · <span class="dot" style="background:var(--good);vertical-align:0" title="Edge (example)"></span> edge' : ''}</span></div>
-      <div class="tm">${team(e.away, null, v.b1)}${team(e.home, null, v.b0)}</div>
-      <div class="sh">${v.pa ? `<div class="sh-r"><span class="s2-tag sm">◆ SHARP</span>${logo('pinnacle', 14)}<span>${e.away.abbr} <b>${fa(v.pb[3])}</b> · ${e.home.abbr} <b>${fa(v.pa[3])}</b></span><span class="age" style="margin-left:auto">${ago(v.pa[6])}</span></div>
-        ${fairBar(1 - devig(v.pa[3], v.pb[3]), [e.away.abbr, e.home.abbr], ['#' + e.away.color, '#' + e.home.color])}` : `<div class="sh-r"><span class="s2-tag sm">◆ SHARP</span><span class="muted">No sharp price${live ? ' — in play' : ''}</span></div>`}</div>
-      <div class="ln"><span class="muted">Total</span><span><b>${fln(v.tl)}</b>${v.tOpen != null && v.tOpen !== v.tl ? ` <span class="mv">(opened ${fln(v.tOpen)})</span>` : ''}</span>
+    const split = v.dk && Math.abs(v.dk[8] - v.dk[7]) >= 15;
+    const fk = (v.dk ? `<div class="kvr"><span>${logo('draftkings', 12)} DK customers, ${e.home.abbr}${split ? ' <span class="st warn">split</span>' : ''}</span><span><b>${lv(`sl|${g.key}|dkm`, v.dk[8], v.dk[8] + '%')}</b> money · <b>${v.dk[7]}%</b> bets</span></div>` : '')
+      + (v.kal ? `<div class="kvr"><span>${logo('kalshi', 12)} Kalshi, traded in 24 h</span><span><b>${money(v.kal[8].volume_24h)}</b></span></div>` : '');
+    return `<div class="gc"><div class="top"><span>${live ? `<span class="upd" style="color:var(--bad-ink)"><i class="ld game"></i>Live · ${esc(e.detail || '')}</span>` : et(e.date.replace('T', ' ').replace('Z', ''))}</span><span>${v.nbooks} books${edgeDot ? ' · <span class="dot" style="background:var(--good);vertical-align:0" title="Edge (example)"></span> edge' : ''}</span></div>
+      <div class="tm">${team(e.away, null, v.b1, 'a')}${team(e.home, null, v.b0, 'h')}</div>
+      <div class="sh"><div class="sh-r"><b>Sharp prices</b>${v.pa ? liveTag(atS(v.pa[6]), 70) : ''}</div>
+        ${v.pa ? `<div class="sh-r">${logo('pinnacle', 14)}<span>Pinnacle</span><span style="margin-left:auto">${e.away.abbr} <b>${lv(`sl|${g.key}|pa`, v.pb[3], fa(v.pb[3]))}</b> · ${e.home.abbr} <b>${lv(`sl|${g.key}|ph`, v.pa[3], fa(v.pa[3]))}</b></span></div>
+        ${fairBar(1 - devig(v.pa[3], v.pb[3]), [e.away.abbr, e.home.abbr], ['#' + e.away.color, '#' + e.home.color])}` : `<div class="sh-r"><span class="muted">No sharp price${live ? ' — in play' : ''}</span></div>`}</div>
+      <div class="ln"><span class="muted">Total</span><span><b>${lv(`sl|${g.key}|t`, v.tl, fln(v.tl))}</b>${v.tOpen != null && v.tOpen !== v.tl ? ` <span class="mv">(opened ${fln(v.tOpen)})</span>` : ''}</span>
         <span class="muted">Moved</span><span>${v.po && v.pa ? `${e.home.abbr} ${fa(v.po[2])} → ${fa(v.pa[3])}${mvd ? ` <span class="mv ${mvd > 0 ? 'dn' : 'up'}">${mvd > 0 ? 'toward' : 'away from'} ${e.home.abbr}</span>` : ' <span class="muted">flat</span>'}` : '—'}</span></div>
-      <div class="ft">${v.dk ? `<span class="chip ${Math.abs(v.dk[8] - v.dk[7]) >= 15 ? 'warn' : ''}" title="DraftKings customers">DK ${e.home.abbr} ${v.dk[8]}% $ · ${v.dk[7]}% bets</span>` : ''}${v.kal ? `<span class="chip">${logo('kalshi', 12)} ${money(v.kal[8].volume_24h)} 24h</span>` : ''}</div></div>`;
+      ${fk ? `<div class="fk">${fk}</div>` : ''}</div>`;
   }).join('');
-  return `<section class="sec">${secHead('Games', `${MLB.length} games · best moneyline across every book · the sharp line on every card`)}
-    ${note('SLATE · GAMES CARDS', `Each card: best moneyline per side with its book (was: 1–3 books), a charcoal SHARP line (Pinnacle + fair %), the consensus total and where it opened, how Pinnacle's price moved since open, the DraftKings money/bets chip (amber = 15+ point gap), Kalshi volume, and an edge dot where one passes (${EX} on one card). Tap → the game page's Lines. ${REAL} ${MLB.reduce((a, g) => a + g.markets.ml.cur.length + g.markets.tot.cur.length, 0)} live quotes on this slate.`)}
+  return `<section class="sec">${secHead('Games', `${MLB.length} games · best moneyline across every book · the sharp line on every card`, sinceOpened())}
+    ${note('SLATE · GAMES CARDS', `Each card: best moneyline per side with its book (was: 1–3 books); a <b>Sharp prices</b> row with its own live dot (Pinnacle + the no-vig split in both teams' colours); the consensus total and where it opened; how Pinnacle's price moved since open; then labelled rows for DraftKings customers' money and bets (amber "split" = a 15+ point gap) and Kalshi's 24-hour volume; an edge dot where one passes (${EX} on one card). During the replay, prices flash as they move and the split bar slides. Tap → the game page's Lines. ${REAL} ${MLB.reduce((a, g) => a + g.markets.ml.cur.length + g.markets.tot.cur.length, 0)} live quotes on this slate.`)}
     <div class="gcards">${cards}</div></section>`;
 }
 function slateMovers() {
@@ -975,7 +1141,7 @@ function slateMovers() {
   for (const g of MLB) {
     const v = mlbView(g), e = g.espn;
     if (v.po && v.pa) moves.push({ g, e, kind: 'ml', d: Math.abs(ip(v.pa[3]) - ip(v.po[2])), txt: `${e.home.abbr} moneyline ${fa(v.po[2])} → <b>${fa(v.pa[3])}</b> at Pinnacle`, since: v.po[0] });
-    for (const st of v.tot.steam.slice(-2)) moves.push({ g, e, kind: 'steam', d: 0.05 + Math.abs(st.to[0] - st.from) / 10, txt: `Total ${fln(st.from)} → <b>${fln(st.to[0])}</b>: <b>${esc(bn(st.books[0]))}</b> first at ${etd(st.t)}, ${st.books.length - 1} followed in ${Math.round((tms(st.times[st.times.length - 1]) - tms(st.times[0])) / 60000)} min`, since: st.t, steam: true });
+    for (const st of v.tot.steam.slice(-2)) moves.push({ g, e, kind: 'steam', d: 0.05 + Math.abs(st.to[0] - st.from) / 10, txt: `Total ${fln(st.from)} → <b>${fln(st.to[0])}</b>: <b>${esc(bn(st.books[0]))}</b> first at ${etd(st.t)}, ${st.books.length - 1} followed in ${Math.round((tms(st.times[st.times.length - 1]) - tms(st.times[0])) / 60000)} min`, since: st.t, steam: true, last: st.times[st.times.length - 1] });
   }
   moves.sort((a, b) => b.d - a.d);
   const pulls = [];
@@ -986,14 +1152,14 @@ function slateMovers() {
   pulls.sort((a, b) => b.t.localeCompare(a.t));
   return `<section class="sec">${secHead('Movers', 'minute-level · steam · first mover · pulled')}
     ${note('SLATE · MOVERS', `Was 3 prop moves at 20-minute resolution. Now: the biggest price and line moves, steam (3+ books the same way within 45 min) with its first mover, and pulled lines as their own list. ${REAL}`)}
-    <div class="g-mv"><section class="card">${cardH('Biggest moves', 'since open')}<table class="t"><tbody>
+    <div class="g-mv"><section class="card">${cardH('Biggest moves', 'since open', slateLive())}<table class="t"><tbody>
       <tr class="grp"><td colspan="2">Steam on totals · first mover</td></tr>
-      ${moves.filter(x => x.steam).slice(0, 6).map(x => `<tr><td style="white-space:normal"><div class="small"><b>${x.e.away.abbr} @ ${x.e.home.abbr}</b> ${x.steam ? '<span class="chip dark" style="font-size:11px;padding:0 6px">steam</span>' : ''}</div><div class="small soft">${x.txt}</div></td><td class="r age">${etd(x.since)}</td></tr>`).join('')}
+      ${moves.filter(x => x.steam).slice(0, 6).map(x => `<tr data-row="slate|steam|${x.g.key}|${x.since}"><td style="white-space:normal"><div class="small"><b>${x.e.away.abbr} @ ${x.e.home.abbr}</b> ${x.steam ? '<span class="st ink">· Steam</span>' : ''}${+NOW - tsm(x.last) < 120e3 ? '<span class="just">just now</span>' : ''}</div><div class="small soft">${x.txt}</div></td><td class="r age">${etd(x.since)}</td></tr>`).join('')}
       <tr class="grp"><td colspan="2">Moneylines that moved most · Pinnacle, open → now</td></tr>
-      ${moves.filter(x => !x.steam).slice(0, 6).map(x => `<tr><td style="white-space:normal"><div class="small"><b>${x.e.away.abbr} @ ${x.e.home.abbr}</b></div><div class="small soft">${x.txt} <span class="muted">(${(x.d * 100).toFixed(1)} pts implied)</span></div></td><td class="r age">opened ${etd(x.since)}</td></tr>`).join('')}
+      ${moves.filter(x => !x.steam).slice(0, 6).map(x => `<tr data-row="slate|mlm|${x.g.key}"><td style="white-space:normal"><div class="small"><b>${x.e.away.abbr} @ ${x.e.home.abbr}</b></div><div class="small soft">${x.txt} <span class="muted">(${(x.d * 100).toFixed(1)} pts implied)</span></div></td><td class="r age">opened ${etd(x.since)}</td></tr>`).join('')}
       </tbody></table></section>
-      <section class="card">${cardH('Pulled lines', 'US, sharp and exchange books')}<table class="t"><tbody>
-      ${pulls.slice(0, 10).map(x => `<tr class="pulled"><td>${book(x.k, 14)} <span class="small muted">· ${x.g.espn.away.abbr} @ ${x.g.espn.home.abbr} ${x.name}</span></td><td class="r age">${etd(x.t)}</td></tr>`).join('') || '<tr><td class="small" style="white-space:normal"><b>No book has pulled a main line on this slate right now.</b><div class="age">A line taken down and reposted at a new number is a move and is listed left; a market a book stops offering altogether lands here with the time it went.</div></td></tr>'}
+      <section class="card">${cardH('Pulled lines', 'US, sharp and exchange books', slateLive())}<table class="t"><tbody>
+      ${pulls.slice(0, 10).map(x => `<tr class="pulled" data-row="slate|pull|${x.g.key}|${x.k}|${x.name}"><td>${book(x.k, 14)} <span class="small muted">· ${x.g.espn.away.abbr} @ ${x.g.espn.home.abbr} ${x.name}</span></td><td class="r age">${etd(x.t)}</td></tr>`).join('') || '<tr><td class="small" style="white-space:normal"><b>No book has pulled a main line on this slate right now.</b><div class="age">A line taken down and reposted at a new number is a move and is listed left; a market a book stops offering altogether lands here with the time it went.</div></td></tr>'}
       </tbody></table></section></div></section>`;
 }
 function slateMarket() {
@@ -1021,7 +1187,7 @@ function slateMarket() {
   } else if (S.hub === 'money') {
     const L2 = V.map(({ g, e }) => { const d = g.splits.find(x => x[1] === 'dknetwork' && x[4] === 'ml' && x[5] === 'home') || g.splits.find(x => x[1] === 'vsin' && x[3] === 'draftkings' && x[4] === 'ml' && x[5] === 'home'); return d ? { e, d, gap: d[8] - d[7] } : null; }).filter(Boolean).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
     body = `<table class="t"><thead><tr><th>Game</th><th class="r">DK money on home</th><th class="r">DK bets on home</th><th class="r">Gap</th></tr></thead><tbody>
-      ${L2.map(x => `<tr><td><b>${x.e.away.abbr} @ ${x.e.home.abbr}</b></td><td class="r">${x.d[8]}%</td><td class="r">${x.d[7]}%</td><td class="r">${Math.abs(x.gap) >= 15 ? `<span class="chip warn">${x.gap > 0 ? '+' : ''}${x.gap} pts</span>` : (x.gap > 0 ? '+' : '') + x.gap}</td></tr>`).join('')}</tbody></table>
+      ${L2.map(x => `<tr><td><b>${x.e.away.abbr} @ ${x.e.home.abbr}</b></td><td class="r">${x.d[8]}%</td><td class="r">${x.d[7]}%</td><td class="r">${Math.abs(x.gap) >= 15 ? `<span class="st warn" style="font-size:13px">${x.gap > 0 ? '+' : ''}${x.gap} pts</span>` : (x.gap > 0 ? '+' : '') + x.gap}</td></tr>`).join('')}</tbody></table>
       <div class="cb age">DraftKings customers only (DK Network / VSiN). A gap is a fact about DK's customers, not a signal.</div>`;
   } else if (S.hub === 'hold') {
     const H = V.map(({ e, v }) => { const b0 = v.b0, b1 = v.b1; return b0 && b1 ? { e, h: ip(b0.q[3]) + ip(b1.q[3]) - 1, b0, b1 } : null; }).filter(Boolean).sort((a, b) => a.h - b.h);
@@ -1035,7 +1201,7 @@ function slateMarket() {
   return `<section class="sec">${secHead('Market', 'the odds hub — no separate odds page')}
     ${note('SLATE · BOOKS → MARKET', `"Where the books differ" becomes the Market hub: Edges (gated), a games × books best-price board, openers vs now, pulled lines, where-the-money-is leaders, lowest hold (approved idea 1) and line disagreements. Click the tabs. ${REAL} except Edges ${EX}.`)}
     <div class="hubtabs"><div class="seg">${tabs.map(([k, n]) => `<button data-hub="${k}" aria-pressed="${S.hub === k}">${n}</button>`).join('')}</div></div>
-    <section class="card">${body}</section></section>`;
+    <section class="card"><div class="ch"><h3>${tabs.find(t => t[0] === S.hub)[1]}</h3>${slateLive()}<span class="scope">MLB · today</span></div>${body}</section></section>`;
 }
 function slateProps() {
   const rows = [];
@@ -1056,12 +1222,12 @@ function slateProps() {
   rows.sort((a, b) => b.n - a.n);
   return `<section class="sec">${secHead('Props', 'pitcher strikeouts · the Scan table with its new columns')}
     ${note('SLATE · PROPS / SCAN', `The Scan table is frozen (D3) — only the columns change. D5 already unfreezes it for <b>Edge</b>; <b>Sharp, Books, Checked, Open → now</b> and the pulled marker need your OK to join it (highlighted). ${REAL} strikeout props from ${new Set(rows.flatMap(r => [])).size || 'up to 17'} books per pitcher.`)}
-    <section class="card"><div class="scrollx"><table class="t"><thead><tr><th>Pitcher</th><th class="r">Line</th><th class="r">Best over</th><th class="r">Best under</th>
+    <section class="card">${cardH('Pitcher strikeouts', 'Scan', slateLive())}<div class="scrollx"><table class="t"><thead><tr><th>Pitcher</th><th class="r">Line</th><th class="r">Best over</th><th class="r">Best under</th>
       <th class="r" style="background:#fff3dc">Sharp</th><th class="c" style="background:#fff3dc">Edge</th><th class="r" style="background:#fff3dc">Books</th><th class="r" style="background:#fff3dc">Checked</th><th style="background:#fff3dc">Open → now</th></tr></thead><tbody>
       ${rows.slice(0, 16).map((r, i) => `<tr><td><span class="bk">${r.head ? head(r.head, r.nm, 26) : ''}<span><b>${esc(r.nm)}</b> <span class="age">${r.g.espn.away.abbr} @ ${r.g.espn.home.abbr}</span></span></span></td><td class="r"><b>${fln(r.L)}</b></td>
-        <td class="r">${r.b0 ? `<span class="px">${fa(r.b0.q[3])}</span> ${logo(r.b0.k, 14)}` : '—'}</td><td class="r">${r.b1 ? `<span class="px">${fa(r.b1.q[3])}</span> ${logo(r.b1.k, 14)}` : '—'}</td>
+        <td class="r">${r.b0 ? `${lv('scan|' + r.nm + '|o', r.b0.q[3], fa(r.b0.q[3]), 'px')} ${logo(r.b0.k, 14)}` : '—'}</td><td class="r">${r.b1 ? `${lv('scan|' + r.nm + '|u', r.b1.q[3], fa(r.b1.q[3]), 'px')} ${logo(r.b1.k, 14)}` : '—'}</td>
         <td class="r">${r.p ? `${fa(r.p.a[3])}/${fa(r.p.b[3])}` : '<span class="muted">—</span>'}</td><td class="c">${r.p ? '<span class="muted small">gated</span>' : '<span class="muted small">no sharp</span>'}</td>
-        <td class="r">${r.n}</td><td class="r age">${ago(r.age)}</td><td>${r.opM != null && r.opM !== r.L ? `<span class="mv">${fln(r.opM)} → ${fln(r.L)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join('')}
+        <td class="r">${r.n}</td><td class="r age">${isFinite(r.age) ? agoS(r.age) : '—'}</td><td>${r.opM != null && r.opM !== r.L ? `<span class="mv">${fln(r.opM)} → ${fln(r.L)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join('')}
       </tbody></table></div></section></section>`;
 }
 
@@ -1076,43 +1242,149 @@ function renderElse() {
   return `
   ${note('ELSEWHERE (O8)', `Three surfaces that reuse the same data: Your lines alerts, the bet slip, and odds-derived research flags. Every alert below is a real event from the snapshot. ${REAL}`)}
   <section class="sec">${secHead('Your lines', 'alerts')}
-    <div class="grid2"><section class="card">${cardH('Alerts', 'from lines you track')}
+    <div class="grid2"><section class="card">${cardH('Alerts', 'from lines you track', liveTag(srcChecked('draftkings'), 70))}
       <div class="alert"><div class="ic" style="background:var(--sunk)">↗</div><div><div class="small"><b>Drake London receiving yards</b> — your line moved</div><div class="small soft">${book('draftkings', 14)} ${dk ? `${fln(dk[2])} → <b>${fln(dk[3])}</b>` : ''}</div></div><span class="age">${dk ? etd(dk[0]) : ''}</span></div>
       <div class="alert"><div class="ic" style="background:var(--good-tint);color:var(--good-ink)">$</div><div><div class="small"><b>Drake London receptions 5.5 over</b> — a better price appeared</div><div class="small soft">${book('novig', 14)} <b>${fa(nv && nv[3])}</b> vs your ${book('fanduel', 14)} ${fa(fd && fd[3])}</div></div><span class="age">${nv ? etd(nv[4]) : ''}</span></div>
       <div class="alert"><div class="ic" style="background:var(--bad-tint);color:var(--bad-ink)">✕</div><div><div class="small"><b>Drake London receiving yards 66.5</b> — pulled at DraftKings</div><div class="small soft">DraftKings took 66.5 down and reposted at 67.5</div></div><span class="age">${dk ? etd(dk[0]) : ''}</span></div>
       ${st ? `<div class="alert"><div class="ic" style="background:var(--char);color:var(--char-ink)">⚡</div><div><div class="small"><b>Steam on a line you track</b></div><div class="small soft">Pinnacle moved ${fln(st.from)} → ${fln(st.to[0])} first; ${st.books.length - 1} books followed within ${Math.round((tms(st.times[st.times.length - 1]) - tms(st.times[0])) / 60000)} min</div></div><span class="age">${etd(st.t)}</span></div>` : ''}
     </section>
     <section class="card">${cardH('Bet slip', '1 leg')}<div class="cb">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div class="small"><b>Drake London</b> over 5.5 receptions</div><div class="age">ATL @ GB · tonight ${et(G.start)}</div></div><span class="chip">your book ${book('fanduel', 12)} ${fa(fd && fd[3])}</span></div>
-      <div class="bpx" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center"><div><div class="ov">Best right now</div><div style="font-size:18px;font-weight:650">${fa(nv && nv[3])} <span class="small">${book('novig', 14)}</span></div><div class="age">checked ${ago(nv && nv[6])} ago · ${book('fanduel', 12)} is ${nv && fd ? Math.round((dec(nv[3]) - dec(fd[3])) * 100) : '—'}¢ worse</div></div><button class="btn" style="background:var(--char);color:var(--char-ink);border-color:var(--char)">Open at Novig ↗</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div class="small"><b>Drake London</b> over 5.5 receptions</div><div class="age">ATL @ GB · tonight ${et(G.start)}</div></div><span class="small" style="text-align:right"><span class="muted">Your book</span><br>${book('fanduel', 12)} <b>${fa(fd && fd[3])}</b></span></div>
+      <div class="bpx" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center"><div><div class="ov">Best right now</div><div style="font-size:18px;font-weight:650">${fa(nv && nv[3])} <span class="small">${book('novig', 14)}</span></div><div class="age">checked ${nv ? agoS(nv[6]) : '—'} ago · ${book('fanduel', 12)} is ${nv && fd ? Math.round((dec(nv[3]) - dec(fd[3])) * 100) : '—'}¢ worse</div></div><button class="btn" style="background:var(--char);color:var(--char-ink);border-color:var(--char)">Open at Novig ↗</button></div>
       <div class="age" style="margin-top:8px">"Open at book" deep links come from B5 (comparenbet's per-book event links are already stored).</div></div></section></div>
   </section>
   <section class="sec">${secHead('Research flags', 'odds-derived, shown like every other flag')}
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${st ? `<span class="flagc"><span class="chip dark" style="font-size:11px;padding:0 6px">steam</span> Drake London rec yds up ${fln(st.to[0] - st.from)} at ${st.books.length} books after Pinnacle</span>` : ''}
-      ${sao ? `<span class="flagc"><span class="chip warn" style="font-size:11px;padding:0 6px">money ≠ bets</span> ATL +4.5: ${sao[8]}% of money on ${sao[7]}% of bets (ScoresAndOdds)</span>` : ''}
-      <span class="flagc"><span class="chip bad" style="font-size:11px;padding:0 6px">pulled</span> DraftKings pulled London 66.5, reposted 67.5</span>
-      <span class="flagc"><span class="chip" style="font-size:11px;padding:0 6px">first mover</span> Pinnacle led the London receiving-yards move by 38 min</span>
-    </div>
-    <div class="age" style="margin-top:8px">A flag is a <code>slate_rankings</code> row like the others (CLAUDE.md "research flags"), rendered as chips on the player page and a card on the team and game pages.</div></section>`;
+    <section class="card">${cardH('Odds flags', 'ATL @ GB · tonight', liveTag(srcChecked('pinnacle'), 70))}
+      ${st ? `<div class="flr"><span class="st ink" style="font-size:12px">Steam</span><span>Drake London receiving yards up ${fln(st.to[0] - st.from)} at ${st.books.length} books after Pinnacle moved first</span><span class="age">${etd(st.t)}</span></div>` : ''}
+      ${sao ? `<div class="flr"><span class="st warn" style="font-size:12px">Money and bets split</span><span>ATL +4.5: ${sao[8]}% of the money on ${sao[7]}% of the bets <span class="muted">(ScoresAndOdds)</span></span><span class="age">${etd(sao[0])}</span></div>` : ''}
+      <div class="flr"><span class="st bad" style="font-size:12px">Pulled</span><span>DraftKings pulled London 66.5 and reposted at 67.5</span><span class="age">${dk ? etd(dk[0]) : ''}</span></div>
+      <div class="flr"><span class="st ink" style="font-size:12px">First mover</span><span>Pinnacle led the London receiving-yards move by 38 min</span><span class="age">${st ? etd(st.t) : ''}</span></div>
+    </section>
+    <div class="age" style="margin-top:8px">A flag is a <code>slate_rankings</code> row like the others (CLAUDE.md "research flags"). On the player page they sit in the flags area; on the team and game pages, in a card like this one — a labelled row each: the kind of flag, one sentence, and when.</div></section>`;
 }
 
 // ------------------------------------------------------------------ shell
 const SURF = [['player', 'Player page'], ['game', 'Game page'], ['final', 'Game page · final'], ['team', 'Team page'], ['slate', 'Slate'], ['else', 'Alerts · slip · flags']];
-function render() {
+/** Patch `a` to look like `b` without replacing nodes that did not change, so images, scroll positions,
+ *  open <details> and CSS transitions survive a live re-render. Rows with data-row are matched by key. */
+function syncAttrs(x, y) {
+  for (const at of [...x.attributes]) if (!y.hasAttribute(at.name) && !(at.name === 'open' && x.tagName === 'DETAILS')) x.removeAttribute(at.name);
+  for (const at of [...y.attributes]) {
+    if (at.name === 'class') { const keep = [...x.classList].filter(c => c.startsWith('fx-')); const v = (at.value + ' ' + keep.join(' ')).trim(); if (x.getAttribute('class') !== v) x.setAttribute('class', v); }
+    else if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+  }
+}
+function morphKids(a, b) {
+  const byKey = new Map();
+  for (const x of a.childNodes) if (x.nodeType === 1 && x.dataset.row) byKey.set(x.dataset.row, x);
+  let ref = a.firstChild;
+  for (const y of [...b.childNodes]) {
+    let x = null;
+    if (y.nodeType === 1 && y.dataset.row) { x = byKey.get(y.dataset.row) || null; if (x) byKey.delete(y.dataset.row); }
+    else if (ref && !(ref.nodeType === 1 && ref.dataset.row) && ref.nodeName === y.nodeName) x = ref;
+    if (x && x.nodeName === y.nodeName) {
+      if (x === ref) ref = ref.nextSibling; else a.insertBefore(x, ref);
+      if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; }
+      else if (x.tagName === 'IMG') syncAttrs(x, y);
+      else { syncAttrs(x, y); if (!x.hasAttribute('data-keep')) morphKids(x, y); }
+    } else a.insertBefore(y, ref);
+  }
+  while (ref) { const n = ref.nextSibling; a.removeChild(ref); ref = n; }
+}
+const fx = (el, c) => { el.classList.remove(c); void el.offsetWidth; el.classList.add(c); };
+const ping = card => card && card.querySelectorAll('.ch .ld, .sh-r .ld').forEach(d => { d.classList.remove('ping'); void d.offsetWidth; d.classList.add('ping'); });
+/** After a render: on a clock render, flash every value that changed, animate pulls, new rows and edge folds. */
+function afterRender(live) {
+  const f = $('#frame'), t = +NOW, next = {};
+  f.querySelectorAll('[data-lv]').forEach(el => {
+    const k = el.dataset.lv, v = el.dataset.v, pv = PREV[k];
+    next[k] = v;
+    if (!live || pv == null || v === '' || pv === '' || pv === v || isNaN(+v) || isNaN(+pv)) return;
+    const d = Math.sign(+v - +pv); if (!d) return;
+    CHG[k] = { t, d };
+    el.classList.remove(d > 0 ? 'fx-dn' : 'fx-up');
+    fx(el, d > 0 ? 'fx-up' : 'fx-dn');
+    el.setAttribute('data-recent', '');
+    const nx = el.nextElementSibling;
+    if (nx && nx.classList.contains('trail')) nx.remove();
+    el.insertAdjacentHTML('afterend', `<span class="trail ${d > 0 ? 'up' : 'dn'}" data-trail="${t}">${d > 0 ? '▲' : '▼'}<span data-at="${t}">&lt;5 s</span></span>`);
+    ping(el.closest('.card, .gc'));
+  });
+  PREV = next;
+  const rows = {};
+  f.querySelectorAll('[data-row]').forEach(el => {
+    const k = el.dataset.row, st = el.dataset.st || 'on';
+    rows[k] = st;
+    if (!live || !ROWST) return;
+    const was = ROWST[k];
+    if (was == null) fx(el, 'fx-in');
+    else if (was === 'on' && st === 'pulled') { fx(el, 'fx-pull'); PULLED[k] = t; ping(el.closest('.card')); }
+    else if (was === 'pulled' && st === 'on') { fx(el, 'fx-back'); delete PULLED[k]; }
+  });
+  ROWST = rows;
+  if (live) f.querySelectorAll('[data-fx]').forEach(el => { if (el.dataset.fx) fx(el, 'fx-' + el.dataset.fx); });
+}
+function render(live) {
   $('#surf').innerHTML = SURF.map(([k, n]) => `<button data-surf="${k}" aria-pressed="${S.surf === k}">${n}</button>`).join('');
   const f = $('#frame');
-  f.className = 'frame ' + S.w + (S.notes ? '' : ' hide-notes');
+  f.className = 'frame ' + S.w + (S.notes ? '' : ' hide-notes') + (S.showRecent ? ' show-recent' : '');
   const fn = { player: renderPlayer, game: renderGame, final: renderFinal, team: renderTeam, slate: renderSlate, else: renderElse }[S.surf];
-  try { f.innerHTML = fn(); } catch (e) { f.innerHTML = `<pre style="color:#c4161c;white-space:pre-wrap">${esc(e.stack)}</pre>`; console.error(e); }
+  LIVE_RENDER = !!live;
+  let html;
+  try { html = fn(); } catch (e) { html = `<pre style="color:#c4161c;white-space:pre-wrap">${esc(e.stack)}</pre>`; console.error(e); }
+  const tmp = document.createElement('div'); tmp.innerHTML = html;
   // any table not already in a horizontal scroller gets one (phone widths)
-  f.querySelectorAll('table.t').forEach(t => { if (!t.parentElement.classList.contains('scrollx')) { const w = document.createElement('div'); w.className = 'scrollx'; t.replaceWith(w); w.appendChild(t); } });
-  requestAnimationFrame(() => document.querySelectorAll('[data-chart]').forEach(drawChart));
+  tmp.querySelectorAll('table.t').forEach(t => { if (!t.parentElement.classList.contains('scrollx')) { const w = document.createElement('div'); w.className = 'scrollx'; t.replaceWith(w); w.appendChild(t); } });
+  if (f.dataset.surf === S.surf && f.dataset.w === S.w) morphKids(f, tmp); else { f.innerHTML = ''; f.append(...tmp.childNodes); ROWST = null; }
+  f.dataset.surf = S.surf; f.dataset.w = S.w;
+  document.querySelectorAll('[data-chart]').forEach(drawChart);
+  afterRender(live);
+  LIVE_RENDER = false;
+  updClock();
+}
+// ------------------------------------------------------------------ the clock
+function updTickers() {
+  const t = +NOW;
+  document.querySelectorAll('#frame [data-at]').forEach(el => { const txt = ago(Math.max(0, (t - +el.dataset.at) / 1000)); if (el.textContent !== txt) el.textContent = txt; });
+  document.querySelectorAll('#frame [data-trail]').forEach(el => { const s = (t - +el.dataset.trail) / 1000; el.style.opacity = s >= TRAIL_S ? 0 : Math.max(0.15, 1 - s / TRAIL_S).toFixed(2); });
+  document.querySelectorAll('#frame [data-live]').forEach(el => {
+    const s = Math.max(0, (t - +el.dataset.live) / 1000), st = liveState(s, +el.dataset.cad), d = el.querySelector('.ld');
+    el.classList.toggle('slow', st === 'slow');
+    if (d) { d.classList.toggle('slow', st === 'slow'); d.classList.toggle('off', st === 'off'); }
+    const txt = liveTxt(s, st); if (el.lastChild.textContent !== txt) el.lastChild.textContent = txt;
+  });
+}
+function updClock() {
+  const t = CLK.t, start = +END - 3600e3, replay = t < +END;
+  const clock = new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  $('#rpClock').innerHTML = replay ? `<b>Replaying</b> · ${clock} ET · ${Math.max(1, Math.round((+END - t) / 60000))} min before the snapshot` : `<b>Live</b> · ${clock} ET · past the snapshot, so no newer data arrives`;
+  $('#rpBar').style.width = Math.min(100, 100 * (t - start) / (+END - start)) + '%';
+  $('#rpPlay').textContent = CLK.play ? '❚❚ Pause' : '▶ Play';
+}
+function tick() {
+  const w = performance.now(), dt = CLK.wall ? Math.min(2, (w - CLK.wall) / 1000) : 0;
+  CLK.wall = w;
+  if (CLK.play) {
+    const before = CLK.t;
+    CLK.t += dt * 1000 * (CLK.t < +END ? CLK.speed : 1);
+    if (before < +END && CLK.t >= +END) CLK.t = +END;   // land on the snapshot, then run at 1x
+  }
+  const m = Math.floor(CLK.t / 60000);
+  if (m !== CLK.min) { CLK.min = m; setTime(CLK.t); render(true); }
+  else NOW = new Date(CLK.t);
+  updTickers(); updClock();
+}
+function restart() {
+  CLK.t = +END - 3600e3; CLK.openT = CLK.t; CLK.min = Math.floor(CLK.t / 60000); CLK.play = true;
+  PREV = {}; CHG = {}; ROWST = null; EDGE_ST = {}; SEEN = {}; CHART_N = {}; PULLED = {};
+  setTime(CLK.t); render(false);
 }
 document.addEventListener('click', ev => {
   const t = ev.target.closest('button,a'); if (!t) return;
   const d = t.dataset;
-  if (d.surf) { S.surf = d.surf; S.sel = null; S.metric = null; S.expand = null; }
+  if (d.surf) { S.surf = d.surf; S.sel = null; S.metric = null; S.expand = null; S.showRecent = false; CLK.openT = CLK.t; SEEN = {}; }
+  else if (d.recentToggle) S.showRecent = !S.showRecent;
+  else if (d.sp) { CLK.speed = +d.sp; document.querySelectorAll('#rpSpeed button').forEach(b => b.setAttribute('aria-pressed', b.dataset.sp === d.sp)); return; }
   else if (d.w) { S.w = d.w; document.querySelectorAll('#width button').forEach(b => b.setAttribute('aria-pressed', b.dataset.w === S.w)); }
   else if (d.pm) { S.pm = d.pm; S.pline = null; S.sel = null; S.metric = null; }
   else if (d.pstep) { const m = P.markets[S.pm], ls = allLines(m, spec('prop'), S.pm === 'anytime_td' ? 0 : Math.max(4, Math.abs(mainLines(m, spec('prop')).modal || 0) * 0.2)); const i = ls.indexOf(S.pline) + +d.pstep; if (ls[i] != null) S.pline = ls[i]; }
@@ -1154,6 +1426,10 @@ $('#toTop').addEventListener('click', () => window.scrollTo({ top: 0 }));
 $('#toBottom').addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight }));
 $('#notes').addEventListener('change', e => { S.notes = e.target.checked; render(); });
 window.addEventListener('resize', () => document.querySelectorAll('[data-chart]').forEach(drawChart));
-$('#asof').textContent = NOW.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-render();
+$('#asof').textContent = END.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+$('#rpPlay').addEventListener('click', () => { CLK.play = !CLK.play; updClock(); });
+$('#rpRestart').addEventListener('click', restart);
+$('#rm').addEventListener('change', e => document.body.classList.toggle('rm', e.target.checked));
+restart();
+setInterval(tick, 250);
 })();

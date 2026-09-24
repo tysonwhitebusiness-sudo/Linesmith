@@ -40,7 +40,7 @@ feedback round by round.
    market, sort, Players · By market · Table views), headshots + team logos
    everywhere (required in the final build — no regression), scroll fix
    (every overflow-x scroller now overflow-y:hidden).
-3. **v3** (this commit, NOT yet visually verified): Game page · final gets a
+3. **v3** (`3ae2f50`; verified on screen in v4): Game page · final gets a
    **Player props · results** card — every prop priced before first pitch
    graded against the box score: summary tiles (overs that hit, longest price
    that hit, Pinnacle's favourite side, overs-hit by market), filters (team,
@@ -49,23 +49,53 @@ feedback round by round.
    DNPs are kept only with ≥ 6 closing prices (a few priced names belong to
    other games — e.g. Carlos Narváez — and are dropped).
 
-## OPEN — operator feedback not yet applied (do these first)
+4. **v4** (round 4, 2026-09-24): the operator's two open notes plus the live
+   layer.
+   - **No receipt pills anywhere.** Checked by the sweep: zero `.chip`,
+     `.pill`, `.gp`, `.ref`, `.flagc` or `.s2-tag` on any surface at either
+     width. Their replacements:
+     - Sharp tiles: labelled rows (Checked · Price since / Unchanged for ·
+       Limit · Source).
+     - Edge card: an Evidence list (logo · sentence · age) and a two-column
+       gate checklist headed "N of M pass".
+     - Depth card: three mini stats.
+     - Coverage: a column list (market · N sources).
+     - Flags: a card of labelled rows (kind · sentence · time).
+     - Slate cards: rows for DK customers and Kalshi 24 h.
+     - Inline status: words in their ink colour ("Pulled", "⚠ check", "Steam",
+       "First mover", "split").
+     - Kept on purpose: filter buttons (market chips, book picker) and the
+       ResultMark chips on the final page, since those are controls or kit
+       marks, not receipts.
+   - **"Sharp prices" is a normal card header** with the live dot, on the
+     strip and on every Slate card. The strip's green left bar is gone, since
+     green never marks structure.
+   - **Live layer**, all 12 ideas, with one merge: the cell flash and the row
+     recency tint became one "change trail".
+     - The page replays the last real hour of recorded history at 20× (1/10/20/60×,
+       pause, restart). It then runs at 1× past the snapshot, so the dots go
+       amber, then grey.
+     - Green flash = the number went up; red = down.
+     - It re-renders by DOM morphing (keyed rows), so images, scroll position,
+       open `<details>` and bar transitions survive each tick.
+     - There's a Reduced motion switch in the toolbar.
+     - The order book has no history in the snapshot, so it cannot move in
+       the replay. The card says so.
+   - **v3 verified** at desktop and at 390px (Players and Table views). Two
+     phone fixes: the by-market and Pinnacle tiles go full width (market
+     names were cut to "R…"), and the result track is hidden at phone width so
+     the market label is not squeezed to three lines. The result number and
+     ResultMark stay.
 
-1. **No "bubbles"/pills at the bottom of cards as receipts, anywhere.** The
-   operator: they read as "AI vibecode"; make them readable and visually
-   appealing instead. Examples: the Slate game card footer chips
-   ("DK PIT 64% $ · 76% bets", "Kalshi $761k 24h"); also review the edge
-   card's evidence chips and gate pills, the sharp tiles' "checked / since"
-   pills, the coverage chips, the flags row — anything that is a row of
-   rounded pills used as a receipt. Replace with proper labelled rows/mini
-   stats (label on the left, value on the right, small logo) or an inline
-   sentence, consistent with the kit's table/stat styling.
-2. **The SHARP label** (green pill with ◆ at the top of the sharp strip and on
-   Slate cards) is different from every other card header. Make the sharp
-   strip a normal card header like the others (e.g. "Sharp prices"), and show
-   liveness with a **green dot + "updated X ago"** instead of the pill.
-3. Then verify v3 (the final-game props card) on screen at desktop and phone,
-   fix what's off, and commit.
+## OPEN — operator feedback not yet applied
+
+None as of v4. Waiting on the operator's review of round 4.
+
+**Verifying in the app's browser pane:** a `location.reload()` there opens a
+static copy with no scripts running. Navigate to the URL again instead
+(add `?v=N` to force it). The first screenshot in a new tab is often blank, and
+screenshots can lag the live page by a few seconds; pause the replay before
+taking one.
 
 ## Still pending with the operator (plan §8)
 

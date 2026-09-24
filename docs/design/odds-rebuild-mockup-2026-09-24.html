@@ -64,7 +64,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .btn.ghost{border-color:transparent;background:transparent}
 .btn[aria-pressed=true]{background:var(--char);color:var(--char-ink);border-color:var(--char)}
 .card{background:var(--card);border:1px solid var(--line-soft);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;min-width:0}
-.ch{min-height:44px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line-soft);padding:6px 8px 6px 16px}
+.ch{min-height:44px;display:flex;flex-wrap:wrap;row-gap:2px;align-items:center;gap:8px;border-bottom:1px solid var(--line-soft);padding:6px 8px 6px 16px}
 .ch h3{margin:0;font-size:14px;font-weight:600}
 .ch .scope{margin-left:auto;font-size:12px;font-weight:500;color:var(--ink3);white-space:nowrap}
 .ch .i{width:30px;height:30px;border-radius:8px;border:0;background:transparent;color:var(--ink3);font-size:14px}
@@ -178,12 +178,7 @@ svg text{font-family:inherit}
 .flagc{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 10px 3px 6px;font-size:12px;box-shadow:var(--shadow)}
 .kbd{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--sunk)}
 /* v2: light sharp strip */
-.sharp2{position:relative;background:var(--card);border:1px solid var(--line-soft);border-radius:12px;box-shadow:var(--shadow);padding:12px 14px 14px 18px;overflow:hidden}
-.sharp2::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--good),#00a856)}
-.s2-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.s2-tag{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--good-ink);background:var(--good-tint);border:1px solid #9ff0c5;border-radius:999px;padding:2px 9px;white-space:nowrap}
-.s2-tag.sm{font-size:10px;padding:1px 7px}
-.s2-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-top:10px}
+.s2-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
 .stile{background:var(--sunk);border:1px solid var(--line-hair);border-radius:10px;padding:10px 12px;min-width:0}
 .stile.none{background:repeating-linear-gradient(135deg,var(--sunk),var(--sunk) 8px,var(--card) 8px,var(--card) 16px)}
 .st-h{display:flex;align-items:center;gap:8px;font-size:13px}
@@ -294,8 +289,87 @@ svg text{font-family:inherit}
 .rt-l{position:absolute;top:0;width:2px;height:12px;background:var(--ink2);border-radius:1px}
 .rt-d{position:absolute;top:2px;width:8px;height:8px;margin-left:-4px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
 .rt-d.over{background:var(--good)}.rt-d.under{background:var(--ink3)}.rt-d.push{background:var(--warn)}
+/* v4: labelled rows and mini stats (replace the receipt pills) */
+.kvs{display:flex;flex-direction:column;gap:3px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line-hair)}
+.kvr{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px;min-width:0}
+.kvr>span:first-child{color:var(--ink3);display:inline-flex;align-items:center;gap:6px;min-width:0}
+.kvr>span:last-child{text-align:right;color:var(--ink)}
+.kvr b{font-weight:600}
+.mstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mstat{background:var(--sunk);border-radius:8px;padding:7px 10px;min-width:0}
+.mstat b{display:flex;align-items:center;gap:6px;font-size:16px;font-weight:650;margin-top:1px}
+.evl{margin-top:10px}
+.evr{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px;padding:6px 0;border-top:1px solid var(--line-hair)}
+.evr .age{white-space:nowrap}
+.glh{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;font-size:12px}
+.gl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 14px;font-size:12px;color:var(--ink2);margin-top:4px}
+.gl div::before{display:inline-block;width:14px;font-weight:700}
+.gl .ok::before{content:"✓";color:var(--good-ink)}
+.gl .no{color:var(--bad-ink)}.gl .no::before{content:"✕";color:var(--bad-ink)}
+.st{font-size:11px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.st.bad{color:var(--bad-ink)}.st.warn{color:var(--warn-ink)}.st.good{color:var(--good-ink)}.st.ink{color:var(--ink)}
+.cols{columns:3 190px;column-gap:24px;font-size:12px}
+.cols div{break-inside:avoid;display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--line-hair)}
+.cols div span:last-child{color:var(--ink3)}
+.flr{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:12px;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--line-soft);font-size:13px}
+.flr:last-child{border-bottom:0}
+.gc .fk{display:flex;flex-direction:column;gap:3px;padding:8px 12px 10px;border-top:1px solid var(--line-hair)}
+.gc .fk .kvr>span:first-child{color:var(--ink2)}
+/* v4: live layer */
+.upd{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--ink3);white-space:nowrap}
+.upd.slow{color:var(--warn-ink)}
+.ld{position:relative;width:8px;height:8px;border-radius:50%;background:var(--good);flex:none;display:inline-block}
+.ld::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--good);animation:ld-pulse 2s ease-out infinite}
+.ld.slow{background:var(--warn)}.ld.slow::after{display:none}
+.ld.off{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint)}.ld.off::after{display:none}
+.ld.game{background:var(--bad)}.ld.game::after{background:var(--bad)}
+.ld.ping::after{animation:ld-ping .9s ease-out 1,ld-pulse 2s ease-out .9s infinite}
+@keyframes ld-pulse{0%{transform:scale(1);opacity:.5}70%,100%{transform:scale(2.6);opacity:0}}
+@keyframes ld-ping{0%{transform:scale(1);opacity:.9}100%{transform:scale(3.6);opacity:0}}
+[data-lv]{display:inline-block;border-radius:5px}
+.fbar i,.b2 i,.lb-bar i,.ob .b,.meter i,.frm-b i{transition:width .9s ease}
+.fx-up{animation:fx-up 1.6s ease-out}
+.fx-dn{animation:fx-dn 1.6s ease-out}
+@keyframes fx-up{0%{background:var(--good);color:var(--good-on);transform:translateY(45%);opacity:.3}16%{transform:none;opacity:1}40%{background:var(--good);color:var(--good-on)}100%{background:transparent}}
+@keyframes fx-dn{0%{background:var(--bad);color:#fff;transform:translateY(-45%);opacity:.3}16%{transform:none;opacity:1}40%{background:var(--bad);color:#fff}100%{background:transparent}}
+.trail{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px;transition:opacity .8s}
+.trail.up{color:var(--good-ink)}.trail.dn{color:var(--bad-ink)}
+.trail span{font-weight:500;color:var(--ink3)}
+tr.fx-pull td{animation:fx-pull 2s ease-out}
+@keyframes fx-pull{0%,35%{background:var(--bad-tint)}100%{background:transparent}}
+tr.fx-back td{animation:fx-back 2s ease-out}
+@keyframes fx-back{0%{opacity:.15;background:var(--good-tint)}40%{opacity:1}100%{background:transparent}}
+tr.fx-in td{animation:fx-in-td 3.5s ease-out}
+@keyframes fx-in-td{0%{background:color-mix(in oklab,var(--good) 22%,var(--card));transform:translateY(-6px)}12%{transform:none}100%{background:transparent}}
+.just{font-size:11px;font-weight:600;color:var(--good-ink);margin-left:6px}
+.hb{display:inline-flex;align-items:flex-end;gap:1px;height:16px;vertical-align:-3px;margin:0 2px}
+.hb i{width:3px;min-height:1px;background:var(--ink3);border-radius:1px;opacity:.5}
+.hb i.now{background:var(--good);opacity:1}
+.hbw{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.sinceo{font-size:12px;color:var(--ink2);border:0;background:none;padding:0;text-decoration:underline dotted;text-underline-offset:3px;white-space:nowrap}
+.show-recent [data-recent]{outline:2px solid var(--warn);outline-offset:1px}
+.tnew{display:inline-flex;align-items:center;gap:4px;color:var(--ink);font-weight:600}
+.tnew::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--char)}
+.fx-eopen .cb{animation:e-open .6s ease-out}
+.fx-eclose .cb{animation:e-close .6s ease-out}
+@keyframes e-open{0%{opacity:0;max-height:0;overflow:hidden}100%{opacity:1;max-height:800px}}
+@keyframes e-close{0%{opacity:.2}100%{opacity:1}}
+.e-held{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);margin-top:8px}
+.svp{transform-box:fill-box;transform-origin:center;animation:ld-pulse 2s ease-out infinite}
+.svpop{transform-box:fill-box;transform-origin:center;animation:svpop .9s ease-out}
+@keyframes svpop{0%{transform:scale(2.6);opacity:.2}100%{transform:scale(1);opacity:1}}
+.rp{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.clock{font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink2);white-space:nowrap}
+.rp-prog{width:110px;height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.rp-prog i{display:block;height:100%;background:var(--char)}
+@media (prefers-reduced-motion:reduce){.ld::after,.fx-up,.fx-dn,tr.fx-pull td,tr.fx-back td,tr.fx-in td,.svp,.svpop,.fx-eopen .cb,.fx-eclose .cb{animation:none!important}}
+body.rm *,body.rm *::after{animation:none!important;transition:none!important}
 /* phone */
 @container f (max-width:640px){
+  .mstats{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .gl{grid-template-columns:minmax(0,1fr)}
+  .flr{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
+  .flr>:nth-child(2){grid-column:1/-1;grid-row:2}
   .grid2,.grid3,.g-mv{grid-template-columns:minmax(0,1fr)}
   .gcards{grid-template-columns:minmax(0,1fr)}
   .sech h2{font-size:19px}
@@ -311,6 +385,9 @@ svg text{font-family:inherit}
   .mtab{min-width:132px}
   .s2-grid{grid-template-columns:minmax(0,1fr)}
   .fr-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .frt.wide{grid-column:1/-1}
+  .pc-t td.trk{display:none}
+  .pc-t td{padding-left:10px;padding-right:10px}
   .pcards{grid-template-columns:minmax(0,1fr);padding:12px}
   .lb-r{grid-template-columns:18px 30px minmax(0,1fr) auto;row-gap:4px}
   .lb-bar{grid-column:3/5}
@@ -332,12 +409,15 @@ svg text{font-family:inherit}
   <p>Every odds surface that changes, built 1:1 on the app's tokens and card anatomy. The numbers are a frozen snapshot of the scraper's real rows from <b id="asof"></b> ET: Falcons @ Packers (TNF) for the player, game and team pages, and today's MLB slate for the Slate. Nothing here is built in the app until you approve it (D16). Click tabs, the line stepper, the book picker and period tabs; switch Desktop / Phone at the top.</p>
   <div class="legend"><span class="real">real</span><span class="small muted">a stored row or a count of stored rows</span>
     <span class="ex">example</span><span class="small muted">computed the way the plan says the app will (T0 latency, E1 edge gates applied by hand) from real prices; the data type is one we collect</span></div>
+  <p style="margin-top:8px"><b style="color:var(--ink)">Live replay (round 4).</b> The page replays the last real hour of the scraper's recorded price history up to the snapshot, at 20× by default. Every flash, pull and new move you see is a change that really happened, at its real time. Ages tick every second. When the replay reaches the snapshot, the clock keeps running at 1× and no new data arrives, so you can watch sources go amber, then grey, as they age. "Checked" times during the replay follow each source's real poll interval (60–75 s for direct books, 45–90 s for aggregators, 5–10 min for splits). Green flash = the number went up (for a price, that means it pays more); red = it went down.</p>
   <p style="margin-top:8px"><b style="color:var(--ink)">Player headshots and team logos are required everywhere they appear today</b> — the final build must not regress them; the mockup uses ESPN's real images.</p>
 </div>
 <div class="bar"><div class="bar-in">
   <div class="seg" id="surf"></div>
   <div class="seg" id="width"><button data-w="desk" aria-pressed="true">Desktop</button><button data-w="phone" aria-pressed="false">Phone 390</button></div>
   <label><input type="checkbox" id="notes" checked> Design notes</label>
+  <span class="rp"><button class="btn" id="rpPlay">❚❚ Pause</button><div class="seg" id="rpSpeed"><button data-sp="1" aria-pressed="false">1×</button><button data-sp="10" aria-pressed="false">10×</button><button data-sp="20" aria-pressed="true">20×</button><button data-sp="60" aria-pressed="false">60×</button></div><button class="btn" id="rpRestart">↺ Replay last hour</button><span class="rp-prog"><i id="rpBar"></i></span><span class="clock" id="rpClock"></span></span>
+  <label><input type="checkbox" id="rm"> Reduced motion</label>
   <span style="margin-left:auto;display:inline-flex;gap:6px"><button class="btn" id="toTop">↑ Top</button><button class="btn" id="toBottom">↓ Bottom</button></span>
 </div></div>
 <div class="stage"><div class="frame desk" id="frame"></div></div>

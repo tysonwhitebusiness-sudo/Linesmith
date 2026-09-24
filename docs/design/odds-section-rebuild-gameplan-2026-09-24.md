@@ -407,3 +407,56 @@ Decisions the mockups need from the operator:
   vertical scroll container, which can latch a wheel/trackpad gesture over a
   table. All are now `overflow-y:hidden`; checked: zero vertical scroll traps
   on every surface at both widths. The build must follow the same rule.
+
+### Revision 4 (operator review, 2026-09-24): live feel, no receipt pills
+
+- **No pills as receipts on any card.** Receipts are labelled rows (label
+  left, value right, small logo), mini stats, a gate checklist, or a sentence.
+  Status inside a row is a word in its ink colour ("Pulled", "check", "Steam").
+  Filter controls and ResultMark stay as they are.
+- **"Sharp prices" is an ordinary card header** with a live dot and
+  "updated X ago", on the strip and on the Slate cards. No green structural
+  bar.
+- **Anything that updates looks live.** The operator chose all 12 ideas;
+  flash and row-tint merged into one change trail:
+  1. **Live dot** in each card header, driven by the source's real poll
+     interval: green and pulsing while the newest reading is within 2× the
+     interval, amber when later, grey ("no update in N") when well past it.
+     It pings when the card's data changes. It follows the time we last
+     *checked*, and the prices in the card show *since*.
+  2. **Ages tick** every second.
+  3. **Change trail**: the value rolls to its new number with a flash in the
+     chosen Electric Turf fills, **green = the number went up, red = it went
+     down** (for a price, up means it pays more). A ▲/▼ with its age then
+     fades over 2 minutes.
+  4. **Pulls** flash red and strike through ("pulled N s ago"), and fade back
+     in if the book returns.
+  5. **Chart**: a "now" guide, the newest point of each series pulses, and a
+     new point pops in. A finished game's chart has none of this.
+  6. **Bars** (split bars, depth ladders, money %) slide to their new widths.
+  7. **Edge**: "passing for N min" timer, and the card folds open or shut as
+     the gates change.
+  8. **New rows** (moves, first movers, steam) slide in marked "just now".
+  9. **Heartbeat** in the section header: price changes per minute over the
+     last 30 min, across every book.
+  10. **Market tabs** count changes you have not looked at ("3 new").
+  11. **"N prices changed since you opened this"**, which outlines them when
+      clicked.
+- **The Scan table flashes too** (operator: yes). This extends D5 beyond the
+  Edge column to cell animation on the frozen table, so O4/O6 update
+  `tests/slate-shell.test.ts`'s content hash deliberately for it.
+- **Noise rules for the build:**
+  - Only de-flapped changes flash.
+  - Cap the flashes per refresh; rows are still tinted.
+  - `prefers-reduced-motion` gets static ▲/▼ and ages, with no pulsing or
+    rolling.
+  - Animations pause in a hidden tab.
+  - Re-render without replacing unchanged nodes (keyed rows), so images,
+    scroll positions and transitions survive.
+- **Kit pieces this implies (O1):** `LiveDot` (state from cadence + last
+  check), `FlashValue` (roll + flash + trail), a `DataTable` row-state
+  animation (pulled / returned / new), and a chart "live edge". Each shown on
+  `/kit` in every state, per the kit rule.
+- **The mockup proves it on real data.** A replay of the last recorded hour
+  (minute-level history, ~1,340 changes across the MLB slate) plays at
+  1–60×, then runs at 1× past the snapshot so staleness shows.
