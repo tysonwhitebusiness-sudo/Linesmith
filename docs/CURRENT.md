@@ -49,8 +49,9 @@ Read it next. In short:
    |---|---|
    | P0 keep data flowing | **DONE 21:20 UTC** — odds-scraper `52ae6b4`, `8afa4d8` (that repo has no remote: local commits only). Freshness watchdog, stall dump, backup of both archived days verified. See P0 → Result |
    | P1 fix what is broken | **DONE 21:55 UTC** — `4d64071`, deployed (see Deploys). Game line on every sport's player page, one market-label and one book registry, game-line history logs line moves (proved live). See P1 → Result |
-   | P2 names | in progress |
-| P3 matching · P4 storage measurement | waiting in order |
+   | P2 names | **DONE 22:25 UTC** — `08fa35e`. `scraper_markets.py` (scraper labels → app keys), verify list decided, 28 keys and 49 books in both alias maps; coverage 99.9% props / 96.5% game markets. See P2 → Result |
+| P3 matching | in progress |
+| P4 storage measurement | waiting |
    | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
    | the six spec corrections (HANDOFF §"Known spec corrections") | after P4 |
 
