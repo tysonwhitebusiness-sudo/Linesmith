@@ -2,9 +2,16 @@
 
 **Written 2026-09-23** from one long audit session; rewritten at its end so
 every topic discussed is here. Operator decisions (§1) are settled — do not
-re-ask them. **Nothing in §4 onward is built. Do not start a phase without the
-operator's go** (standing instruction, 2026-09-23). Evidence for every number
-is in §9.
+re-ask them. **Do not start a phase without the operator's go** (standing
+instruction, 2026-09-23). Evidence for every number is in §9.
+
+**STATUS 2026-09-24:**
+- The source run (R0–R5) is done and closed (§4c).
+- The Track O mockups are approved (D17).
+- The operator's mockup answers are D18–D23.
+- §3 is the current build list.
+- Next: re-audit this plan and the Track O plan end to end, then write the
+  detailed build phases. Nothing in B0 onward is built yet.
 
 The scraper is a separate project: `C:\Users\occy3\Documents\odds-scraper`
 (FastAPI on 127.0.0.1:8000; SQLite `data/scraper.db` holds the recent days;
@@ -33,6 +40,13 @@ kept 48 h). Its own resume notes: `HANDOFF.md`, `SOURCE_HANDOFF.md`.
 | D14 | **Never discard useful data; keep it as fresh as it is useful; track every useful movement for everything we can** (operator, 2026-09-24). Every price change, pull, return, split and timestamp is kept — the laptop Parquet history forever, Supabase in its hot window with older rows moved to the corpus (moved, never deleted). Nothing is thinned, sampled or dropped to save space or effort without the operator's say; where a cadence or storage limit is a trade-off, it is written down with its cost and the operator decides. Freshness problems (writer lag, slow tiers, cached copies) are measured and shown, not hidden. |
 | D15 | **Master goal: as many player props and game props to analyze as possible** (operator, 2026-09-24) — every market, line and alternate any source prices, for every sport we cover, first-hand where we can read it. Coverage gaps are tracked as work (§4d), not accepted as limits. |
 | D16 | **Mockup first** (operator, 2026-09-24): no UI or design is built without 1:1 detailed mockups — real layouts, real data, desktop and phone — that the operator has approved. Changes are made on the mockups. A plan with UI in it is approved only with its mockups. |
+| D17 | **Track O mockups APPROVED** (operator, 2026-09-24, after round 4, `3b2401e`). `odds-rebuild-mockup-2026-09-24.html` is the visual target for every odds surface, including the live layer (Track O plan §8, Revision 4). The mockup wins on looks; the plans win on where the data comes from. |
+| D18 | **Book groups, in this order:** Sharp · Exchanges · US books · Nevada · **Offshore** (Bovada, BetOnline, MyBookie, Bookmaker, LowVig …) · **International** (~30 books relayed by comparenbet) · Pick'em. Offshore and International are collapsed behind a "+ N books" button by default. The user's own book is pinned. |
+| D19 | **Outlier rule:** a price whose implied probability is below 0.6× or above 1.6× the median at that line (5+ books) is kept and shown, marked "check", and **never** used as the best price or as an edge input. It is the same test as edge gate 8, applied to the board. |
+| D20 | **Negative hold at the best prices is shown as a plain fact**, never labelled an opportunity. |
+| D21 | **Openers = the first price any source recorded** for that book. Nevada books use VSiN's OPEN row. Every opener passes a sanity check before it is stored (B4); a failure is kept, marked "check", and never used as the opener in a calculation. |
+| D22 | **Scan gains Sharp, Books, Checked, Open → now and the pulled marker**, and its cells flash like every live value. This extends D5 beyond Edge. `tests/slate-shell.test.ts`'s hash and `tests/ui-scope.ts` are updated deliberately, in the Track O phase that changes Scan. |
+| D23 | **Two times per price, and gates use "since".** "Checked" = when we last confirmed the price; "since" = when it last changed. The bridge carries both. Edge gates, freshness and "best price" ageing use "since", because a relay re-confirms a price every few seconds that can be 11+ hours old. Liveness dots use "checked". |
 
 ## 2. The three systems today
 
@@ -40,34 +54,77 @@ kept 48 h). Its own resume notes: `HANDOFF.md`, `SOURCE_HANDOFF.md`.
 |---|---|---|---|
 | Python worker (paid APIs: Propline, ParlayAPI, SharpAPI, Odds-API.io, the-odds-api, SportsGameOdds) | Render, one job at a time (`job_queue.py`) | `prop_odds`, `prop_odds_history`, `game_odds_book_lines`, `game_odds_history` | MLB props 2.5 min; NFL/CFB/NBA/NHL/soccer/tennis 20 min; SGO 90 min — **SGO wrote 0 rows: every key at its monthly cap (2,000)** |
 | OddsHarvester (OddsPortal) | laptop scheduled tasks | game lines only | ~20 min cycle |
-| Scraper (14 sources) | laptop, one process | its own SQLite/Parquet — **nothing reaches the app yet** | ~30–50 s cycle; game lines median 52 s, props median 110 s (they wait for the next cycle) |
+| Scraper (29 sources since the source run; was 14) | laptop, one process, scheduled task `OddsScraper` | its own SQLite/Parquet — **nothing reaches the app yet** (that is B4) | each source on its own clock: direct books and exchanges 60–75 s; per-game prop pages tiered by start; aggregators board 45 s, props 90 s; splits 5–15 min (§4c) |
 
 The app already takes the newest price per book across providers
 (`lib/odds/props/mainLine.ts:111`), so a third writer needs no page changes to
 show more books.
 
-## 3. Build order
+## 3. Build order — the build list (rewritten 2026-09-24 after D17)
 
-1. **B0** names → **B1** games → **B2** players (matching; nothing is comparable until done)
-2. **L0** measure minute-level move volume (decides storage before the bridge writes)
-3. **B3** flap filter + line-pull recording
-4. **B4** bridge (forwards individual changes with their scrape time)
-5. **B7** Pinnacle, Kalshi, Polymarket + **B8** VSiN (Circa, Vegas books, openers, splits) + **B9** DraftKings, FanDuel, BetRivers, Sleeper + **B10** BetMGM, Underdog + Track V splits sources — each on its own schedule
-6. **S1–S3** scraper reliability + backups (in parallel with B4/B7)
-7. **L1–L5** line movement on the pages; **V1–V3** splits + exchange volume
-8. **B5/B6** page touches + expiring history grab (B6's grab is time-sensitive — can run any time)
-9. **E1–E2** edge (strict), **T0** running beside it
-10. **E3** closing-line test, ~2 weeks after E2
+**Done:** the source run R0–R5 (B3's scraper half, B6's grabs, B7–B10, Track V
+sources, S1, S2; §4c) and Track O phase OM (the approved mockups).
+
+Three lanes. Each numbered item is one go from the operator. Within a lane the
+order matters; across lanes it does not, except where "needs" says so.
+
+**Lane A — data into Supabase (Python / laptop)**
+
+| # | item | needs |
+|---|---|---|
+| A1 | **B0** label map + book registry. Market labels seeded from `om_extract_props.py`'s `STAT_MAP` (~110 spellings → 16 NFL markets), extended to every sport and market the scraper stores. Books: canonical key, display name, group (D18), order, logo domain. Both alias maps stay identical (`config-drift` test). Fixes `parx parx`, mixed casing and raw market keys at the source | — |
+| A2 | **B1** games → Linesmith game ids | A1 |
+| A3 | **B2** players → ESPN athlete ids | A1 |
+| A4 | **L0** measure matched, de-flapped moves per day + re-measure DB headroom live (last known 79% of 8 GB) → decides G9 (default ALL changes; any cut goes to the operator with numbers) | A2, A3 |
+| A5 | **B3 writer half** (G8): `write_prop_odds` records a pull in history instead of deleting silently | — |
+| A6 | **B4 bridge**: forwards each de-flapped change with its own time; carries **checked and since** (D23); sharp sources first; unmatched rows kept with prices; opener sanity check (D21); heartbeat in `health_check`; starts at boot | A2–A5 |
+| A7 | **Supabase tables the pages need**: splits + exchange volume/depth (V1–V2), openers (L3), pulls. Bridged like prices | A6 |
+| A8 | **T0** timing: keep real timestamps, measure each source's lag behind Pinnacle, proven-fast list, latency badges' table, edge half-life | A2 |
+| A9 | **E1** edge in Python: the 11 gates (§7) using "since", outlier rule (D19), new edge log table, kill switch, self-check | A6, A8 |
+| A10 | **E3** closing-line test, ~2 weeks after edge is on | O6 |
+
+**Lane O — the odds sections (TypeScript, on the kit; Track O plan §7)**
+
+| # | item | needs |
+|---|---|---|
+| O0 | Today's bugs: player page "No game line yet", raw market keys, book names, a best price without a book | — (A1 makes the names fix permanent) |
+| O1 | Kit components O-S, O-A…O-K **plus the live pieces** (`LiveDot`, `FlashValue`, `DataTable` row states, chart live edge; Revision 4), every state on `/kit` | O0 |
+| O2 | Player page "Odds & prices" | O1 |
+| O3 | Game page "Lines" (periods, Vegas board, props card, final-game results + closing-line research) | O1 |
+| O4 | Slate: Games cards, Movers, Market hub, Props/Scan with the new columns (D22) | O1; fills up with A6 |
+| O5 | Live refresh 30–60 s + freshness strip + live layer switched on | A6 |
+| O7 | Where the money is (game lines + props) | A7 |
+| O6 | Edge card + Scan edge column on; lift the no-edge rule (D6) in CLAUDE.md and `scan-no-edge.test.ts` | A9 |
+| O8 | Your lines alerts, bet slip best book + "open at book" (B5 links), odds research flags | O2–O4 |
+
+O0–O4 can start before the bridge: they render today's thinner data and fill
+up as A6 lands.
+
+**Lane S — scraper and storage (laptop), any time**
+
+| # | item |
+|---|---|
+| S3 | Back up the laptop Parquet history to Supabase Storage (G6) — the only full copy today; recommended first in this lane |
+| G3 | Per-game prop pages: 5 min to 3 days out, 15 min beyond (NCAAF stays slower) |
+| G7 | Coverage: Polymarket + Kalshi to every game/prop market, DK milestone + scorer subcategories, FanDuel NBA/NHL prop tabs when those seasons open, oddsrun data API |
+| G1→G2 | Writer headroom (bigger `WRITE_BATCH`), then Sleeper pick counts on every change — declined for now (§4c); revisit at an evening peak |
+| G4 | In-game props — operator's call |
+| G5/S4 | Keep one raw page per endpoint per hour |
+| S5 | Less reliance on comparenbet |
+
+**Routed findings** (§8) stay routed to their own fixes: soccer injuries,
+`pick_history` grading and first-prediction bugs, `game_odds_history` corpus
+copy, SGO keys at cap.
 
 ## 4. Track B — the bridge
 
 | phase | what | done when |
 |---|---|---|
-| B0 | Add the 68 missing market labels + 11 missing books to BOTH alias maps (`entity_resolution.py`, `lib/odds/props/entityResolution.ts`; `tests/config-drift.test.ts` asserts they match) | both-mapped share ≥ ~90% (was 42%) |
+| B0 | Add the 68 missing market labels + 11 missing books to BOTH alias maps (`entity_resolution.py`, `lib/odds/props/entityResolution.ts`; `tests/config-drift.test.ts` asserts they match). **Seed: `docs/design/odds-rebuild/tools/om_extract_props.py` `STAT_MAP`** (the mockup's map, ~110 source spellings → 16 NFL markets), extended to every sport. Plus **one book registry** (canonical key, display name, group per D18, order, logo domain), which the pages read instead of raw keys | both-mapped share ≥ ~90% (was 42%); no raw key or duplicate book name on any page |
 | B1 | Match scraper games → Linesmith game ids. Use comparenbet's dropped team ids and ESPN logo URLs (`_homeTeamID`, `_awayTeamLogo`) as extra keys | match rate per sport, hand-checked sample |
 | B2 | Match scraper players → ESPN athlete ids via the roster index (`resolve_player`) | match rate per sport, hand-checked sample |
 | B3 | **Flap filter** (a new price counts once it holds two readings; judge pre-game and live separately). **Line-pull recording** in the scraper (it records nothing when a price disappears; its dedup hides a pull-and-return) and in Linesmith's writer (`db.write_prop_odds` step 4 deletes from `prop_odds` and writes nothing to history) | a pulled line visible in history; flap share below the paid feeds' |
-| B4 | The bridge: a laptop job writing through `db.write_prop_odds` / `db.write_game_odds_book_lines` as `scraper:<source>`. **Forwards each (de-flapped) change with the scraper's own fetch time as `observed_at`** — not a periodic snapshot, which would erase sub-minute moves and stamp write time. Pushes the sharp sources first. Unmatched rows KEPT with their prices (today `odds_unresolved` keeps only the name). Heartbeat for `health_check`; starts at boot; restarts on crash | two days unattended, heartbeat green, history growth inside the L0 estimate |
+| B4 | The bridge: a laptop job writing through `db.write_prop_odds` / `db.write_game_odds_book_lines` as `scraper:<source>`. **Forwards each (de-flapped) change with the scraper's own fetch time as `observed_at`** — not a periodic snapshot, which would erase sub-minute moves and stamp write time. Pushes the sharp sources first. Unmatched rows KEPT with their prices (today `odds_unresolved` keeps only the name). **Carries both times per price (D23): checked and since.** **Opener sanity check (D21):** found on real data, VSiN's BetMGM NV opener read ATL −2 / 52.5 against every other book's −6.5 / 45 — an opener far from the other books' openers is stored marked "check", never used as the opener. Heartbeat for `health_check`; starts at boot; restarts on crash | two days unattended, heartbeat green, history growth inside the L0 estimate |
 | B5 | Pages: display names and order for the new books; "open at book" deep links from comparenbet's `_links` (40+ books) | rendered on each sport's player + game page |
 | B6 | **Expiring history — grab now:** run `backfill_comparenbet_history.py` (`line_history` has 0 rows); pull theoddsgap's 45-day props export daily (each missed day is lost for good); stop discarding betmonitor's 24 h charts and oddstrader's openers | rows landing daily |
 | B7 | **Pinnacle, Kalshi, Polymarket as scraper sources** (D8). Requirements: (1) their OWN schedule, not the shared cycle; (2) bridge carries fetch time and Pinnacle's `version`; (3) per-source heartbeat read by `health_check` and the edge self-check; (4) gates: exchanges on bid/ask spread + liquidity, Pinnacle on its stated limit. REST polling ~30–60 s first; push streams (Pinnacle MQTT, exchange WebSockets) later — auth needs unverified. Fallback if Pinnacle's guest API ever blocks: pinnodds.com ($99–229/mo; its docs say no per-event timestamp either) | all three landing on their own cadence, heartbeats green, matched |
@@ -84,8 +141,8 @@ operator's call; the recommendation is the right-hand column.
 
 | # | shortfall | cost of fixing | recommendation |
 |---|---|---|---|
-| G1 | **SQLite writer at capacity** — aggregators run 1.1–1.6x their schedule (oddstrader 71 s vs 45 s), the queue swings 0↔~30; evening peaks worse. Freshness lost. | ~30 min: bigger `WRITE_BATCH` (group commit); measure at the evening peak | Do first |
-| G2 | **Sleeper pick counts written every 15 min** — changes in between are lost | ~4x the splits rows; needs G1 | Every change, after G1 |
+| G1 | **SQLite writer at capacity** — aggregators run 1.1–1.6x their schedule (oddstrader 71 s vs 45 s), the queue swings 0↔~30; evening peaks worse. Freshness lost. | ~30 min: bigger `WRITE_BATCH` (group commit); measure at the evening peak | **Declined for now** (operator, 2026-09-24; the lag lands on the lowest-ranked aggregators). Revisit at an evening peak |
+| G2 | **Sleeper pick counts written every 15 min** — changes in between are lost | ~4x the splits rows; needs G1 | Every change, after G1 — **declined for now** with G1 |
 | G3 | **Per-game prop pages tiered**: 10 min at 1–3 days out, 30 min at 3–7 days, none beyond 7 days, NCAAF 5x slower (board main lines stay at 60 s) | more requests to each book from the laptop IP | 5 min to 3 days, 15 min beyond; NCAAF stays slower |
 | G4 | **In-game props not tracked** — the four US books' per-game pages stop at kick-off (in-game MAIN lines are still tracked) | many more requests during games | Operator's call (edge is pre-game only; live movement may still be worth keeping) |
 | G5 | **Raw pages deleted at 48 h**, incl. fields the parsers skip | ~30 GB/yr for one page per endpoint per hour | Keep one per endpoint per hour (S4) |
@@ -490,6 +547,10 @@ book. Only ~500 used a sharp reference, and those carry the `pick_history` bug
    edge stands only if the soft price and the fast sharp sources have not
    moved since. A cached Pinnacle copy up to ~15 min old is usable this way.
    (Today's `_MAX_PAIR_SKEW_SECONDS` = 30 min compares unaligned prices — replace it.)
+   **Every age in this gate is "since" (last change), never "checked" (D23)**:
+   found on real data, comparenbet re-confirms relayed prices every few
+   seconds that have not changed in 11+ hours (Circa, Kalshi ML via
+   comparenbet).
 3. Soft price corroborated by a second source where available (a soft price
    that already moved is the other main source of fake edges).
 4. Settled: passed the flap filter; not pulled; comparenbet fair prices only
@@ -498,7 +559,11 @@ book. Only ~500 used a sharp reference, and those carry the `pick_history` bug
 6. Conservative: de-vig with every method in `odds_math.py`; show the SMALLEST.
 7. One book via several providers: freshest wins; if two disagree beyond a
    small tolerance at nearly the same time, no edge.
-8. Cap: a single edge above ~8–10% hidden as a probable data error.
+8. Cap: a single edge above ~8–10% hidden as a probable data error. Plus the
+   **outlier rule (D19)**: a soft price outside 0.6×–1.6× of the median
+   implied probability at that line is never an input. Found on real data:
+   85–250% anytime-TD "edges" were all a different market relayed under the
+   same key (FanDuel/bet365 +2500/+475 vs Pinnacle +615/+193).
 9. Self-check: if more than a small share of gated markets show > ~5% at once,
    edge display turns itself off and `health_check` alerts.
 10. Logged: every edge shown written (time, prices, reference, method, ages) to
@@ -526,8 +591,11 @@ openers, splits and edge: `docs/design/odds-section-rebuild-gameplan-2026-09-24.
 (today's state measured on a prod build; the sharp price made very visible;
 the shared components O-S, O-A…O-K incl. the seven approved ideas; where each
 goes on the player / game / team pages and the Slate; phases OM, O0–O8). **OM
-— 1:1 mockups with real data — comes first (D16); nothing in Track O is built
-before the operator approves them.**
+is APPROVED (D17, 2026-09-24).** The mockup is the visual target, and O0–O8
+are in the §3 build list (Lane O), each still needing the operator's go. The
+two edges the mockup found by hand-applying the gates (GB −4.5 at BetMGM
+−105, EV +1.0%; London receptions 5.5 over at Underdog, EV +1.8%) are the
+first cases E1 must reproduce.
 
 ## 8. Other tracks and routed findings
 

@@ -87,9 +87,11 @@ feedback round by round.
      the market label is not squeezed to three lines. The result number and
      ResultMark stay.
 
-## OPEN — operator feedback not yet applied
+## APPROVED (operator, 2026-09-24, after v4)
 
-None as of v4. Waiting on the operator's review of round 4.
+The mockups are approved and folded into both plans: parent plan D17–D23
+and §3 (the build list), and Track O plan §5 and §7. OM is closed. Change the
+mockup again only if a later decision changes the design.
 
 **Verifying in the app's browser pane:** a `location.reload()` there opens a
 static copy with no scripts running. Navigate to the URL again instead
@@ -97,9 +99,9 @@ static copy with no scripts running. Navigate to the URL again instead
 screenshots can lag the live page by a few seconds; pause the replay before
 taking one.
 
-## Still pending with the operator (plan §8)
+## Answered (plan §8)
 
-Offshore/International book groups; extra Scan columns beyond Edge; the
-outlier "check" rule; negative hold shown as a fact; openers = first seen;
-the two real gated edges found. Approval of the mockups is what unblocks
-Track O (O0–O8) and, separately, B0–B2 in the parent plan.
+All yes: Offshore/International groups collapsed (D18), the extra Scan columns
+(D22), the outlier rule (D19), negative hold as a fact (D20), and openers =
+first seen with a sanity check (D21). The two gated edges found by hand are
+E1's first test cases.

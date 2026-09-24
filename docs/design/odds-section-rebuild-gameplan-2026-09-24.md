@@ -1,8 +1,13 @@
 # Odds section rebuild — gameplan (Track O)
 
-**STATUS 2026-09-24: phase OM mockups BUILT, awaiting the operator's review** —
+**STATUS 2026-09-24: phase OM APPROVED by the operator** after four review
+rounds (`ac3d691`, `3834601`, `3ae2f50`, `3b2401e`).
 `docs/design/odds-rebuild-mockup-2026-09-24.html` (serve with `design-mockups`,
-:8125). Decisions the mockups raised are in §8.
+:8125) is now the visual target for O1–O8. The mockup wins on looks; this plan
+wins on where the data comes from. The §8 questions are answered: parent plan
+D17–D23, and below in §5. O0–O8 are in the parent plan's §3 build list
+(Lane O). **Each phase still needs the operator's go**, and the next step is
+a re-audit of both plans before the detailed build phases are written.
 
 **Written 2026-09-24; revised the same day with the operator's answers.**
 Nothing here is built. **No UI is built before 1:1 detailed mockups with real
@@ -285,6 +290,17 @@ exchange order book mini (O-H). Also: the sharp price very visible (O-S, §2.3);
 line movement with a book picker (O-D); the odds section built in depth
 (§2.2).
 
+**Mockup answers (operator, 2026-09-24; parent plan D18–D23):**
+
+| question (§8) | answer |
+|---|---|
+| Offshore + International book groups, collapsed behind "+ N books" | Yes (D18) |
+| Extra Scan columns beyond Edge (Sharp, Books, Checked, Open → now, pulled) | Yes, "we have the space" (D22); Scan cells flash too |
+| Outlier "check" rule | Yes (D19) |
+| Negative hold shown as a fact, never an opportunity | Yes (D20) |
+| Openers = first seen; Nevada from VSiN's OPEN row; sanity check | Yes (D21) |
+| Checked vs since; gates use since | Built into the approved design (D23) |
+
 ## 6. Data the rebuild needs (and where it comes from)
 
 | need | source | status |
@@ -324,13 +340,13 @@ day):
 
 | phase | what | depends on |
 |---|---|---|
-| **OM** | **1:1 detailed mockups with real data**: the player page odds section, the game page Lines, the Slate (Games cards, Movers, Market hub, Props/Scan columns), phone widths; interactive where the design is (market tabs, line stepper, book picker, period tabs, All lines). Operator reviews, changes are made on the mockups, then approves — and only then is this plan approved | nothing |
-| **O0** | Fix what is broken now (bug fixes that do not change the design): the player page's "No game line yet"; raw market keys on the game page; book display names (`parx parx`, casing); a best price with no book name | nothing — can run any time |
-| **O1** | Build the approved components (O-S, O-A … O-K) on the kit, shown on `/kit` in every state; wire to today's data so they render now | O0 |
+| **OM** | ✅ **APPROVED 2026-09-24.** 1:1 detailed mockups with real data: the player page odds section, the game page Lines (live and final), the team page, the Slate (Games cards, Movers, Market hub, Props/Scan columns), alerts / slip / flags, desktop and phone, interactive, with the live layer replaying real recorded history | — |
+| **O0** | Fix what is broken now (bug fixes that do not change the design): the player page's "No game line yet"; raw market keys on the game page; book display names (`parx parx`, casing); a best price with no book name | nothing — can run any time (B0's registry makes the names fix permanent) |
+| **O1** | Build the approved components (O-S, O-A … O-K) on the kit, **plus the live pieces from Revision 4** (`LiveDot`, `FlashValue`, `DataTable` row states for pulled / returned / new, a chart "live edge"), shown on `/kit` in every state; wire to today's data so they render now. No receipt pills (Revision 4) | O0 |
 | **O2** | Player page odds section rebuild | O1 |
 | **O3** | Game page Lines rebuild (periods, Vegas board, props table upgrade) | O1 |
-| **O4** | Slate: Games cards, Movers, Market section, Props/Scan columns | O1, B4 for the full data |
-| **O5** | Live refresh of the odds sections; freshness strip everywhere | B4 |
+| **O4** | Slate: Games cards, Movers, Market section, Props/Scan columns (Sharp, Books, Checked, Open → now, pulled; D22 — update the Scan hash and `ui-scope.ts` here, deliberately) | O1, B4 for the full data |
+| **O5** | Live refresh of the odds sections (30–60 s); freshness strip + heartbeat everywhere; the live layer switched on (flashes, trails, pulls, "since you opened", tab counts), with the noise rules of Revision 4 | B4 |
 | **O6** | Edge card and Scan edge column switched on | E1 + gates, D5/D6 test changes |
 | **O7** | Where the money is (V3) and splits on the Slate | V1–V2 via bridge |
 | **O8** | Your lines alerts, bet slip best book, odds research flags | O2–O4 |
@@ -341,7 +357,7 @@ standing checks: render at 1440 and 400 on every sport (a fresh tab), the kit
 guards, and `tests/scan-no-edge.test.ts` / `tests/slate-shell.test.ts`
 changed only where D5/D6 say.
 
-## 8. What the OM mockups surfaced (for the operator)
+## 8. What the OM mockups surfaced (all answered 2026-09-24 — see §5 and parent D17–D23)
 
 Built 2026-09-24 on a frozen snapshot (1:18 PM ET): ATL @ GB and Drake London
 props for the player, game and team pages; the 12-game MLB slate for the

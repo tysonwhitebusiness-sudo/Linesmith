@@ -40,7 +40,11 @@ Read it next. In short:
    oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
-7. **Track O — odds section rebuild (2026-09-24): MOCKUP REVIEW IN PROGRESS.**
+7. **Track O — odds section rebuild (2026-09-24): MOCKUPS APPROVED** (D17).
+   The operator's answers are D18–D23 in the parent plan. **The build list
+   is the parent plan's §3** (lanes A / O / S). **Next: re-audit both plans
+   end to end, then write the detailed build phases.** Each phase still needs
+   the operator's go.
    **Resume prompt for the whole workstream: `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.**
    Read `docs/design/odds-rebuild/HANDOFF-OM.md` first. It covers how to view
    and regenerate the mockups and the four review rounds so far. Round 4
