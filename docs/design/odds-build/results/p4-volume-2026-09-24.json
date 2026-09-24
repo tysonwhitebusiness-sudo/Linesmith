@@ -1,0 +1,290 @@
+{
+ "window": [
+  "2026-09-24T00:00:00+00:00",
+  "2026-09-24T22:30:00+00:00"
+ ],
+ "gaps": [
+  "2026-09-24T17:38:10+00:00/2026-09-24T20:54:00+00:00",
+  "2026-09-24T21:04:30+00:00/2026-09-24T21:07:30+00:00",
+  "2026-09-24T21:07:57+00:00/2026-09-24T21:14:19+00:00",
+  "2026-09-24T21:44:51+00:00/2026-09-24T21:48:10+00:00",
+  "2026-09-24T22:19:20+00:00/2026-09-24T22:24:29+00:00"
+ ],
+ "active_hours": 18.94,
+ "seconds": 326.9,
+ "offer_rows": 8589541,
+ "rows_per_day": 10884957,
+ "flaps_per_day": 1321621,
+ "non_price_per_day": 740076,
+ "unmatched_per_day": {
+  "unmatched-no-game": 98860,
+  "no-app-sport": 270061,
+  "unmatched-market": 11937,
+  "unmatched-player": 99172,
+  "unmatched-weight": 246464
+ },
+ "classes_per_day": {
+  "game|first-hand|in|estimated": 16114,
+  "game|first-hand|in|no-app-sport": 399,
+  "game|first-hand|in|strict": 4575,
+  "game|first-hand|pre|estimated": 60530,
+  "game|first-hand|pre|no-app-sport": 433,
+  "game|first-hand|pre|strict": 428921,
+  "game|relay-duplicate|in|estimated": 116601,
+  "game|relay-duplicate|in|no-app-sport": 7680,
+  "game|relay-duplicate|in|strict": 10244,
+  "game|relay-duplicate|in|unmatched-market": 493,
+  "game|relay-duplicate|pre|estimated": 89671,
+  "game|relay-duplicate|pre|no-app-sport": 178729,
+  "game|relay-duplicate|pre|strict": 2557254,
+  "game|relay-duplicate|pre|unmatched-market": 25,
+  "game|relay-duplicate|pre|unmatched-no-game": 86351,
+  "game|relay-only|in|estimated": 115901,
+  "game|relay-only|in|no-app-sport": 3378,
+  "game|relay-only|in|strict": 8062,
+  "game|relay-only|pre|estimated": 80803,
+  "game|relay-only|pre|no-app-sport": 69763,
+  "game|relay-only|pre|strict": 1448939,
+  "game|relay-only|pre|unmatched-market": 196,
+  "game|relay-only|pre|unmatched-no-game": 270,
+  "prop|first-hand|in|estimated": 7285,
+  "prop|first-hand|in|no-app-sport": 165,
+  "prop|first-hand|in|strict": 18440,
+  "prop|first-hand|pre|estimated": 6963,
+  "prop|first-hand|pre|no-app-sport": 8357,
+  "prop|first-hand|pre|strict": 400841,
+  "prop|first-hand|pre|unmatched-market": 283,
+  "prop|first-hand|pre|unmatched-no-game": 12240,
+  "prop|first-hand|pre|unmatched-player": 3903,
+  "prop|relay-duplicate|in|estimated": 38701,
+  "prop|relay-duplicate|in|no-app-sport": 54,
+  "prop|relay-duplicate|in|strict": 4039,
+  "prop|relay-duplicate|in|unmatched-market": 1,
+  "prop|relay-duplicate|pre|estimated": 20946,
+  "prop|relay-duplicate|pre|no-app-sport": 538,
+  "prop|relay-duplicate|pre|strict": 1659520,
+  "prop|relay-duplicate|pre|unmatched-market": 607,
+  "prop|relay-duplicate|pre|unmatched-player": 67025,
+  "prop|relay-only|in|estimated": 50871,
+  "prop|relay-only|in|strict": 6573,
+  "prop|relay-only|pre|estimated": 17162,
+  "prop|relay-only|pre|no-app-sport": 564,
+  "prop|relay-only|pre|strict": 927810,
+  "prop|relay-only|pre|unmatched-market": 10332,
+  "prop|relay-only|pre|unmatched-player": 28244
+ },
+ "matched_per_day_by_sport": {
+  "cfb": 2861463,
+  "nfl": 2510715,
+  "mlb": 1360417,
+  "soccer_mls": 1188003,
+  "nhl": 102248,
+  "nba": 32698,
+  "soccer_epl": 17510,
+  "tennis_atp": 15346,
+  "tennis_wta": 8366
+ },
+ "db": {
+  "db_bytes": 5496466579,
+  "prop_odds_history": {
+   "bytes": 2413797376,
+   "rows": 7002049.0,
+   "bytes_per_row": 344.7
+  },
+  "game_odds_history": {
+   "bytes": 115507200,
+   "rows": 546331.0,
+   "bytes_per_row": 211.4
+  },
+  "prop_odds": {
+   "bytes": 403079168,
+   "rows": 584304.0,
+   "bytes_per_row": 689.8
+  }
+ },
+ "options": {
+  "A": {
+   "prop_rows_day": 3159150,
+   "game_rows_day": 4937614,
+   "history_gb_10d": 21.33,
+   "current_state_gb": 0.51,
+   "db_after_gb": 27.34,
+   "headroom_gb": -19.34,
+   "days_to_cap": 0.9
+  },
+  "B": {
+   "prop_rows_day": 1435945,
+   "game_rows_day": 2163845,
+   "history_gb_10d": 9.52,
+   "current_state_gb": 0.36,
+   "db_after_gb": 15.38,
+   "headroom_gb": -7.38,
+   "days_to_cap": 2.3
+  },
+  "D": {
+   "prop_rows_day": 1352776,
+   "game_rows_day": 2019192,
+   "history_gb_10d": 8.93,
+   "current_state_gb": 0.36,
+   "db_after_gb": 14.79,
+   "headroom_gb": -6.79,
+   "days_to_cap": 2.4
+  },
+  "E": {
+   "prop_rows_day": 1372855,
+   "game_rows_day": 2040516,
+   "history_gb_10d": 9.05,
+   "current_state_gb": 0.36,
+   "db_after_gb": 14.91,
+   "headroom_gb": -6.91,
+   "days_to_cap": 2.4
+  },
+  "C": {
+   "prop_rows_day": 1435945,
+   "game_rows_day": 2163845,
+   "history_gb_10d": 4.65,
+   "current_state_gb": 0.36,
+   "db_after_gb": 10.51,
+   "headroom_gb": -2.51,
+   "days_to_cap": 2.3
+  },
+  "B1": {
+   "prop_rows_day": 1293501,
+   "game_rows_day": 1718412,
+   "history_gb_10d": 8.09,
+   "current_state_gb": 0.36,
+   "db_after_gb": 13.95,
+   "headroom_gb": -5.95,
+   "gb_per_day": 0.809
+  },
+  "F": {
+   "prop_rows_day": 433528,
+   "game_rows_day": 510140,
+   "history_gb_10d": 2.57,
+   "current_state_gb": 0.36,
+   "db_after_gb": 8.43,
+   "headroom_gb": -0.43,
+   "gb_per_day": 0.257
+  }
+ },
+ "reconciled": true,
+ "reconcile_diff": {},
+ "first_hand_books": [
+  "betmgm",
+  "betmgmnv",
+  "betrivers",
+  "boomers",
+  "caesarsnv",
+  "circa",
+  "draftkings",
+  "fanduel",
+  "kalshi",
+  "pinnacle",
+  "polymarket",
+  "sleeper",
+  "southpoint",
+  "stations",
+  "underdog",
+  "wynn"
+ ],
+ "relay_only_books_by_relay_count": {
+  "4": 4,
+  "2": 11,
+  "5": 3,
+  "1": 49,
+  "6": 1,
+  "3": 12
+ },
+ "top_relay_only_books_per_day": [
+  [
+   "g",
+   "bet365",
+   322549,
+   4
+  ],
+  [
+   "p",
+   "bet365",
+   215138,
+   3
+  ],
+  [
+   "g",
+   "caesars",
+   153359,
+   6
+  ],
+  [
+   "g",
+   "hardrockbet",
+   116260,
+   3
+  ],
+  [
+   "g",
+   "bovada",
+   108716,
+   5
+  ],
+  [
+   "p",
+   "hardrockbet",
+   105333,
+   2
+  ],
+  [
+   "p",
+   "novig",
+   102887,
+   3
+  ],
+  [
+   "p",
+   "fanatics",
+   101613,
+   2
+  ],
+  [
+   "p",
+   "fliff",
+   96008,
+   2
+  ],
+  [
+   "g",
+   "novig",
+   79966,
+   3
+  ],
+  [
+   "p",
+   "bovada",
+   77895,
+   3
+  ],
+  [
+   "g",
+   "ballybet",
+   73936,
+   3
+  ],
+  [
+   "g",
+   "betparx",
+   73748,
+   3
+  ],
+  [
+   "g",
+   "parx",
+   66007,
+   1
+  ],
+  [
+   "p",
+   "prizepicks",
+   56377,
+   1
+  ]
+ ]
+}

@@ -133,4 +133,115 @@ projection.
 
 ## Result
 
-*(the measured table, the projections, the recommendation, D24)*
+**Measured 2026-09-24 23:55 UTC. Waiting on the operator's D24.**
+Raw output: `results/p4-volume-2026-09-24.json`.
+
+**Window.** 2026-09-24 00:00–22:30 UTC: 18.94 collecting hours after the
+17:38–20:54 freeze and the three restarts are excluded, normalised to 24 h.
+- *Deviation from "the last 2 complete days":* 09-22 started at 06:37 with
+  a few sources, and 09-23 predates R2–R5. Only 09-24 has all 29 sources,
+  so earlier days would under-state the volume by a wide margin.
+- **Reconciled:** the classes sum to 8,589,541 offer rows, equal per source
+  to `SELECT source, count(*) FROM offers` over the same snapshots.
+- It is one day: a Thursday carrying the NFL and CFB weekend boards and
+  MLB's last week. Treat it as a typical in-season day, not a peak.
+- *Matched:* rows of games P3 could link are `strict`. Rows of covered-league
+  games outside the app's current horizon are `estimated`, at P3's measured
+  link rates, and are about 8% of the matched rows.
+
+**Live database:** 5.49 GB of 8 GB (it was 5.2 in the spec).
+`prop_odds_history` is **345 B/row** (the spec assumed 285),
+`game_odds_history` 211 B/row, `prop_odds` 690 B/row.
+
+**What the scraper produces a day** (rows = price changes):
+
+| | rows/day |
+|---|---|
+| all offer rows | 10.88M |
+| flaps (excluded) | 1.32M |
+| non-price (fair, consensus, openers, unidentified books) | 0.74M |
+| leagues the app does not cover / no canonical game | 0.37M |
+| unmatched player / market, plus estimated rows that would not link | 0.36M |
+| **matched, de-flapped (option A)** | **8.10M** (3.16M props + 4.94M game lines) |
+
+- **By sport (matched):** CFB 2.86M, NFL 2.51M, MLB 1.36M, MLS 1.19M,
+  NHL 0.10M, NBA 0.03M, EPL/tennis < 0.02M each.
+- **By class:** relay-duplicates (a first-hand book arriving again through
+  an aggregator) are **4.5M/day, more than half**. First-hand is 0.94M.
+  Relay-only books are 2.66M.
+- 31 of the 80 relay-only books arrive through 2–6 relays. The largest:
+  bet365 game lines 323k/day via 4 relays, Caesars 153k via 6, Hard Rock,
+  Bovada, Novig, Fanatics, Fliff.
+
+**The options: 10-day history window, added to today's 5.49 GB**
+
+| option | rows/day | 10-day history | + current state | DB after | vs 8 GB |
+|---|---|---|---|---|---|
+| **A** all matched | 8.10M | 21.3 GB | 0.51 | 27.3 GB | **−19.3** (full in < 1 day) |
+| **B** one copy per book (drop relay-duplicates) | 3.60M | 9.5 GB | 0.36 | 15.4 GB | −7.4 (full in 2.3 days) |
+| **B1** B + only ONE relay per relay-only book *(measured variant)* | 3.01M | 8.1 GB | 0.36 | 14.0 GB | −6.0 |
+| **C** B, relay-only history 3 days | 3.60M | 4.7 GB | 0.36 | 10.5 GB | −2.5 |
+| **D** B, pre-game only | 3.37M | 8.9 GB | 0.36 | 14.8 GB | −6.8 |
+| **E** B, in-game only for sharp | 3.41M | 9.1 GB | 0.36 | 14.9 GB | −6.9 |
+| **F** first-hand only *(measured variant)* | 0.94M | 2.6 GB | 0.36 | 8.4 GB | −0.4 |
+
+**What this means:** at a 10-day window, **no option fits in 8 GB**. Even
+first-hand only is 0.4 GB over. In-game changes are small (D and E save
+only 6%). The two levers that matter are how many copies of a relayed book
+are stored, and how long relay history stays hot. The database also grows
+by itself outside the bridge (about 1.2 GB/week per the 2026-09 notes), so
+a plan that lands at 7.9 GB is not a fit either.
+
+**Builder's recommendation: B1 + grow the disk, with relay history hot for
+3 days.**
+- **What reaches Supabase:**
+  - every first-hand price change (Pinnacle, Circa and the Nevada books via
+    VSiN, DraftKings, FanDuel, BetMGM, BetRivers, Kalshi, Polymarket,
+    Sleeper, Underdog);
+  - and, for each book we cannot read first-hand (bet365, Caesars,
+    Fanatics, Hard Rock, the offshore and international books), **one**
+    relay copy: the relay that carries most of that book.
+- **What stays on the laptop:**
+  - relay-duplicates of first-hand books;
+  - the second to sixth relays of a relay-only book;
+  - flaps, non-price rows, unmatched rows beyond the P6 unmatched table's
+    budget.
+
+  All of it is kept, never deleted (D14), and P7 uses it for timing.
+- **Hot windows:** first-hand 10 days; relay 3 days. Older relay rows move
+  to the corpus through `prune_corpus`, never deleted.
+- **Size:** about 0.26 GB/day first-hand + 0.55 GB/day relay →
+  2.6 + 1.7 + 0.36 ≈ **4.6 GB** → a **~10.1 GB** database. So the disk has
+  to grow: set it to **16 GB**, which leaves room for the other ~1.2
+  GB/week of growth until the old-table cleanups land.
+- **Why this one:**
+  - the books US bettors use most (bet365, Caesars, Fanatics, Hard Rock)
+    only arrive relayed, so the pages need them;
+  - one copy per book is all a page can show anyway (F6 picks one);
+  - 3 days covers every default chart window (2 h–48 h). Only "Since
+    open" on a relay book reaches back further, and there it loses detail.
+- **Cost:** extra disk on the paid plan is billed per GB-month. The
+  operator checks the price on the billing page for +8 GB. It is small next
+  to the paid feeds. Disk growth is one-way on Supabase (it can grow, not
+  shrink back).
+- **If the disk may not grow:** first-hand only (F) with a **5-day** window
+  (≈ 1.3 + 0.36 → 7.1 GB) is the only fit with headroom, and it drops every
+  relay-only book from the app. Not recommended: bet365, Caesars, Fanatics
+  and Hard Rock would vanish from the pages.
+- **Worth doing either way (P6 follow-ups):**
+  - `game_odds_history` is never pruned (routed finding 4). It is small
+    today (0.12 GB) but gets the same window rule;
+  - the paid-feed overlap check (about 2 weeks into P6) may show paid rows
+    the scraper duplicates, which frees room.
+
+**D24 is the operator's.** When chosen, it is written into
+`scraper-bridge-and-edge-gameplan-2026-09-23.md` §1 in the form above, and
+P5/P6 read it. Nothing downstream starts before it.
+
+**Tests:**
+- `src/test_scraper_volume.py` (a CI step): flaps at 300 s vs 900 s, the
+  relay classes, the pre/in split, and the classes adding up on a fixture
+  DB;
+- reconciliation against `offers`: exact.
+- A first version used a per-row correlated lookup and took over an hour;
+  it was replaced by one indexed join (the day now measures in 5.5 min).

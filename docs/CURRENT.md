@@ -51,7 +51,7 @@ Read it next. In short:
    | P1 fix what is broken | **DONE 21:55 UTC** — `4d64071`, deployed (see Deploys). Game line on every sport's player page, one market-label and one book registry, game-line history logs line moves (proved live). See P1 → Result |
    | P2 names | **DONE 22:25 UTC** — `08fa35e`. `scraper_markets.py` (scraper labels → app keys), verify list decided, 28 keys and 49 books in both alias maps; coverage 99.9% props / 96.5% game markets. See P2 → Result |
 | P3 matching | **DONE 23:15 UTC** — scraper games and players → app ids in `bridge.db`; zero wrong links in the 170-game / 215-player hand check; MLB 98.3% of player rows (after the StatsAPI roster fallback), NFL 99.6%, CFB 89.4%, MLS 95.8%. See P3 → Result |
-| P4 storage measurement | in progress |
+| P4 storage measurement | **MEASURED 23:55 UTC — waits for the operator's D24.** No option fits 8 GB at 10 days (A 27 GB … first-hand-only 8.4 GB). Recommendation: B1 (first-hand + one relay per relay-only book), relay hot for 3 days, disk grown to 16 GB (≈ 10.1 GB used). See P4 → Result |
    | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
    | the six spec corrections (HANDOFF §"Known spec corrections") | **DONE** — P11 gate 2 = D13 (`3a1ac92`), P6 `scraper_unmatched_prices` (`9a1ec62`), P8 line movement + L5 dropping odds (`1680556`), P7 T0.4 (`ab73734`), S-G3 beyond 7 days (`eec6bba`). Each spec has a Changelog line |
 
