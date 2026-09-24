@@ -80,6 +80,20 @@ de-vig the sharp two-sided price to a fair probability, compare with the soft
 book's implied probability. E.g. Pinnacle −115/−105 → fair 51.1%; DraftKings
 +105 (48.8%) → +2.3 pts, EV +4.7%.
 
+**Scope: every odds system, not one source.** Edge reads the shared live
+tables (`prop_odds`, `game_odds_book_lines`) that all three writers feed. The
+sharp reference and the soft price may each come from any provider — Propline,
+ParlayAPI, SharpAPI, the-odds-api, OddsHarvester (soft game lines only; it has
+no sharp books) or `scraper:*` — provided the row passes the gates. Combining
+them depends on B0–B2 putting scraper rows on the same (game, subject, market,
+line) keys the paid feeds already use.
+
+**Why the old edge failed** (measured): 18,808 of ~19,300 stored edges (97%)
+were `model_vs_market` — the model's probability minus the book's — so an
+"18% edge" was the model disagreeing with the book, not a mispriced book. Only
+~500 ever used a sharp reference, and those carry the §2 grading bug. This
+system uses no model at all.
+
 **Gates — edge renders only if ALL pass:**
 
 1. Reference: game lines — Pinnacle or Circa two-sided at the exact line.
@@ -94,6 +108,21 @@ book's implied probability. E.g. Pinnacle −115/−105 → fair 51.1%; DraftKin
    SMALLEST edge.
 6. Logged: every edge shown is written (time, both prices, reference, method)
    to a NEW table — not `pick_history` — for the closing-line test.
+7. One book, several providers: use the freshest row; if two providers report
+   the same book at nearly the same time and disagree beyond a small tolerance,
+   the market shows no edge (one of them is wrong). `mainLine.ts`'s
+   newest-wins rule is right for DISPLAY, too loose for edge.
+8. Cap: a single edge above ~8–10% is hidden as a probable data error until
+   reviewed.
+9. Self-check: if more than a small share of gated markets show edge above ~5%
+   at once, edge display turns itself off and `health_check` alerts — the
+   "half the props at 18%" failure cannot reach users again.
+
+Expect game lines to show edge RARELY and SMALL (~1–3%): soft books copy sharp
+main lines within minutes. Many large game-line edges means the system is
+broken. Props show edge more often and with more uncertainty.
+Confidence at planning time: game lines 8/10, props 6/10, overall 7/10;
+the E3 closing-line test is what replaces these with a measured number.
 
 | phase | what |
 |---|---|
