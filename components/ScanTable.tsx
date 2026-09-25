@@ -21,6 +21,10 @@ import { AverageCell, GradientRateCell, GradientStreakCell, GradientDeltaCell } 
 import { OddsChip, NoOddsCell } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { resolveCandidateEdge, type PropOddsRow } from './usePropOdds';
+import { rowsFor } from '@/lib/odds/props/liveEdge';
+import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { scanKey, scanOddsCells, shortAge, type ScanExtras, type ScanOddsCells } from '@/lib/odds/section/scanCells';
+import { fmtAmerican, fmtLine } from '@/lib/odds/section/format';
 import type { MarketTrust } from '@/lib/odds/props/marketTrust';
 
 /**
@@ -43,6 +47,10 @@ type SortColumn =
   | 'player'
   | 'odds'
   | 'ip'
+  | 'sharp'
+  | 'books'
+  | 'checked'
+  | 'open'
   | 'modelProb'
   | 'dvp'
   | 'avg'
@@ -94,6 +102,12 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: 'odds', label: 'Odds', title: 'Price', numeric: true },
   { key: 'ip', label: 'IP', title: 'Implied probability, from the book price', numeric: true },
+  // D22 (odds build P8, O4): the market around the row's price. Price facts
+  // only — none of them is compared with the model (D5; Edge is P11's).
+  { key: 'sharp', label: 'Sharp', title: "Pinnacle's over and under at this line", numeric: true },
+  { key: 'books', label: 'Books', title: 'Books quoting this line (and how many have pulled it)', numeric: true },
+  { key: 'checked', label: 'Checked', title: 'When a source last confirmed a price on this line', numeric: true },
+  { key: 'open', label: 'Open → now', title: 'The line most books opened at, and the line now', numeric: true },
   { key: 'model', label: 'Model %', title: "Our model's probability of going over this line", numeric: true },
   { key: 'dvp', label: 'DVP', title: "Opponent's rank in this row's matchup stat", numeric: true },
   { key: 'proj', label: 'Proj', title: 'What the model projects for this market', numeric: true },
@@ -258,6 +272,11 @@ interface Row {
    * it is a real state, not a loading one.
    */
   projection: RankedRow | null;
+  /** D22: Pinnacle, book count and newest check at this row's line. */
+  oddsCells: ScanOddsCells;
+  /** D22: the line most books opened at, and how many books have pulled this line. */
+  openLine: number | null;
+  pulled: number;
 }
 
 /**
@@ -326,6 +345,7 @@ function buildRow(
   trustedMarkets?: ReadonlySet<string>,
   trustTiers?: ReadonlyMap<string, MarketTrust>,
   projection?: RankedRow | null,
+  extras?: ScanExtras | null,
 ): Row {
   const m = meta(candidate);
   const windows = windowSet(candidate.history, candidate.category);
@@ -363,6 +383,8 @@ function buildRow(
   const edgeInfo = resolveCandidateEdge(candidate, propRows, userSportsbook);
 
   const trustTier = trustTiers?.get(candidate.dimension) ?? null;
+  const marketKey = candidateDimensionToMarketKey(candidate.dimension);
+  const oddsCells = scanOddsCells(marketKey ? rowsFor(propRows, candidate.subjectId, marketKey, candidate.line ?? null) : []);
 
   return {
     candidate,
@@ -385,6 +407,9 @@ function buildRow(
     marketProb: edgeInfo.marketProb,
     trustTier,
     projection: projection ?? null,
+    oddsCells,
+    openLine: marketKey ? (extras?.open[scanKey(candidate.subjectId, marketKey)] ?? null) : null,
+    pulled: marketKey ? (extras?.pulled[scanKey(candidate.subjectId, marketKey, candidate.line ?? null)] ?? 0) : 0,
   };
 }
 
@@ -395,6 +420,14 @@ function sortValue(row: Row, column: SortColumn): number | null {
       return row.price;
     case 'ip':
       return row.impliedRaw;
+    case 'sharp':
+      return row.oddsCells.sharp?.fairOver ?? null;
+    case 'books':
+      return row.oddsCells.books || null;
+    case 'checked':
+      return row.oddsCells.checkedAt ? Date.parse(row.oddsCells.checkedAt) : null;
+    case 'open':
+      return row.openLine != null && row.candidate.line != null ? Math.abs(row.candidate.line - row.openLine) : null;
     case 'modelProb':
       return row.ownModelProb;
     // A higher rank number means a softer opponent, which is the better matchup,
@@ -465,6 +498,8 @@ export interface ScanTableProps {
   emptyMessage?: string;
   /** Real book prices from the five-provider feed, across the whole slate. */
   propRows?: PropOddsRow[];
+  /** D22: opening lines and pulls for the Open → now column and the pulled marker (`/api/odds/scan`). */
+  scanExtras?: ScanExtras | null;
   userSportsbook?: string;
   /** Markets whose calibration currently passes isMarketTrusted. Retained for the trust badge; no longer gates a Reason column, which went with Good Bets in Phase 2. */
   trustedMarkets?: ReadonlySet<string>;
@@ -492,6 +527,7 @@ export function ScanTable({
   loading = false,
   emptyMessage = 'No candidates match these filters.',
   propRows = [],
+  scanExtras = null,
   userSportsbook = 'fanatics',
   trustedMarkets,
   trustTiers,
@@ -547,7 +583,7 @@ export function ScanTable({
 
   const rows = useMemo(() => {
     const built = candidates.map((c) =>
-      buildRow(c, propRows, userSportsbook, trustedMarkets, trustTiers, projectionFor?.(c)));
+      buildRow(c, propRows, userSportsbook, trustedMarkets, trustTiers, projectionFor?.(c), scanExtras));
 
     built.sort((a, b) => {
       if (sortCol === 'player') {
@@ -568,7 +604,7 @@ export function ScanTable({
     });
 
     return built;
-  }, [candidates, sortCol, sortDir, propRows, userSportsbook, trustedMarkets, trustTiers, projectionFor]);
+  }, [candidates, sortCol, sortDir, propRows, userSportsbook, trustedMarkets, trustTiers, projectionFor, scanExtras]);
 
   /**
    * The rank actually shown, renumbered over the rows on screen.
@@ -819,6 +855,24 @@ export function ScanTable({
                             {(row.impliedRaw * 100).toFixed(1)}%
                           </span>
                         ) : null}
+                      </td>
+
+                      {/* D22 — Sharp, Books, Checked, Open → now. Muted like IP:
+                          market facts, never coloured by value. */}
+                      <td className="px-2 py-1 text-center tabular-nums text-[11px] text-ink-muted">
+                        {row.oddsCells.sharp ? `${fmtAmerican(row.oddsCells.sharp.over)}/${fmtAmerican(row.oddsCells.sharp.under)}` : '—'}
+                      </td>
+                      <td className="px-2 py-1 text-center tabular-nums text-[11px] text-ink-muted">
+                        {row.oddsCells.books || '—'}
+                        {row.pulled ? <span className="ml-1 font-semibold text-bad-ink">· {row.pulled} pulled</span> : null}
+                      </td>
+                      <td className="px-2 py-1 text-center tabular-nums text-[11px] text-ink-muted">
+                        {shortAge(row.oddsCells.checkedAt, Date.now())}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1 text-center tabular-nums text-[11px] text-ink-muted">
+                        {row.openLine != null && candidate.line != null && row.openLine !== candidate.line
+                          ? `${fmtLine(row.openLine)} → ${fmtLine(candidate.line)}`
+                          : '—'}
                       </td>
 
                       {/* 4 — Model %. Sits directly beside IP by operator

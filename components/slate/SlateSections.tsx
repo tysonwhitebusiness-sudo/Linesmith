@@ -1,5 +1,6 @@
 'use client';
 
+import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useState } from 'react';
 import { EmptyState, FeaturedIcon, SegmentedToggle, Skeleton, cx, SectionBand } from '@/components/ui';
 import type { SlateData, SlateSection, SlateStatus } from '@/lib/sports/shared/slateShapes';
@@ -98,7 +99,7 @@ const FILTERS: Array<{ value: SlateStatus | 'all'; label: string }> = [
   { value: 'done', label: 'Final' },
 ];
 
-export function SlateGames({ data, loading }: { data: SlateData | null; loading: boolean }) {
+export function SlateGames({ data, loading, odds }: { data: SlateData | null; loading: boolean; odds?: Map<string, SlateOddsGame> }) {
   const [filter, setFilter] = useState<SlateStatus | 'all'>('all');
   const games = data?.games;
 
@@ -161,7 +162,7 @@ export function SlateGames({ data, loading }: { data: SlateData | null; loading:
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-3">
           {shown.map((c) => (
-            <GameCard key={c.id} card={c} sport={data.sport} />
+            <GameCard key={c.id} card={c} sport={data.sport} odds={odds?.get(c.id)} />
           ))}
         </div>
       )}

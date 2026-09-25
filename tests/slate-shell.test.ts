@@ -207,7 +207,7 @@ test('the Scan table is frozen (D3)', () => {
   // U0's mechanical Tailwind conversion was the one allowed edit and it did not
   // touch either file; this pins them from here.
   const hashes: Record<string, number> = {
-    'components/ScanTable.tsx': 47266,
+    'components/ScanTable.tsx': 50770,   // D22 (odds build P8 O4, 2026-09-25): Sharp, Books, Checked, Open → now + pulled marker
     'components/ScanCard.tsx': 17654,
   };
   for (const [file, size] of Object.entries(hashes)) {

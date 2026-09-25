@@ -315,3 +315,54 @@ None.
 
   Both were in the plan and missing from this spec. The D16 note above
   applies to any piece the approved mockup does not draw.
+
+## Result (2026-09-25, unattended run)
+
+**Built.** O1 (kit primitives, every `lib/odds/section/*` module with fixture
+tests on the mockup snapshot, `components/odds/*`, `/kit` odds group), O2
+(the player page's Odds & prices, live on MLB), O3 (the game page's `kind:
+'odds'` card → `GameOddsSection`; a finished game with its score →
+`GameFinalOddsSection`, the closing-line research; the team page →
+`TeamOddsSection`), O4 (the Slate's game-card odds block, Movers — Biggest
+moves with steam and first mover, moneylines that moved most, Dropping odds,
+Pulled lines — the Market hub, and Scan's D22 columns).
+
+Routes: `/api/odds/player`, `/api/odds/game`, `/api/odds/closes`,
+`/api/odds/scan` (pattern 2) and `/api/odds/slate` (`cachedRoute`, 60 s, key
+`odds:slate:route:{sport}:{date}:{ids hash}` — the Slate sends the ids it
+shows, so the hash is in the key).
+
+**F12 — steam and first mover stay at read time.** `/api/odds/slate`'s build
+measured on every NFL game with a line (32, a full week — more than one
+Sunday), 12 runs from the laptop: p50 1.22 s, p95 3.0 s (the cold-connection
+first run; warm max 2.2 s). 75–85% of each build is the six database round
+trips (`queryMs` in the payload); the steam detection itself is ~0.3 s. The
+2 s bar is crossed by the queries, not by the computation F12 asks about, so
+moving steam to a Python `market_moves` job would not move the number; the
+route's 60 s cache means a visitor does not pay the build. Recorded as the
+F12 answer; revisit if a hosted app measures differently.
+
+**Deviations (recorded, not silent):**
+1. The odds section keeps its own line stepper (the prop block's `lineOffset`
+   is relative to the candidate line; sharing it is O2 polish).
+2. `GamePropsCard` / `PropsResults` are not built: each sport's existing
+   props card stays in the `lines` section — it already reads the same
+   `prop_odds` and, on a final, grades them against the box score.
+3. The old final "Game lines" card stays beside `GameFinalOddsSection`: game
+   line history is hot for ten days, and for an older game that card (from
+   the paid feeds' longer history) is the only close held (D14).
+4. The team card "Against the closing number" reads the consensus close from
+   `game_lines_history` (hot 10 days) + `game_lines`; older games read "—".
+5. Scan's `ScanCard` (the card view) did not gain the D22 cells; the table
+   did. Cells flashing is P9's.
+6. The Market hub has Best prices, Openers vs now, Lowest hold and Line
+   disagreements; Pulled lives in Movers (one list, not two); Edges is P11's
+   and Where the money is P10's.
+7. `SlateTeam.abbr` is now set from the matchup ("CHC @ BOS") where it is
+   one, for the odds block's tight rows.
+
+**Not yet done in P8:** renders on every sport at 1440 and 400 (MLB Slate at
+1440 checked, `results/p8-slate-games-1440.png`; the dev server was slow and
+flaky during the run); deleting the old `PlayerOddsSection.tsx` /
+`PropOddsBoard` / `LineMovementCard`. `bookLabel("marathon")` is missing from
+the registry.

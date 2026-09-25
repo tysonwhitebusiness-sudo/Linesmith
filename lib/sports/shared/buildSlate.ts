@@ -16,6 +16,7 @@
  * generous.
  */
 
+import { splitMatchup } from './slateLogos';
 import type { SlateGame } from '@/lib/odds/matching';
 import type { BookmakerOdds, UnifiedGameLine } from '@/lib/odds/types';
 import { decimalToAmerican, formatAmerican, formatPoint } from '@/lib/odds/display';
@@ -272,8 +273,13 @@ function statusText(game: SlateGame, status: SlateStatus): string {
 function teamOf(game: SlateGame, side: 'home' | 'away', spec: SlateSpec): SlateTeam {
   const name = (side === 'home' ? game.homeTeamName : game.awayTeamName) ?? '';
   const score = side === 'home' ? game.liveScore?.home : game.liveScore?.away;
+  // The short form from the matchup ("CHC @ BOS"), where it is one: the odds
+  // block's tight rows (O4) print it. A matchup of full names sets nothing.
+  const parts = splitMatchup(game.matchup);
+  const ab = (side === 'home' ? parts[1] : parts[0]).trim();
   return {
     name,
+    ...(parts[1] && ab && ab.length <= 5 && !ab.includes(' ') ? { abbr: ab } : {}),
     logoUrl: spec.logoUrl?.(game, side) ?? null,
     record: spec.record?.(game, side) ?? null,
     rank: spec.rank?.(game, side) ?? null,

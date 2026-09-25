@@ -6,6 +6,7 @@
  * best prices that cross (negative hold). Not real data, and never shown
  * outside `/kit` and tests.
  */
+import type { SlateOddsGame } from './slate';
 import type { OddsMarket, OddsQuote } from './types';
 
 export const KIT_NOW = Date.parse('2026-09-24T17:18:00Z');
@@ -54,4 +55,31 @@ export function kitPropMarket(): OddsMarket {
 /** One book only. */
 export function kitOneBookMarket(): OddsMarket {
   return { key: 'receptions', cur: [q('draftkings', 'over', 5.5, -120), q('draftkings', 'under', 5.5, -105)], hist: {}, open: {} };
+}
+
+/** Two Slate games for /kit (O4): one with a sharp price, steam, a pull and DK splits; one with none of them. */
+export function kitSlateGames(): SlateOddsGame[] {
+  return [
+    {
+      gameId: 'kit-1', books: 41, checkedAt: t(1),
+      ml: { home: { book: 'fanduel', price: -118 }, away: { book: 'polymarket', price: 112 }, hold: -0.0015 },
+      pinnacle: { home: -124, away: 113, fairHome: 0.5367, checkedAt: t(1) },
+      total: { line: 8.5, open: 9 }, spread: { line: -1.5, open: -1.5 },
+      moved: { book: 'pinnacle', open: -112, now: -124, openedAt: t(900) },
+      dk: { money: 71, bets: 48 }, kalshi24h: 18420,
+      board: { pinnacle: { home: -124, away: 113 }, draftkings: { home: -125, away: 105 }, fanduel: { home: -118, away: 100 }, polymarket: { home: -128, away: 112 } },
+      totalLines: [{ line: 8.5, books: ['draftkings', 'fanduel', 'pinnacle'] }, { line: 9, books: ['caesars'] }],
+      steam: [{ market: 'tot', t: t(95), dir: -1, books: ['pinnacle', 'circa', 'draftkings', 'fanduel'], times: [t(95), t(90), t(80), t(71)], from: 9, to: [8.5, 8.5, 8.5, 8.5] }],
+      dropping: [{ market: 'ml', medianMove: 0.021, sameWay: 18, books: 22 }, { market: 'tot', medianMove: -0.012, sameWay: 9, books: 14 }],
+      pulls: [{ book: 'betmgm', market: 'sp', side: 'home', pulledAt: t(12) }],
+    },
+    {
+      gameId: 'kit-2', books: 3, checkedAt: t(20),
+      ml: { home: { book: 'draftkings', price: 150 }, away: { book: 'fanduel', price: -170 }, hold: 0.03 },
+      pinnacle: null, total: { line: 44.5, open: null }, spread: { line: 3.5, open: null },
+      moved: null, dk: null, kalshi24h: null,
+      board: { draftkings: { home: 150, away: -180 }, fanduel: { home: 145, away: -170 } },
+      totalLines: [], steam: [], dropping: [], pulls: [],
+    },
+  ];
 }

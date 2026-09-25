@@ -12,11 +12,14 @@ import { OpenNow } from '@/components/odds/OpenNow';
 import { PlayerOddsSection } from '@/components/odds/PlayerOddsSection';
 import { PriceBoard } from '@/components/odds/PriceBoard';
 import { SharpPrices } from '@/components/odds/SharpPrices';
+import { SlateGameOdds } from '@/components/odds/SlateGameOdds';
+import { SlateOddsHub } from '@/components/odds/SlateOddsHub';
+import { SlateOddsMovers } from '@/components/odds/SlateOddsMovers';
 import { TeamOddsSection } from '@/components/odds/TeamOddsSection';
 import { Card, FlashValue, LiveDot } from '@/components/ui';
 import { boardRows } from '@/lib/odds/section/board';
 import { fmtAmerican } from '@/lib/odds/section/format';
-import { KIT_NOW, kitOneBookMarket, kitPropMarket } from '@/lib/odds/section/kitFixture';
+import { KIT_NOW, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
 import { marketSpec } from '@/lib/odds/section/types';
 
 /**
@@ -66,6 +69,15 @@ export function KitOdds() {
         <GameOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} />
         <GameFinalOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} start="2026-09-23T22:35:00Z" score={{ home: 4, away: 2 }} />
         <TeamOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} side="home" past={[]} />
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {kitSlateGames().map(g => (
+            <div key={g.gameId} className="overflow-hidden rounded-card border border-line-soft bg-card shadow-card">
+              <SlateGameOdds odds={g} away="CHC" home="BOS" colors={['var(--color-cmp-a)', 'var(--color-cmp-b)']} now={KIT_NOW} />
+            </div>
+          ))}
+        </div>
+        <SlateOddsMovers games={kitSlateGames()} refs={new Map([['kit-1', { label: 'CHC @ BOS' }], ['kit-2', { label: 'ATL @ GB' }]])} now={KIT_NOW} />
+        <SlateOddsHub games={kitSlateGames()} refs={new Map([['kit-1', { label: 'CHC @ BOS' }], ['kit-2', { label: 'ATL @ GB' }]])} />
         <PlayerOddsSection sport="mlb" gameId={null} subjectId={null} teams={null} marketLabel={label} />
       </div>
     </section>

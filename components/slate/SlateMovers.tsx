@@ -1,5 +1,7 @@
 'use client';
 
+import { SlateOddsMovers, type SlateGameRef } from '../odds/SlateOddsMovers';
+import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Card, Chip, DataTable, EmptyState, SegmentedToggle, Tabs, type Column, SectionBand } from '@/components/ui';
 import { Sparkline } from '@/components/charts';
@@ -174,7 +176,14 @@ function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number, sport: s
   ];
 }
 
-export function SlateMovers({ data, loading, sport }: { data: SlateMoversData | null; loading: boolean; sport: string }) {
+export function SlateMovers({ data, loading, sport, odds, refs }: {
+  data: SlateMoversData | null;
+  loading: boolean;
+  sport: string;
+  /** O4: the slate's game-line odds; with them the section adds Biggest moves, Dropping odds and Pulled lines. */
+  odds?: SlateOddsGame[];
+  refs?: Map<string, SlateGameRef>;
+}) {
   const [kind, setKind] = useState<MoverKind>('props');
   const [win, setWin] = useState<MoverWindow>('first');
 
@@ -185,7 +194,8 @@ export function SlateMovers({ data, loading, sport }: { data: SlateMoversData | 
   }, [data, win]);
 
   const total = (data?.lines.length ?? 0) + (data?.props.length ?? 0);
-  if (!loading && total === 0) return null;
+  const hasOdds = !!odds?.some(g => g.books > 0);
+  if (!loading && total === 0 && !hasOdds) return null;
 
   // Open on whichever tab has something, props first.
   const active: MoverKind = lists[kind].length > 0 || lists[kind === 'props' ? 'lines' : 'props'].length === 0 ? kind : kind === 'props' ? 'lines' : 'props';
@@ -227,6 +237,7 @@ export function SlateMovers({ data, loading, sport }: { data: SlateMoversData | 
           <EmptyState title="Nothing has moved in this window" reason="No consensus move of 1.5 points or more on a game still to start." />
         )}
       </Card>
+      {hasOdds ? <SlateOddsMovers games={odds!} refs={refs ?? new Map()} /> : null}
     </section>
   );
 }

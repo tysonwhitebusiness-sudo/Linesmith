@@ -111,12 +111,17 @@ function SharpTile({ book, p, labels, now, extra }: { book: string; p: TwoSided;
 }
 
 /** The no-vig split in the two comparison colours (the mockup's `fairBar`). */
-export function SplitBar({ p, labels }: { p: number; labels: [string, string] }) {
+export function SplitBar({ p, labels, colors }: {
+  p: number;
+  labels: [string, string];
+  /** The two teams' colours (the Slate's game card, O4); unset draws the neutral comparison pair. */
+  colors?: [string | null | undefined, string | null | undefined];
+}) {
   return (
     <div className="mt-2">
       <div className="flex h-1.5 overflow-hidden rounded-full" role="img" aria-label={`${labels[0]} ${fmtPct(p)}, ${labels[1]} ${fmtPct(1 - p)}`}>
-        <span className="bg-cmp-a" style={{ width: `${(p * 100).toFixed(1)}%` }} />
-        <span className="bg-cmp-b" style={{ width: `${((1 - p) * 100).toFixed(1)}%` }} />
+        <span className={colors?.[0] ? undefined : 'bg-cmp-a'} style={{ width: `${(p * 100).toFixed(1)}%`, ...(colors?.[0] ? { background: colors[0] } : {}) }} />
+        <span className={colors?.[1] ? undefined : 'bg-cmp-b'} style={{ width: `${((1 - p) * 100).toFixed(1)}%`, ...(colors?.[1] ? { background: colors[1] } : {}) }} />
       </div>
       <div className="mt-1 flex justify-between text-label text-ink-muted">
         <span>{labels[0]} <b className="text-ink">{fmtPct(p)}</b></span>

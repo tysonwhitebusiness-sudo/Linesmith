@@ -14,12 +14,15 @@
  * `changed_at ?? fetched_at`. History comes only through `lib/db/priceHistory.ts`.
  */
 import { pgAll } from './pgClient';
-import { gameLineChangesForGame, gameLineClosesForGames, propChangesForSubject } from './priceHistory';
+import { gameLineChangesForGame, gameLineChangesForGames, gameLineClosesForGames, propChangesForSubject } from './priceHistory';
 import { bookGroup } from '@/lib/odds/books/registry';
 import type {
   GameOddsPayload, HistPoint, MarketSpec, OddsMarket, OddsQuote, OpenerRow, PlayerOddsPayload, PullRow, SourceLatencyRow,
 } from '@/lib/odds/section/types';
 import { marketSpec } from '@/lib/odds/section/types';
+import { detectSteam, lineMoves } from '@/lib/odds/section/steam';
+import { slateGame, type SlateOddsPayload, type SplitRow } from '@/lib/odds/section/slate';
+import { scanKey, type ScanExtras } from '@/lib/odds/section/scanCells';
 
 const HISTORY_DAYS = 10;
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v));
@@ -171,34 +174,17 @@ export function gameMarketSpec(market: string): MarketSpec {
   return marketSpec('tot');
 }
 
-export async function readGameOdds(sport: string, gameId: string): Promise<GameOddsPayload> {
-  const now = new Date();
-  const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
-  const g = genericSport(sport);
-  const [lines, legacy, checks, changes, openers, pulls, power, lat] = await Promise.all([
-    pgAll<{ period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
-      source: string; american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
-      `SELECT period, market, side, point, is_main, bookmaker, source, american_odds, fetched_at, changed_at, extra
-         FROM game_lines WHERE sport = ? AND game_id = ?`, [g, gameId]),
-    // Sources not yet on game_lines (the paid feeds' full-game lines).
-    pgAll<{ market: string; side: string; bookmaker: string; source: string; point: number | null;
-      american_odds: number | null; fetched_at: unknown }>(
-      `SELECT market, side, bookmaker, source, point, american_odds, fetched_at
-         FROM game_odds_book_lines WHERE sport = ? AND game_id = ? AND source NOT LIKE 'scraper:%'`, [g, gameId]),
-    checkedBySource(gameId),
-    gameLineChangesForGame(gameId, since),
-    pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null; american_odds: number | null;
-      opened_at: unknown; opener_source: string; check_flag: boolean; check_reason: string | null }>(
-      `SELECT period, market, side, bookmaker, point, american_odds, opened_at, opener_source, check_flag, check_reason
-         FROM market_openers WHERE kind = 'game' AND game_id = ?`, [gameId]),
-    pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null;
-      last_american_odds: number | null; pulled_at: unknown; returned_at: unknown }>(
-      `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
-         FROM game_line_pulls WHERE sport = ? AND game_id = ? AND pulled_at >= ?::timestamptz`, [g, gameId, since]),
-    pgAll<{ subject: string; data: Record<string, unknown> }>(
-      `SELECT subject, data FROM game_reference WHERE sport = ? AND game_id = ? AND kind = 'power_rating'`, [g, gameId]),
-    latency(sport),
-  ]);
+type LineRow = { period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
+  source: string; american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null };
+type LegacyRow = { market: string; side: string; bookmaker: string; source: string; point: number | null; american_odds: number | null; fetched_at: unknown };
+type OpenerDbRow = { period: string; market: string; side: string; bookmaker: string; point: number | null; american_odds: number | null;
+  opened_at: unknown; opener_source: string; check_flag: boolean; check_reason: string | null };
+type PullDbRow = { period: string; market: string; side: string; bookmaker: string; point: number | null;
+  last_american_odds: number | null; pulled_at: unknown; returned_at: unknown };
+
+/** One game's markets, keyed `${period}_${market}`, from its rows (shared by the game page and the Slate). */
+function assembleGameMarkets(lines: LineRow[], legacy: LegacyRow[], checks: Map<string, string>,
+                             changes: Awaited<ReturnType<typeof gameLineChangesForGame>>, openers: OpenerDbRow[], pulls: PullDbRow[]): Map<string, OddsMarket> {
   const byMarket = new Map<string, OddsMarket>();
   const market = (key: string) => byMarket.get(key) ?? byMarket.set(key, { key, cur: [], hist: {}, open: {}, pulls: [] }).get(key)!;
   const seen = new Set<string>();
@@ -227,8 +213,12 @@ export async function readGameOdds(sport: string, gameId: string): Promise<GameO
     (changesByMarket.get(key) ?? changesByMarket.set(key, []).get(key)!).push(c);
   }
   for (const [key, cs] of changesByMarket) {
-    market(key).hist = histFromChanges(cs.map(c => ({ at: iso(c.observedAt), book: c.bookmaker, side: c.side,
-      line: c.point, price: c.americanOdds })), gameMarketSpec(key.split('_').slice(1).join('_')));
+    const spec = gameMarketSpec(key.split('_').slice(1).join('_'));
+    const m = market(key);
+    m.hist = histFromChanges(cs.map(c => ({ at: iso(c.observedAt), book: c.bookmaker, side: c.side,
+      line: c.point, price: c.americanOdds })), spec);
+    // Steam and every move with its first mover (F12: computed at read time).
+    if (!spec.noLine) { m.moves = lineMoves(m.hist); m.steam = detectSteam(m.hist); }
   }
   for (const o of openers) {
     const key = `${o.period}_${o.market}`;
@@ -248,6 +238,38 @@ export async function readGameOdds(sport: string, gameId: string): Promise<GameO
   }
   // Pick'em books never price a game line; drop any stray row so "best" stays honest.
   for (const m of byMarket.values()) m.cur = m.cur.filter(q => bookGroup(q.book) !== 'pickem');
+  return byMarket;
+}
+
+export async function readGameOdds(sport: string, gameId: string): Promise<GameOddsPayload> {
+  const now = new Date();
+  const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
+  const g = genericSport(sport);
+  const [lines, legacy, checks, changes, openers, pulls, power, lat] = await Promise.all([
+    pgAll<{ period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
+      source: string; american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
+      `SELECT period, market, side, point, is_main, bookmaker, source, american_odds, fetched_at, changed_at, extra
+         FROM game_lines WHERE sport = ? AND game_id = ?`, [g, gameId]),
+    // Sources not yet on game_lines (the paid feeds' full-game lines).
+    pgAll<{ market: string; side: string; bookmaker: string; source: string; point: number | null;
+      american_odds: number | null; fetched_at: unknown }>(
+      `SELECT market, side, bookmaker, source, point, american_odds, fetched_at
+         FROM game_odds_book_lines WHERE sport = ? AND game_id = ? AND source NOT LIKE 'scraper:%'`, [g, gameId]),
+    checkedBySource(gameId),
+    gameLineChangesForGame(gameId, since),
+    pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null; american_odds: number | null;
+      opened_at: unknown; opener_source: string; check_flag: boolean; check_reason: string | null }>(
+      `SELECT period, market, side, bookmaker, point, american_odds, opened_at, opener_source, check_flag, check_reason
+         FROM market_openers WHERE kind = 'game' AND game_id = ?`, [gameId]),
+    pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null;
+      last_american_odds: number | null; pulled_at: unknown; returned_at: unknown }>(
+      `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
+         FROM game_line_pulls WHERE sport = ? AND game_id = ? AND pulled_at >= ?::timestamptz`, [g, gameId, since]),
+    pgAll<{ subject: string; data: Record<string, unknown> }>(
+      `SELECT subject, data FROM game_reference WHERE sport = ? AND game_id = ? AND kind = 'power_rating'`, [g, gameId]),
+    latency(sport),
+  ]);
+  const byMarket = assembleGameMarkets(lines, legacy, checks, changes, openers, pulls);
   return { sport, gameId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat,
     powerRatings: power.map(p => ({ subject: p.subject, data: p.data })) };
 }
@@ -301,4 +323,89 @@ export async function readGameCloses(sport: string, games: { gameId: string; sta
     out[gameId] = { spread: sp.line, total: tot.line, books: Math.max(sp.n, tot.n) };
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Slate (P8 O4): every game's full-game markets in one pass, summarised
+// ---------------------------------------------------------------------------
+const SLATE_HISTORY_H = 36;
+
+/**
+ * The Slate's odds for a set of games (`lib/odds/section/slate.ts` does the
+ * work): full-game moneyline, spread and total per book, openers, open pulls,
+ * DraftKings splits, and 36 hours of main-line history for steam. Six queries
+ * for the whole slate, not six per game.
+ */
+export async function readSlateOdds(sport: string, date: string, gameIds: string[]): Promise<SlateOddsPayload> {
+  const t0 = Date.now();
+  const now = new Date();
+  const g = genericSport(sport);
+  const since = new Date(now.getTime() - SLATE_HISTORY_H * 3600e3).toISOString();
+  const [lines, legacy, checks, changes, openers, pulls, splits] = await Promise.all([
+    pgAll<LineRow & { game_id: string }>(
+      `SELECT game_id, period, market, side, point, is_main, bookmaker, source, american_odds, fetched_at, changed_at, extra
+         FROM game_lines WHERE sport = ? AND game_id = ANY(?) AND period = 'fg' AND market IN ('ml', 'sp', 'tot')`, [g, gameIds]),
+    pgAll<LegacyRow & { game_id: string }>(
+      `SELECT game_id, market, side, bookmaker, source, point, american_odds, fetched_at
+         FROM game_odds_book_lines WHERE sport = ? AND game_id = ANY(?) AND source NOT LIKE 'scraper:%'`, [g, gameIds]),
+    pgAll<{ game_id: string; source: string; last_ok_at: unknown }>(
+      `SELECT game_id, source, last_ok_at FROM scraper_checks WHERE game_id = ANY(?)`, [gameIds]),
+    gameLineChangesForGames(gameIds, since),
+    pgAll<OpenerDbRow & { game_id: string }>(
+      `SELECT game_id, period, market, side, bookmaker, point, american_odds, opened_at, opener_source, check_flag, check_reason
+         FROM market_openers WHERE kind = 'game' AND game_id = ANY(?) AND period = 'fg' AND market IN ('ml', 'sp', 'tot')`, [gameIds]),
+    pgAll<PullDbRow & { game_id: string }>(
+      `SELECT game_id, period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
+         FROM game_line_pulls WHERE sport = ? AND game_id = ANY(?) AND period = 'fg' AND returned_at IS NULL AND pulled_at >= ?::timestamptz`,
+      [g, gameIds, since]),
+    pgAll<{ game_id: string; market: string; side: string; source: string; book: string | null; pct_money: number | null; pct_bets: number | null }>(
+      `SELECT DISTINCT ON (game_id, market, side, source, book) game_id, market, side, source, book, pct_money, pct_bets
+         FROM market_splits WHERE game_id = ANY(?) AND subject_id = '' AND kind = 'bets_money' AND market = 'ml'
+        ORDER BY game_id, market, side, source, book, observed_at DESC`, [gameIds]),
+  ]);
+  const queryMs = Date.now() - t0;
+  const by = <T extends { game_id?: string; gameId?: string }>(rows: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const r of rows) { const k = (r.game_id ?? r.gameId)!; (m.get(k) ?? m.set(k, []).get(k)!).push(r); }
+    return m;
+  };
+  const L = by(lines), LG = by(legacy), C = by(checks), H = by(changes), O = by(openers), P = by(pulls), S = by(splits);
+  const games = gameIds.map(id => {
+    const chk = new Map((C.get(id) ?? []).map(r => [r.source, iso(r.last_ok_at)]));
+    const markets = assembleGameMarkets(L.get(id) ?? [], LG.get(id) ?? [], chk, H.get(id) ?? [], O.get(id) ?? [], P.get(id) ?? []);
+    const sp: SplitRow[] = (S.get(id) ?? []).map(r => ({ market: r.market, side: r.side, source: r.source, book: r.book, pctMoney: r.pct_money, pctBets: r.pct_bets }));
+    return slateGame(id, markets, sp);
+  });
+  return { sport, date, asOf: now.toISOString(), games, buildMs: Date.now() - t0, queryMs };
+}
+
+// ---------------------------------------------------------------------------
+// Scan extras (P8 O4, D22): the opening line per player-market, and pulls
+// ---------------------------------------------------------------------------
+export async function readScanExtras(gameIds: string[]): Promise<ScanExtras> {
+  if (!gameIds.length) return { open: {}, pulled: {} };
+  const [openers, pulls] = await Promise.all([
+    pgAll<{ subject_id: string; market: string; point: number | null; n: string }>(
+      `SELECT subject_id, market, point, count(DISTINCT bookmaker) AS n
+         FROM market_openers
+        WHERE kind = 'prop' AND game_id = ANY(?) AND side = 'over' AND NOT check_flag AND point IS NOT NULL
+        GROUP BY subject_id, market, point`, [gameIds]),
+    pgAll<{ subject_id: string; market_key: string; line: number | null; n: string }>(
+      `SELECT subject_id, market_key, line, count(DISTINCT bookmaker) AS n
+         FROM prop_odds_pulls WHERE game_id = ANY(?) AND returned_at IS NULL
+        GROUP BY subject_id, market_key, line`, [gameIds]),
+  ]);
+  // The opening line is the one most books opened at (ties: the lower line).
+  const best = new Map<string, { line: number; n: number }>();
+  for (const r of openers) {
+    const k = scanKey(r.subject_id, r.market);
+    const n = Number(r.n);
+    const cur = best.get(k);
+    if (!cur || n > cur.n || (n === cur.n && r.point! < cur.line)) best.set(k, { line: r.point!, n });
+  }
+  const open: Record<string, number> = {};
+  for (const [k, v] of best) open[k] = v.line;
+  const pulled: Record<string, number> = {};
+  for (const r of pulls) pulled[scanKey(r.subject_id, r.market_key, r.line)] = Number(r.n);
+  return { open, pulled };
 }

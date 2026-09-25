@@ -386,3 +386,24 @@ export async function gameLineClosesForGames(games: { gameId: string; start: str
     [games.map(g => g.gameId), games.map(g => g.start), floor],
   );
 }
+
+/** Full-game main-line changes for a set of games since `sinceIso` (the Slate's steam), oldest first. */
+export async function gameLineChangesForGames(gameIds: string[], sinceIso: string): Promise<(GameLineChangeRow & { gameId: string })[]> {
+  if (!gameIds.length) return [];
+  return pgAll(
+    `SELECT g.game_id AS "gameId", s.provider_id AS source, pe.name AS period, m.name AS market, sd.name AS side,
+            h.point::numeric::float8 AS point, b.name AS bookmaker, h.price AS "americanOdds",
+            h.is_main AS "isMain", h.observed_at AS "observedAt"
+       FROM game_lines_history h
+       JOIN odds_games g    ON g.id = h.game
+       JOIN odds_sources s  ON s.id = h.source
+       JOIN odds_markets m  ON m.id = h.market
+       JOIN odds_periods pe ON pe.id = h.period
+       JOIN odds_books b    ON b.id = h.book
+       JOIN odds_sides sd   ON sd.id = h.side
+      WHERE g.game_id = ANY(?) AND pe.name = 'fg' AND m.name IN ('ml', 'sp', 'tot') AND h.is_main
+        AND h.observed_at >= ?::timestamptz AND h.recorded_at >= ?::timestamptz
+      ORDER BY h.observed_at`,
+    [gameIds, sinceIso, sinceIso],
+  );
+}

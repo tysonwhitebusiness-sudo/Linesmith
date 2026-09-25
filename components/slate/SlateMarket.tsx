@@ -1,5 +1,8 @@
 'use client';
 
+import { SlateOddsHub } from '../odds/SlateOddsHub';
+import type { SlateGameRef } from '../odds/SlateOddsMovers';
+import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useState } from 'react';
 import { Avatar, Card, Chip, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
 import { BookLogo, bookLabel } from '../BookLogo';
@@ -138,16 +141,25 @@ const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id
   },
 ];
 
-export function SlateMarket({ data, loading, sport, teamLogoBySubject }: { data: SlateMarketData | null; loading: boolean; sport: string; teamLogoBySubject?: Map<string, string> }) {
+export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, refs }: {
+  data: SlateMarketData | null;
+  loading: boolean;
+  sport: string;
+  teamLogoBySubject?: Map<string, string>;
+  /** O4: the slate's game-line odds, for the Market hub under the prop cards. */
+  odds?: SlateOddsGame[];
+  refs?: Map<string, SlateGameRef>;
+}) {
   const outliers = data?.outliers ?? [];
   const splits = data?.disagreements ?? [];
   const faceOf = (id: string): string | null => headshotFor(sport, id);
   const logoOf = (id: string): string | undefined => teamLogoBySubject?.get(athleteIdOf(id));
-  if (!loading && outliers.length === 0 && splits.length === 0) return null;
+  const hasOdds = !!odds?.some(g => g.books > 0);
+  if (!loading && outliers.length === 0 && splits.length === 0 && !hasOdds) return null;
 
   return (
     <section id="slate-market" className="mb-6 scroll-mt-[150px]">
-      <SectionBand title="Where the books differ" />
+      <SectionBand title="Market" />
       <div className={cx('grid grid-cols-1 gap-3 lg:grid-cols-2')}>
         <Card
           title="Price outliers"
@@ -179,6 +191,7 @@ export function SlateMarket({ data, loading, sport, teamLogoBySubject }: { data:
           )}
         </Card>
       </div>
+      {hasOdds ? <SlateOddsHub games={odds!} refs={refs ?? new Map()} /> : null}
     </section>
   );
 }

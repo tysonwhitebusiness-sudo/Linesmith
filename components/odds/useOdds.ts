@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { GameOddsPayload, PlayerOddsPayload } from '@/lib/odds/section/types';
+import type { SlateOddsPayload } from '@/lib/odds/section/slate';
+import type { ScanExtras } from '@/lib/odds/section/scanCells';
 
 /**
  * The odds section's fetch hooks (odds build P8). They live in components,
@@ -51,4 +53,15 @@ export function useGameCloses(sport: string | null, games: { gameId: string; sta
   const q = games.map(g => `${g.gameId}@${g.start}`).join(',');
   const url = sport && q ? `/api/odds/closes?sport=${encodeURIComponent(sport)}&games=${encodeURIComponent(q)}` : null;
   return useJson<{ closes: Record<string, { spread: number | null; total: number | null; books: number }> }>(url, refreshKey);
+}
+
+export function useSlateOdds(sport: string | null, date: string | null, gameIds: string[], refreshKey?: unknown) {
+  const ids = [...new Set(gameIds)].sort().slice(0, 60).join(',');
+  const url = sport && date && ids ? `/api/odds/slate?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(date)}&ids=${encodeURIComponent(ids)}` : null;
+  return useJson<SlateOddsPayload>(url, refreshKey);
+}
+
+export function useScanExtras(gameIds: string[], refreshKey?: unknown) {
+  const ids = [...new Set(gameIds)].sort().slice(0, 80).join(',');
+  return useJson<ScanExtras>(ids ? `/api/odds/scan?ids=${encodeURIComponent(ids)}` : null, refreshKey);
 }

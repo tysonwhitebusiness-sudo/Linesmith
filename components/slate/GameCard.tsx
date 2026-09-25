@@ -5,6 +5,8 @@ import { useTeamColors } from '../useTeamColors';
 import { teamColor } from '@/lib/sports/shared/teamColors';
 import { BookLogo, bookLabel } from '../BookLogo';
 import type { SlateGameCard, SlateMarket, SlateTeam } from '@/lib/sports/shared/slateShapes';
+import { SlateGameOdds } from '../odds/SlateGameOdds';
+import type { SlateOddsGame } from '@/lib/odds/section/slate';
 
 /**
  * One game on the Slate (S1, `slate-sheet-cards.md` §3.1).
@@ -71,7 +73,7 @@ function MarketCell({ label, market }: { label: string; market: SlateMarket | nu
   );
 }
 
-export function GameCard({ card, sport }: { card: SlateGameCard; sport: string }) {
+export function GameCard({ card, sport, odds }: { card: SlateGameCard; sport: string; odds?: SlateOddsGame | null }) {
   const live = card.status === 'live';
   const colors = useTeamColors(sport, null);
   const awayColor = teamColor(colors, { abbr: card.away.abbr ?? card.away.name })?.primary;
@@ -104,7 +106,12 @@ export function GameCard({ card, sport }: { card: SlateGameCard; sport: string }
         <TeamRow team={card.home} live={live} />
       </div>
 
-      {card.lines ? (
+      {/* O4: the odds block (every book, the sharp price, splits) where the
+          game has one; the adapter's lines otherwise. */}
+      {odds && odds.books > 0 ? (
+        <SlateGameOdds odds={odds} away={card.away.abbr ?? card.away.name} home={card.home.abbr ?? card.home.name}
+          colors={[awayColor, homeColor]} live={live} />
+      ) : card.lines ? (
         <div className="flex gap-3 border-t border-line-soft px-4 py-3">
           <MarketCell label="Spread" market={card.lines.spread} />
           <MarketCell label="Total" market={card.lines.total} />
