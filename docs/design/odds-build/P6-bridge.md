@@ -446,6 +446,18 @@ the bridge silently):**
    to ~21k rows per id — so a restart after downtime spent 10+ minutes before
    its first cycle. Now one row per id by index (7,290 ids in 0.55 s).
 
+5. **Standing prices never arrived.** The bridge forwards changes read after
+   its cursor, so a price unchanged since before its game was linked — or
+   before the bridge first ran — was never written: Pinnacle's MLB run line
+   (unchanged since the day before) was missing from the game page while its
+   alternates showed. Now each newly linked game (6 h ago … 36 h ahead) is
+   **backfilled once** (bridge.db `backfilled`): each source event's latest
+   offer per key over 48 h, minus keys pulled after it (compared on snapshot
+   id), forwarded as established prices; time-boxed at 8 s a cycle, no
+   openers (the seed owns those). The replay test runs with `--no-seed` so its
+   independent count still models only the hold rule. This is a spec gap, not
+   a regression: §7's "seed on first start" covered openers only.
+
 A slow cycle (> 180 s) now dumps every thread's stack to
 `odds-scraper/data/bridge_stacks.log`, which is how faults 2 and 4 were found.
 

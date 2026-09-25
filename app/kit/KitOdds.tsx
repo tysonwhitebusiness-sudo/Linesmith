@@ -4,6 +4,7 @@ import { BestPrice } from '@/components/odds/BestPrice';
 import { Coverage } from '@/components/odds/Coverage';
 import { Depth } from '@/components/odds/Depth';
 import { GameLineCompact } from '@/components/odds/GameLineCompact';
+import { GameOddsSection } from '@/components/odds/GameOddsSection';
 import { Ladder } from '@/components/odds/Ladder';
 import { LineMovement } from '@/components/odds/LineMovement';
 import { OpenNow } from '@/components/odds/OpenNow';
@@ -60,6 +61,7 @@ export function KitOdds() {
         </div>
         <Coverage markets={[m, one]} marketLabel={label} />
         <GameLineCompact sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} />
+        <GameOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} />
         <PlayerOddsSection sport="mlb" gameId={null} subjectId={null} teams={null} marketLabel={label} />
       </div>
     </section>

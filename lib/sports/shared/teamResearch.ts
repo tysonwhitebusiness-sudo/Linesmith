@@ -230,8 +230,23 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
       ? `Summed from the ${logged} of this team's ${allFinals.length} games that the app holds box scores for; the rest are not in these numbers.`
       : undefined;
   const withNote = (sec: ResearchSection): ResearchSection => (shortNote && sec.state.kind === 'ready' ? { ...sec, note: [shortNote, sec.note].filter(Boolean).join(' ') } : sec);
+  // P8 O3: the team's next game's odds (the odds section, team scope). A
+  // data-declared card; no section when nothing is scheduled.
+  const oddsSection: ResearchSection[] = upcoming
+    ? [{
+        id: 'odds', navLabel: 'Odds', title: 'Odds', sub: `${upcoming.home ? 'vs' : '@'} ${upcoming.opponent.abbr} · next game`,
+        rows: [[{
+          kind: 'odds', key: 'odds', scope: 'team', sport, gameId: upcoming.id,
+          teams: upcoming.home
+            ? { home: { abbr: payload.team.abbr }, away: { abbr: upcoming.opponent.abbr } }
+            : { home: { abbr: upcoming.opponent.abbr }, away: { abbr: payload.team.abbr } },
+        }]],
+        state: { kind: 'ready' },
+      }]
+    : [];
   const sections: ResearchSection[] = [
     resultsSection(spec, season, games, teamHref),
+    ...oddsSection,
     ...(data?.standings.length ? [standingsSection(payload, data, season, sport, teamHref)] : []),
     withNote(statsSection(spec, data, season, sport)),
     withNote(rosterSection(spec, data, season, sport)),
