@@ -43,6 +43,7 @@ import {
   Tooltip,
   cx, DisclosureBar } from '@/components/ui';
 import { KitTables } from './KitTables';
+import { KitOdds } from './KitOdds';
 import { bandColors, bandGradient } from '@/lib/sports/shared/teamColors';
 import { TEAM_COLOR_SAMPLES, VIKINGS } from '@/lib/sports/shared/teamColorSamples';
 
@@ -717,6 +718,7 @@ export default function KitPage() {
       </Group>
 
       <KitTables />
+      <KitOdds />
 
       <Group id="card" title="Card and its states" sub="Loading, empty and error are built in, so a card cannot forget one.">
         <Row name="Ready">

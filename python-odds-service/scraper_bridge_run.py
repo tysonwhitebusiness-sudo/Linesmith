@@ -171,11 +171,14 @@ class Resolver:
     def prime_props(self, pairs: set[tuple[str, str]]) -> None:
         todo = {p for p in pairs if p not in self.props}
         for src, ext, player, pnorm, stat, line, parent in self._fill(
+                # ONE row per id, found by index and stopped at the first match: every row
+                # of an id carries the same player and stat. max(id) walked all of them —
+                # comparenbet keeps up to ~21k rows per id, and a cold start after 15 min
+                # down spent 10+ minutes here (measured 2026-09-25 09:49).
                 todo, "SELECT pm.source, pm.external_id, pm.player, pm.player_norm, pm.stat, pm.line, "
-                      "pm.parent_external_id FROM prop_markets pm "
-                      "JOIN (SELECT max(p.id) AS id FROM want w JOIN prop_markets p INDEXED BY ix_prop_markets_external_id "
-                      "      ON p.external_id = w.b AND p.source = w.a GROUP BY p.source, p.external_id) m "
-                      "ON pm.id = m.id"):
+                      "pm.parent_external_id FROM want w JOIN prop_markets pm ON pm.id = ("
+                      "SELECT p.id FROM prop_markets p INDEXED BY ix_prop_markets_external_id "
+                      "WHERE p.external_id = w.b AND p.source = w.a LIMIT 1)"):
             self.props[(src, ext)] = (PropRef(player, pnorm, stat, line), parent)
 
     def label(self, source: str, ext: str) -> str | None:

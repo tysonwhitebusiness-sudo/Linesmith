@@ -412,6 +412,48 @@ constraint refuses — still the only judge. The same hour: **223 s**.
 - kill: the bridge killed 07:00:55 UTC; the `LinesmithScraperBridge` task
   (registered from `LinesmithScraperBridge.task.xml`) restarted it 07:05:02 —
   inside 5 min. **PASS.**
+- stale: task disabled and the bridge stopped 09:34:37 (last heartbeat
+  09:33:30); `health_check.check_scraper_bridge()` read **STALE at 09:48:50**
+  ("last heartbeat 15 min ago … bridge stopped or laptop off?"); task
+  re-enabled and started 09:49:23 → **healthy again 10:02:01** (the first
+  start stalled on the cold-cache prop lookup below, fixed and restarted
+  10:00:52; its first cycle then caught up 102,515 offers in ~70 s). **PASS.**
+
+**One hour green: PASS** — 07:49 → 09:34 UTC, 1 h 45 min continuous, lag
+15–25 s, 403,237 offers read, 181,615 changes confirmed, 1,588 unmatched
+prices resolved when their keys mapped, 20 matcher runs, no restarts, no
+scraper stall. **Every P6 exit criterion is met.**
+
+**Four live faults found and fixed after go-live (each would have stopped
+the bridge silently):**
+1. **The resolver's TEMP-table writes pinned the scraper connection to one
+   snapshot.** Python's `sqlite3` opens an implicit transaction on DML; nobody
+   committed it, so from 07:41 the bridge read no new offer while its cycles
+   kept running (and an open read transaction holds back the scraper's WAL
+   reset). Every `scraper.db` connection is now `isolation_level=None`.
+2. **The matcher held `bridge.db`'s write lock across minutes of roster
+   fetches** (it wrote a link, then awaited MLB/NHL rosters), so the bridge's
+   own state writes failed "database is locked" every cycle 07:21–07:37. The
+   matcher now loads every app game before its first write; the bridge
+   tolerates a locked `bridge.db` (seeding waits, cursors retry).
+3. **Start-up read the whole offers table** (`min(id) … WHERE snapshot_id > ?`
+   walks 39M rows in id order) and the opener seed read up to 50k rows per
+   event. Both now go through indexes, bounded. The scraper's writer stalled
+   in `commit()` 06:53–06:59 while that scan ran (P0 watchdog restarted it; ~9
+   min of snapshots missing); the stall's cause is not proven, the coincidence
+   is recorded.
+4. **A cold prop-market lookup took `max(id)` per id** — comparenbet keeps up
+   to ~21k rows per id — so a restart after downtime spent 10+ minutes before
+   its first cycle. Now one row per id by index (7,290 ids in 0.55 s).
+
+A slow cycle (> 180 s) now dumps every thread's stack to
+`odds-scraper/data/bridge_stacks.log`, which is how faults 2 and 4 were found.
+
+**Scraper-lane note:** `scraper.db-wal` is 5.2 GB — a high-water mark (it is
+not growing: 0 bytes in 2 minutes, checkpoints complete), most likely from the
+hour fault 1 held a read open. Reclaiming it needs the scraper to run
+`PRAGMA wal_checkpoint(TRUNCATE)` (e.g. at its next restart) and ideally set
+`journal_size_limit`; the bridge is read-only on that file and does not.
 
 **Connections:** Supavisor's transaction pooler does NOT pass
 `application_name` through (every client shows `''` in `pg_stat_activity`),
