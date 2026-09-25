@@ -180,7 +180,96 @@ the numbers refine without holding anything.
 
 ## Result
 
-*(the relay-delay and follow-lag tables, the proven-fast list, the T0.4 paid-feed timestamp table)*
+**Built 2026-09-25.** `scraper_timing.py` (+ `src/test_scraper_timing.py`,
+hermetic, in CI), migration `20260925064500_source_latency.sql` (applied by
+hand after a `BEGIN … ROLLBACK` dry run; RLS on, one read policy),
+`db.write_source_latency`. The daily run is the P6 bridge's own scheduled
+work: `scraper_bridge_run.py` starts `scraper_timing.py --days 3 --write`
+once a day after 05:00 local, never beside the matcher (bridge 2 + one helper
+1 = the 3-connection budget) — so no `LinesmithSourceTiming` task.
+
+**First run: 2026-09-22 06:12 → 09-25 06:12 UTC, 313 linked games, 1,133 s,
+417 rows written to `source_latency`.** The whole printed table is
+`results/P7-source-latency-2026-09-25.txt`. Scope as built: GAME LINES.
+Pinnacle quotes almost no props in scraper.db (22 prop rows of 744 in a
+measured hour), so a props follow lag has nothing to follow.
+
+**A — relay delay (the best row per relay, n ≥ 30):**
+
+| relay | best case | n | hit rate | median |
+|---|---|---|---|---|
+| actionnetwork | MLB BetRivers | 2,209 | 27% | 49 s |
+| 4codds | MLB BetRivers | 968 | 5% | 50 s |
+| theoddsgap | soccer Pinnacle | 219 | 70% | 43 s |
+| scoresandodds | MLB DraftKings | 2,982 | 24% | 175 s |
+| comparenbet | CFB BetMGM | 1,028 | 39% | 301 s |
+| comparenbet | MLB Pinnacle | 883 | 93% | 493 s |
+| mbodds | MLB BetRivers | 445 | 1% | 809 s |
+
+What it says: every relay is LATE (minutes, typically 2–30), and most MISS
+most first-hand changes outright — a relay polls less often than a book
+changes, so an intermediate price never appears. comparenbet is the most
+reliable copy (≥ 90% for MLB Pinnacle) but ~8 min behind. Kalshi via
+comparenbet/theoddsgap: ~0% — the relays quote different contracts than the
+first-hand ladder rows.
+
+**B — follow lag (Pinnacle moves; first-hand books):** MLB: DraftKings
+follows 67% of Pinnacle's moves within 60 min, median 386 s; BetMGM 43%, 447 s;
+BetRivers 30%, 738 s; FanDuel 19%, 503 s. CFB: DraftKings 28% / 662 s,
+FanDuel 23% / 647 s, Polymarket 41% / 690 s. NFL: 7 Pinnacle moves in the
+window (Thursday only) — too few to read. Kalshi almost never follows a
+Pinnacle point move (its markets are fixed-line contracts).
+
+**C — sharp self-consistency:** Circa via VSiN arrives **before** Circa via
+comparenbet (median −207 s CFB, −262 s MLB, −237 s NFL: VSiN first by ~4 min),
+but Circa's main line changes at only **5–9% of Pinnacle's rate** on the same
+games (CFB 0.05, MLB 0.09, NFL 0.08) — far below the 50% the rule needs. 4codds'
+Novig age at fetch: median 59 s MLB, 650 s NFL, 932 s CFB; ProphetX 41 s MLB,
+656 s NFL, 3,356 s CFB.
+
+**Proven fast (T0.3), read back from `source_latency` by query:** Pinnacle,
+Kalshi and Polymarket, first-hand, in every sport they quote (CFB, MLB, NFL,
+soccer; NHL Polymarket). **No relay qualifies** (none reaches 90% hit rate
+with a median ≤ 120 s), and **Circa via VSiN does not** (rate ratio ≤ 0.09).
+Every row with n < 30 is `proven_fast = false` (query: 0 exceptions).
+
+**Sanity (4codds' Pinnacle vs Pinnacle direct):** median relay delay 347 s
+MLB, 405 s NFL, 1,810 s CFB, 2,220 s soccer, against 4codds' measured mean age
+of 18 min (1,080 s, 2026-09-23 audit). CFB and soccer sit inside a factor of 2;
+MLB and NFL are faster than that. The gap is expected rather than a fault:
+the audit measured a MEAN age of all 4codds rows, this measures the MEDIAN
+delay of the changes 4codds actually repeated — and it repeated only 8% of
+MLB/NFL Pinnacle changes, the ones it happened to catch soon after.
+
+**T0.4 — the paid feeds' own timestamps** (`paid_feed_timestamps.py`; one
+fetch per feed and sport through the normal throttle + cap reservation, the
+price writers stubbed out; 2026-09-25 ~07:20 UTC):
+
+| feed | field | level | per book | median (fetch − field) | reads as |
+|---|---|---|---|---|---|
+| Propline | `outcomes[].last_change_at` | price | yes (28–40 books) | MLB 7,795 s · NFL 19,834 s | **the price's change time** — a real "since" |
+| Propline | `outcomes[].last_seen_at` | price | yes | MLB 34 s · NFL 227 s | "checked" |
+| Propline | `outcomes[].book_updated_at` | price | yes (16–31 books) | MLB 1,069 s · NFL 4,932 s | the book's own update time, where given |
+| Propline | `markets[].last_update`, `bookmakers[].last_update` | market / book | yes | ~35–225 s | refresh times |
+| SharpAPI | `data[].timestamp` | row (per sportsbook) | yes | 16 s (min 5.6) | its collection time, not the book's change time |
+| SharpAPI | `updated_at` | response | no | ≈ fetch | the response time |
+| ParlayAPI | — | — | — | — | not read: "credit limit reached this billing period" (NFL); MLB throttled |
+| Odds-API.io | — | — | — | — | not read: the throttle floor (the worker fetched it 36 min before) |
+| SportsGameOdds | `lastUpdatedAt` | — | — | — | **waits for the key reset**: every pooled key at its monthly cap (2,000) |
+| the-odds-api | `last_update` | — | — | — | not read: `odds_cache` keeps its payload PARSED (no time fields); a raw fetch is needed |
+
+None of the fields sits in the future. "Moves with the price" is NOT yet
+measured: the evidence is only that Propline's `last_change_at` and
+`last_seen_at` are separate fields whose medians differ by hours. The
+two-fetches-minutes-apart check the spec asks for is blocked by each
+provider's throttle floor within one run.
+**Follow-up (D23):** Propline's `last_change_at` → `PropOddsInput.changed_at`
+and `last_seen_at` → `observed_at` in `fetch_propline` — a worker change for
+the next deploy. Re-run this script after the SGO reset and when ParlayAPI's
+credits renew.
+
+**T0.5 edge half-life:** the method is as above; it is filled by P11's edge
+log and reported by P13.
 
 ## Changelog
 

@@ -288,7 +288,11 @@ class Bridge:
         since = sqlite_ts(now_utc() - timedelta(minutes=REBUILD_MINUTES))
         s0 = q("SELECT min(id) FROM snapshots WHERE id > ? AND fetched_at >= ?", (max_snap - 50_000, since)).fetchone()[0]
         s0 = (s0 or max_snap + 1) - 1          # the last snapshot BEFORE the rebuild window
-        o0 = (q("SELECT min(id) FROM offers WHERE snapshot_id > ?", (s0,)).fetchone()[0] or 1) - 1
+        # Through the snapshot index: a bare min(id) ... WHERE snapshot_id > ?
+        # makes SQLite walk all ~39M offers in id order (measured: minutes).
+        first = q("SELECT id FROM offers INDEXED BY ix_offers_snapshot_id WHERE snapshot_id > ? "
+                  "ORDER BY snapshot_id, id LIMIT 1", (s0,)).fetchone()
+        o0 = (first[0] if first else (q("SELECT max(id) FROM offers").fetchone()[0] or 0) + 1) - 1
         rebuild = {"offers": o0, "snapshots": s0}
         for t in TABLES:
             if t in saved:
