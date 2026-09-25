@@ -4,7 +4,9 @@ import { useMemo, useState } from 'react';
 import { StepLines, type StepSeries } from '../charts/StepLines';
 import { CATEGORICAL, EMPHASIS } from '../charts/tokens';
 import { BookLogo } from '../BookLogo';
-import { Button, Card, Chip, Collapse, DataTable, LiveDot, SegmentedToggle } from '../ui';
+import { Button, Card, Chip, Collapse, DataTable, SegmentedToggle } from '../ui';
+import { CardLiveDot, marketOf } from './LiveHeader';
+import { useLive } from './live';
 import { BOOK_GROUP_ORDER, bookGroup, bookLabel } from '@/lib/odds/books/registry';
 import { consensusLine, implied } from '@/lib/odds/section/board';
 import { fmtAmerican, fmtClock, fmtLine, fmtPct } from '@/lib/odds/section/format';
@@ -49,6 +51,20 @@ export function LineMovement({ market, spec, sideLabels, userBook, now, closed }
   const metric = spec.noLine ? 'price' : metricPick ?? (lineMoves ? 'line' : 'price');
   const [allChips, setAllChips] = useState(false);
   const [showMoves, setShowMoves] = useState(false);
+  const live = useLive();
+  const pm = marketOf(market.key, live.game);
+  // A point is "just arrived" when this page saw its history row come in on the newest refresh.
+  const arrived: Record<string, number> = {};
+  if (!closed && live.diffAt) {
+    for (const k of Object.keys(market.hist)) {
+      const last = market.hist[k][market.hist[k].length - 1];
+      if (last && live.moveSeen(`${k}|${pm}|${last[0]}`) === live.diffAt) arrived[k] = Date.parse(last[0]);
+    }
+  }
+  const justNow = (m: MoveRow) => {
+    const seen = live.moveSeen(`${m[1]}|${pm}|${m[0]}`);
+    return seen != null && Date.now() - seen <= 120_000 ? seen : null;
+  };
   const color: Record<string, string> = {};
   books.forEach((k, i) => { color[k] = k === 'pinnacle' ? EMPHASIS : CATEGORICAL[i % CATEGORICAL.length]; });
   const value = (p: [string, number | null, number | null, number | null]) =>
@@ -91,7 +107,7 @@ export function LineMovement({ market, spec, sideLabels, userBook, now, closed }
           : p === 'all' ? books.filter(k => bookGroup(k) !== 'pickem') : []);
   return (
     <Card
-      title={<span className="inline-flex flex-wrap items-center gap-2">Line movement {closed ? <span className="text-label font-normal text-ink-muted">closed</span> : <LiveDot checkedAt={checks[checks.length - 1]} cadenceS={70} now={now} />}</span>}
+      title={<span className="inline-flex flex-wrap items-center gap-2">Line movement {closed ? <span className="text-label font-normal text-ink-muted">closed</span> : <CardLiveDot marketKeys={[market.key]} checkedAt={checks[checks.length - 1]} sources={market.cur.map(q => q.source)} />}</span>}
       scope={`${sideLabels[0]} · ${metric === 'line' ? 'the line' : `implied probability, ${sideLabels[0].split(' ')[0].toLowerCase()}`}`}
       state={books.length ? { kind: 'ready' } : { kind: 'empty', title: 'No movement recorded', reason: 'No book has changed this market in the last ten days.' }}
     >
@@ -123,7 +139,7 @@ export function LineMovement({ market, spec, sideLabels, userBook, now, closed }
           <Chip onClick={() => setAllChips(v => !v)}>{allChips ? 'fewer books' : `+ ${books.length - shownBooks.length} offshore & international`}</Chip>
         ) : null}
       </div>
-      <StepLines series={series} t0={t0} t1={now} liveEdge={closed ? undefined : { now }} label={`${sideLabels[0]} movement by book`}
+      <StepLines series={series} t0={t0} t1={now} liveEdge={closed ? undefined : { now, pulseClass: 'lb-point-pulse', popClass: 'lb-point-pop', arrived }} label={`${sideLabels[0]} movement by book`}
         bounds={metric === 'price' ? [0, 1] : undefined}
         format={v => (metric === 'line' ? fmtLine(v, spec.signed) : fmtPct(v, 0))}
         markers={steams.slice(-3).map(s => ({ t: Date.parse(s.t), label: `${bookLabel(s.books[0])} first` }))} />
@@ -148,6 +164,8 @@ export function LineMovement({ market, spec, sideLabels, userBook, now, closed }
           density="compact"
           rows={moves}
           rowKey={(m, i) => `${m[0]}|${m[1]}|${i}`}
+          rowState={m => (justNow(m) != null ? 'new' : null)}
+          rowStateAt={justNow}
           columns={[
             { key: 't', label: 'Time', sortable: false, render: m => <span className="text-label text-ink-muted">{fmtClock(m[0], now)}</span> },
             { key: 'b', label: 'Book', sortable: false, render: m => <BookLogo bookId={m[1]} size={14} withLabel /> },

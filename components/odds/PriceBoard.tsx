@@ -2,9 +2,12 @@
 
 import { useState } from 'react';
 import { BookLogo } from '../BookLogo';
-import { Button, DataTable, FlashValue, Tooltip, type Column } from '../ui';
+import { Button, DataTable, Tooltip, type Column } from '../ui';
+import { LivePrice } from './LiveHeader';
+import { FLASH_CAP, useLive } from './live';
 import { bookLabel } from '@/lib/odds/books/registry';
 import { bestPrice, noPrice, pulledBooks } from '@/lib/odds/section/board';
+import { priceKey, rowKeyOf } from '@/lib/odds/section/liveDiff';
 import { fmtAgo, fmtAmerican, fmtClock, fmtLine, fmtMoney, secondsSince } from '@/lib/odds/section/format';
 import type { BoardRow, MarketSpec, OddsMarket, OddsQuote, SourceLatencyRow } from '@/lib/odds/section/types';
 
@@ -36,6 +39,15 @@ export function PriceBoard({ market, spec, line, rows, sideLabels, userBook, lat
   picks?: Record<string, string>;
 }) {
   const [open, setOpen] = useState<string[]>([]);
+  const live = useLive();
+  const rk = (book: string) => rowKeyOf(market.key, book, live.game);
+  const changedNow = (q: OddsQuote | null) => !!q && live.diffAt != null && live.change(priceKey(market.key, q, live.game))?.seenAt === live.diffAt;
+  // The flash cap, counted on the values THIS board shows (not every alt line
+  // in the market — the live check found that tripping on every refresh):
+  // past 12 in one refresh, the rows take a tint and the cells skip their roll.
+  const shownChanges = rows.reduce((n, r) => n + (changedNow(r.qa) ? 1 : 0) + (changedNow(r.qb) ? 1 : 0), 0);
+  const capped = shownChanges > FLASH_CAP;
+  const tintRows = capped && live.diffAt != null && Date.now() - live.diffAt < 4000;
   const b0 = bestPrice(rows, 0), b1 = bestPrice(rows, 1);
   const follow = new Map(latency.filter(l => l.measure === 'follow_lag' && l.n >= 30 && l.medianS != null)
     .map(l => [l.book, Math.round(l.medianS! / 60)]));
@@ -67,7 +79,7 @@ export function PriceBoard({ market, spec, line, rows, sideLabels, userBook, lat
     const best = r.at && ((i === 0 && b0?.book === r.book) || (i === 1 && b1?.book === r.book));
     return (
       <span className="inline-flex items-baseline gap-1">
-        <FlashValue value={q.price} format={fmtAmerican} best={best} />
+        <LivePrice marketKey={market.key} quote={q} best={best} quiet={capped} />
         {!r.at && !spec.noLine ? <span className="text-label text-ink-muted">{fmtLine(i === 0 || !spec.signed ? r.line : r.line == null ? null : -r.line, spec.signed)}</span> : null}
       </span>
     );
@@ -85,7 +97,6 @@ export function PriceBoard({ market, spec, line, rows, sideLabels, userBook, lat
             <span className="inline-flex items-center gap-1">
               <BookLogo bookId={r.book} size={14} withLabel />
               {r.book === userBook ? <span className="text-warn-ink" aria-label="Your book">★</span> : null}
-              {r.pulled ? <span className="ml-1 text-label font-semibold text-bad-ink no-underline">Pulled</span> : null}
             </span>
             {bid != null && ask != null ? <div className="text-label text-ink-muted">bid {Math.round(bid * 100)}¢ · ask {Math.round(ask * 100)}¢{typeof x.volume_24h === 'number' ? ` · ${fmtMoney(x.volume_24h)} 24h` : ''}</div> : null}
             {r.group === 'pickem' && picks?.[r.book] ? <div className="text-label text-ink-muted">{picks[r.book]}</div> : null}
@@ -133,8 +144,14 @@ export function PriceBoard({ market, spec, line, rows, sideLabels, userBook, lat
         rowKey={r => `${r.group}|${r.book}`}
         groupBy={r => (r.pulled ? 'Pulled' : GROUP_LABEL[r.group] ?? r.group)}
         highlight={r => r.book === userBook}
-        rowState={r => (r.pulled ? 'pulled' : null)}
-        rowClassName={r => (!r.at && !spec.noLine && !r.pulled ? 'text-ink-muted' : undefined)}
+        rowState={r => {
+          if (r.pulled) return 'pulled';
+          const st = live.rowState(rk(r.book))?.state;
+          return st === 'returned' || st === 'new' ? st : null;
+        }}
+        rowStateAt={r => live.rowState(rk(r.book))?.at ?? null}
+        rowClassName={r => [!r.at && !spec.noLine && !r.pulled ? 'text-ink-muted' : '', tintRows && (changedNow(r.qa) || changedNow(r.qb)) ? 'lb-row-tint' : '']
+          .filter(Boolean).join(' ') || undefined}
       />
       {Object.keys(hidden).length ? (
         <div className="flex flex-wrap gap-2 border-t border-line-soft px-3 py-2">

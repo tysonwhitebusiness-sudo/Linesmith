@@ -11,7 +11,11 @@ import { useChartWidth } from './useChartWidth';
  * be drawn as grey CONTEXT behind the selected ones (thin, no markers). A
  * series may carry GAPS — a pulled price is drawn as nothing between the pull
  * and the return, with a tick at the pull. Markers (first movers) are dotted
- * verticals with a label. `liveEdge` draws the "now" guide; P9 pulses it.
+ * verticals with a label. `liveEdge` draws the "now" guide and (P9) marks
+ * each drawn series' newest point, which pulses, and pops in a point that
+ * arrived in this refresh. The animation classes come in with `liveEdge`
+ * (the odds section owns them and their reduced-motion guard), so a chart
+ * without a live edge — a finished game's — draws no motion at all.
  */
 export interface StepSeries {
   id: string;
@@ -32,7 +36,15 @@ export function StepLines({ series, markers = [], t0, t1, format, liveEdge, heig
   t0: number;
   t1: number;
   format: (v: number) => string;
-  liveEdge?: { now: number };
+  liveEdge?: {
+    now: number;
+    /** Class on each selected series' newest point (a pulse). */
+    pulseClass?: string;
+    /** Class on a newest point that arrived in this refresh (a pop), keyed by its time so it plays once. */
+    popClass?: string;
+    /** Series id -> the time (ms) of a point that just arrived. */
+    arrived?: Record<string, number>;
+  };
   height?: number;
   label: string;
   /** Hard limits for the value axis (a probability never pads below 0 or above 1). */
@@ -99,7 +111,22 @@ export function StepLines({ series, markers = [], t0, t1, format, liveEdge, heig
           </g>
         ))}
         {liveEdge && liveEdge.now >= t0 && liveEdge.now <= t1 ? (
-          <line x1={X(liveEdge.now)} x2={X(liveEdge.now)} y1={pad.t} y2={height - pad.b} stroke={INK3} strokeOpacity={0.5} />
+          <g data-live-edge>
+            <line x1={X(liveEdge.now)} x2={X(liveEdge.now)} y1={pad.t} y2={height - pad.b} stroke={INK3} strokeOpacity={0.5} strokeDasharray="2 3" />
+            <text x={X(liveEdge.now) - 4} y={height - pad.b - 4} textAnchor="end" fontSize={SIZE.tick} fill={INK3}>now</text>
+            {series.filter(s => !s.context && s.points.length).map(s => {
+              const last = s.points.filter(p => p[0] <= t1).at(-1);
+              if (!last || last[0] < t0) return null;
+              const popped = liveEdge.arrived?.[s.id] === last[0];
+              return (
+                <g key={s.id}>
+                  <circle cx={X(t1)} cy={Y(last[1])} r={3.5} fill={s.color} opacity={0.35} className={liveEdge.pulseClass} />
+                  <circle key={popped ? `pop-${last[0]}` : 'dot'} cx={X(last[0])} cy={Y(last[1])} r={2.5} fill={s.color}
+                    className={popped ? liveEdge.popClass : undefined} data-arrived={popped ? '' : undefined} />
+                </g>
+              );
+            })}
+          </g>
         ) : null}
       </svg>
     </div>

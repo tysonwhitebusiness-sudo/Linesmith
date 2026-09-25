@@ -11,6 +11,7 @@
  * the worker keep fresh out of band. IT READS; IT NEVER WRITES.
  */
 import { NextResponse } from 'next/server';
+import { pgPoolStats } from '@/lib/db/pgClient';
 import { readGameOdds } from '@/lib/db/oddsRead';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'sport and gameId are required' }, { status: 400 });
   }
   try {
-    return NextResponse.json(await readGameOdds(sport, gameId));
+    // P9 §4: the page polls this every 30 s. Server-Timing carries the read's time and
+    // the pool's queue when it started (the load budget reads it; the payload is unchanged).
+    const t0 = Date.now();
+    const q0 = pgPoolStats();
+    // `live=1`: the page's 30 s refresh — prices, pulls and splits, no history (P9 §4, liveMerge.ts).
+    const body = await readGameOdds(sport, gameId, { live: url.searchParams.get('live') === '1' });
+    return NextResponse.json(body, { headers: { 'Server-Timing': `read;dur=${Date.now() - t0}, pool;desc="waiting=${q0?.waiting ?? 0} total=${q0?.total ?? 0}"` } });
   } catch (e) {
     console.error('[odds/game]', e);
     return NextResponse.json({ error: 'Odds read failed' }, { status: 500 });

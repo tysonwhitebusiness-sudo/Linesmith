@@ -1,7 +1,8 @@
 'use client';
 
 import { BookLogo } from '../BookLogo';
-import { Button, Card, LiveDot } from '../ui';
+import { Button, Card } from '../ui';
+import { CardLiveDot, LivePrice } from './LiveHeader';
 import { exchangesAt, nearestKalshi, pinnacleMain, SHARP_STALE_S, toAmerican, twoSidedAt, type TwoSided } from '@/lib/odds/section/sharp';
 import { fmtAgo, fmtAmerican, fmtClock, fmtLine, fmtMoney, fmtPct, secondsSince } from '@/lib/odds/section/format';
 import type { MarketSpec, OddsMarket } from '@/lib/odds/section/types';
@@ -30,12 +31,12 @@ export function SharpPrices({ market, spec, line, sideLabels, now, onGoToLine }:
     .map(q => q.checkedAt!).sort();
   return (
     <Card
-      title={<span className="inline-flex flex-wrap items-center gap-2">Sharp prices <LiveDot checkedAt={sharpChecks[sharpChecks.length - 1]} cadenceS={70} now={now} /></span>}
+      title={<span className="inline-flex flex-wrap items-center gap-2">Sharp prices <CardLiveDot marketKeys={[market.key]} checkedAt={sharpChecks[sharpChecks.length - 1]} sources={['scraper:pinnacle']} /></span>}
       scope="fair = Pinnacle with the vig removed"
       info="Pinnacle's price with its margin taken out, multiplicatively, is the fair split. Circa is shown where it prices this market; exchanges at this exact line."
     >
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {pin ? <SharpTile book="pinnacle" p={pin} labels={sideLabels} now={now} /> : (
+        {pin ? <SharpTile book="pinnacle" p={pin} labels={sideLabels} now={now} mk={market.key} /> : (
           <div className="rounded-ctl bg-card-sunk p-3">
             <BookLogo bookId="pinnacle" size={18} withLabel />
             <div className="mt-2 text-body-sm text-ink-secondary">No Pinnacle price at {spec.noLine ? 'this market' : fmtLine(line, spec.signed)}</div>
@@ -47,7 +48,7 @@ export function SharpPrices({ market, spec, line, sideLabels, now, onGoToLine }:
             ) : pm == null ? <div className="mt-1 text-label text-ink-muted">Pinnacle does not price this market.</div> : null}
           </div>
         )}
-        {circa ? <SharpTile book="circa" p={circa} labels={sideLabels} now={now}
+        {circa ? <SharpTile book="circa" p={circa} labels={sideLabels} now={now} mk={market.key}
           extra={<KV k="Source" v={circa.a.source.endsWith('vsin') ? 'VSiN line tracker' : 'relayed'} />} /> : null}
         <div className="rounded-ctl bg-card-sunk p-3">
           <div className="flex items-baseline justify-between gap-2">
@@ -57,7 +58,7 @@ export function SharpPrices({ market, spec, line, sideLabels, now, onGoToLine }:
           {ex.length ? ex.map(e => (
             <div key={e.book} className="mt-1.5 grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 text-body-sm">
               <BookLogo bookId={e.book} size={14} withLabel />
-              <b className="tabular-nums">{fmtAmerican(e.quote.price)}</b>
+              <b><LivePrice marketKey={market.key} quote={e.quote} /></b>
               <span className="text-label text-ink-muted tabular-nums">{e.bid != null && e.ask != null ? `${Math.round(e.bid * 100)}–${Math.round(e.ask * 100)}¢` : ''}</span>
               <span className="text-label text-ink-muted">{e.volume24h ? `${fmtMoney(e.volume24h)} 24h` : e.liquidity ? `${fmtMoney(e.liquidity)} liq.` : ''}</span>
             </div>
@@ -84,7 +85,7 @@ function KV({ k, v, warn }: { k: string; v: React.ReactNode; warn?: boolean }) {
 }
 
 /** Two-sided prices, the fair price and the split bar (the mockup's `sharpTile`). */
-function SharpTile({ book, p, labels, now, extra }: { book: string; p: TwoSided; labels: [string, string]; now: number; extra?: React.ReactNode }) {
+function SharpTile({ book, p, labels, now, extra, mk }: { book: string; p: TwoSided; labels: [string, string]; now: number; extra?: React.ReactNode; mk: string }) {
   const limit = typeof p.a.extra?.limit === 'number' ? (p.a.extra.limit as number) : null;
   const sinceS = secondsSince(p.a.since, now);
   const stale = sinceS != null && sinceS > SHARP_STALE_S;
@@ -92,8 +93,8 @@ function SharpTile({ book, p, labels, now, extra }: { book: string; p: TwoSided;
     <div className="rounded-ctl bg-card-sunk p-3">
       <BookLogo bookId={book} size={18} withLabel />
       <div className="mt-2 flex items-end gap-4">
-        <div><div className="text-overline text-ink-muted">{labels[0]}</div><b className="text-title tabular-nums">{fmtAmerican(p.a.price)}</b></div>
-        <div><div className="text-overline text-ink-muted">{labels[1]}</div><b className="text-title tabular-nums">{fmtAmerican(p.b.price)}</b></div>
+        <div><div className="text-overline text-ink-muted">{labels[0]}</div><b className="text-title"><LivePrice marketKey={mk} quote={p.a} /></b></div>
+        <div><div className="text-overline text-ink-muted">{labels[1]}</div><b className="text-title"><LivePrice marketKey={mk} quote={p.b} /></b></div>
         <div className="ml-auto text-right">
           <div className="text-overline text-ink-muted">fair {labels[0]}</div>
           <b className="text-title text-good-ink tabular-nums">{fmtAmerican(toAmerican(p.fairA))}</b>

@@ -98,6 +98,17 @@ function getPool(): Pool {
   return global.__linesmithPgPool;
 }
 
+/**
+ * The pool's live counts (odds build P9 §4, the load budget): how many
+ * clients exist, sit idle, and how many requests are QUEUED waiting for one.
+ * The polled odds routes report it in a `Server-Timing` header so a load
+ * test can read pool pressure without an admin-gated route.
+ */
+export function pgPoolStats(): { total: number; idle: number; waiting: number } | null {
+  const p = global.__linesmithPgPool;
+  return p ? { total: p.totalCount, idle: p.idleCount, waiting: p.waitingCount } : null;
+}
+
 /** Real, transient connection-drop errors this pool is now expected to hit occasionally under normal Supavisor session recycling — worth one retry before giving up, since the *next* `pool.query()` call gets a fresh connection from the pool rather than the one that just died. Not retried for genuine query errors (bad SQL, constraint violations, etc.) — only the specific error shapes a dropped/reset connection actually produces. */
 function isTransientConnectionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

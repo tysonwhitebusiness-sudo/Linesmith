@@ -16,7 +16,9 @@ import { SlateGameOdds } from '@/components/odds/SlateGameOdds';
 import { SlateOddsHub } from '@/components/odds/SlateOddsHub';
 import { SlateOddsMovers } from '@/components/odds/SlateOddsMovers';
 import { TeamOddsSection } from '@/components/odds/TeamOddsSection';
-import { Card, FlashValue, LiveDot } from '@/components/ui';
+import { Heartbeat, LiveHeader } from '@/components/odds/LiveHeader';
+import { LiveProvider, STILL } from '@/components/odds/live';
+import { Card, DataTable, FlashValue, LiveDot } from '@/components/ui';
 import { boardRows } from '@/lib/odds/section/board';
 import { fmtAmerican } from '@/lib/odds/section/format';
 import { KIT_NOW, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
@@ -47,6 +49,30 @@ export function KitOdds() {
             <LiveDot checkedAt={at(30)} cadenceS={70} now={KIT_NOW} />
             <FlashValue value={-110} format={fmtAmerican} />
             <FlashValue value={108} format={fmtAmerican} best />
+          </div>
+        </Card>
+        <Card title="Live layer (P9)" scope="frozen at a moment after each change">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-6">
+              <LiveDot checkedAt={at(1)} cadenceS={70} now={KIT_NOW} pingAt={KIT_NOW} />
+              <FlashValue value={-105} format={fmtAmerican} change={{ dir: 'up', seenAt: KIT_NOW - 12e3 }} now={KIT_NOW} />
+              <FlashValue value={-118} format={fmtAmerican} change={{ dir: 'down', seenAt: KIT_NOW - 90e3 }} now={KIT_NOW} />
+              <FlashValue value={-110} format={fmtAmerican} change={{ dir: 'up', seenAt: KIT_NOW - 0.4e3 }} now={KIT_NOW} />
+              <Heartbeat beats={Array.from({ length: 30 }, (_, i) => (i * 7) % 5)} />
+            </div>
+            <LiveProvider value={{ ...STILL, sinceOpened: { changed: 7, pulled: 1 } }}>
+              <LiveHeader beats={Array.from({ length: 30 }, (_, i) => (i % 4 === 0 ? 2 : 0))}><span>· 9 books</span></LiveHeader>
+            </LiveProvider>
+            <DataTable<{ book: string; st: 'pulled' | 'returned' | 'new' | null; at: number | null }>
+              caption="Row states"
+              density="compact"
+              rows={[{ book: 'BetRivers', st: 'pulled', at: KIT_NOW - 14e3 }, { book: 'Caesars', st: 'returned', at: KIT_NOW - 30e3 },
+                { book: 'Fanatics', st: 'new', at: KIT_NOW - 5e3 }, { book: 'DraftKings', st: null, at: null }]}
+              rowKey={r => r.book}
+              rowState={r => r.st}
+              rowStateAt={r => r.at}
+              columns={[{ key: 'book', label: 'Book', sortable: false }, { key: 'p', label: 'Over', numeric: true, sortable: false, render: () => '−110' }]}
+            />
           </div>
         </Card>
         <SharpPrices market={m} spec={sp} line={65.5} sideLabels={labels} now={KIT_NOW} />

@@ -560,3 +560,120 @@
     animation: lb-fade-out 120ms ease-out forwards !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Odds build P9 — the live layer (plan §8 Revision 4). Every class here is
+   used only by components/odds and components/ui (the chart primitive gets
+   its classes passed in), and every one is switched off under reduced motion
+   below; `tests/odds-ui.test.ts` holds both rules. Colour: the Electric Turf
+   FILLS flash (good up, bad down); the trail beside the value is INK.
+   --------------------------------------------------------------------------- */
+@keyframes lb-roll {
+  0% { transform: translateY(45%); opacity: 0.3; }
+  16% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes lb-flash-up {
+  0% { background-color: rgb(var(--good) / 0.55); }
+  100% { background-color: transparent; }
+}
+@keyframes lb-flash-down {
+  0% { background-color: rgb(var(--bad) / 0.45); }
+  100% { background-color: transparent; }
+}
+@keyframes lb-live-ping {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+@keyframes lb-live-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0; transform: scale(2); }
+}
+@keyframes lb-row-pulled {
+  0% { background-color: rgb(var(--bad) / 0.3); }
+  100% { background-color: transparent; }
+}
+@keyframes lb-row-returned {
+  0% { background-color: rgb(var(--good) / 0.3); opacity: 0.25; }
+  100% { background-color: transparent; opacity: 1; }
+}
+@keyframes lb-row-new-in {
+  0% { transform: translateX(-10px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes lb-row-tint {
+  0% { background-color: rgb(var(--good) / 0.28); }
+  100% { background-color: transparent; }
+}
+@keyframes lb-point-pop {
+  0% { transform: scale(2.6); }
+  100% { transform: scale(1); }
+}
+.lb-roll {
+  display: inline-block;
+  animation: lb-roll 1.6s cubic-bezier(0.2, 0, 0, 1);
+}
+.lb-flash-up {
+  border-radius: 3px;
+  animation: lb-roll 1.6s cubic-bezier(0.2, 0, 0, 1), lb-flash-up 1.6s ease-out;
+}
+.lb-flash-down {
+  border-radius: 3px;
+  animation: lb-roll 1.6s cubic-bezier(0.2, 0, 0, 1), lb-flash-down 1.6s ease-out;
+}
+.lb-live-ping {
+  animation: lb-live-ping 1.2s cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+.lb-live-pulse {
+  animation: lb-live-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.lb-row-pulled {
+  animation: lb-row-pulled 1.6s ease-out;
+}
+.lb-row-returned {
+  animation: lb-row-returned 1.6s ease-out;
+}
+.lb-row-new {
+  animation: lb-row-new-in 0.4s cubic-bezier(0.3, 0, 0, 1), lb-row-tint 3.5s ease-out;
+}
+.lb-row-tint {
+  animation: lb-row-tint 3.5s ease-out;
+}
+.lb-point-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lb-point-pop 0.9s cubic-bezier(0.3, 0, 0, 1);
+}
+.lb-point-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lb-live-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+/* "N prices changed since you opened this": clicking outlines those cells. */
+[data-show-recent='true'] [data-recent] {
+  outline: 2px solid rgb(var(--good));
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lb-roll,
+  .lb-flash-up,
+  .lb-flash-down,
+  .lb-live-ping,
+  .lb-live-pulse,
+  .lb-row-pulled,
+  .lb-row-returned,
+  .lb-row-new,
+  .lb-row-tint,
+  .lb-point-pop,
+  .lb-point-pulse {
+    animation: none !important;
+  }
+  /* A colour fade is not motion: the flash stays, the roll goes. */
+  .lb-flash-up {
+    animation: lb-flash-up 1.6s ease-out !important;
+  }
+  .lb-flash-down {
+    animation: lb-flash-down 1.6s ease-out !important;
+  }
+}

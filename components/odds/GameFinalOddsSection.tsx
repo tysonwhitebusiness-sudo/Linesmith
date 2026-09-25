@@ -29,7 +29,7 @@ export function GameFinalOddsSection({ sport, gameId, teams, start, score }: {
   start: string;
   score: FinalScore;
 }) {
-  const odds = useGameOdds(sport, gameId);
+  const odds = useGameOdds(sport, gameId, { live: false });
   const byKey = useMemo(() => new Map((odds.data?.markets ?? []).map(m => [m.key, m])), [odds.data]);
   const r = useMemo(() => closingResearch(byKey, start, score, SPECS), [byKey, start, score]);
   if (odds.loading && !odds.data) return <Card title="Closing lines" state={{ kind: 'loading', lines: 6 }} />;

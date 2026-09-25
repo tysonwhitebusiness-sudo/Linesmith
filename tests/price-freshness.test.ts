@@ -165,6 +165,12 @@ test('every route a page load fires is classed page-read, not provider', () => {
     '/api/props/calibration?sport=mlb',
     '/api/odds/lines?sport=mlb',
     '/api/odds/game-line?sport=mlb&gameId=1',
+    // P8's odds section, polled by P9 (30 s / 60 s).
+    '/api/odds/player?sport=mlb&gameId=1&subjectId=2',
+    '/api/odds/game?sport=mlb&gameId=1',
+    '/api/odds/slate?sport=mlb&date=2026-09-25&ids=1',
+    '/api/odds/closes?sport=mlb&games=1@2026-09-25T00:00:00Z',
+    '/api/odds/scan?ids=1',
   ];
   for (const path of pageLoadReads) {
     assert.equal(classify(path), 'page-read', `${path} is fetched on page load and must not sit in the provider budget`);
@@ -173,6 +179,7 @@ test('every route a page load fires is classed page-read, not provider', () => {
   // The provider class must still exist and still catch things that DO reach a
   // vendor — widening page-read must not have swallowed everything.
   assert.equal(classify('/api/props/scan-player'), 'provider');
+  assert.equal(classify('/api/odds/import'), 'provider');
   assert.equal(classify('/api/diagnostics/anything'), 'provider');
   assert.equal(classify('/api/props/fit-weights'), 'fit/backfill');
 });

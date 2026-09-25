@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BookLogo } from '../BookLogo';
 import { Button, Card, DataTable, SegmentedToggle, Tabs, Tooltip } from '../ui';
 import { BestPrice } from './BestPrice';
@@ -10,6 +10,8 @@ import { LineMovement } from './LineMovement';
 import { OpenNow } from './OpenNow';
 import { PriceBoard } from './PriceBoard';
 import { SharpPrices } from './SharpPrices';
+import { LiveHeader, marketOf } from './LiveHeader';
+import { LiveProvider } from './live';
 import { useGameOdds } from './useOdds';
 import { bookGroup } from '@/lib/odds/books/registry';
 import { boardRows, consensusLine, pricedLines } from '@/lib/odds/section/board';
@@ -46,22 +48,27 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
   final?: boolean;
   userBook?: string | null;
 }) {
-  const odds = useGameOdds(sport, gameId);
+  const odds = useGameOdds(sport, gameId, { live: !final });
+  const live = odds.live;
   const now = odds.data ? Date.parse(odds.data.asOf) : Date.now();
   const byKey = useMemo(() => new Map((odds.data?.markets ?? []).filter(m => m.cur.length).map(m => [m.key, m])), [odds.data]);
   const periods = PERIOD_ORDER.filter(p => [...byKey.keys()].some(k => k.startsWith(p + '_') && /_(sp|tot|ml)$/.test(k)));
   const [period, setPeriod] = useState<string | null>(null);
   const per = period && periods.includes(period) ? period : periods[0] ?? 'fg';
+  const [kind, setKind] = useState<string>('sp');
   const kinds = [
     { value: 'sp', label: 'Spread' }, { value: 'tot', label: 'Total' }, { value: 'ml', label: 'Moneyline' },
     ...(per === 'fg' ? [{ value: 'tt_home', label: `${teams.home.abbr} team total` }, { value: 'tt_away', label: `${teams.away.abbr} team total` }] : []),
-  ].filter(k => byKey.has(`${per}_${k.value}`));
-  const [kind, setKind] = useState<string>('sp');
+  ].filter(k => byKey.has(`${per}_${k.value}`)).map(k => {
+    const n = k.value === kind ? 0 : live.newIn(`${per}|${k.value}`);
+    return n ? { ...k, label: <span>{k.label} <span className="text-label font-semibold text-good-ink" data-tab-new>{n} new</span></span> } : k;
+  });
   const mk = kinds.some(k => k.value === kind) ? kind : kinds[0]?.value ?? 'sp';
   const market = byKey.get(`${per}_${mk}`) ?? null;
   const spec = specFor(mk);
   const [lineBy, setLineBy] = useState<Record<string, number>>({});
   const [all, setAll] = useState<'line' | 'all'>('line');
+  useEffect(() => { if (market) live.look(marketOf(market.key, true)); }, [market, live]);
 
   if (odds.loading && !odds.data) return <Card title="Lines" state={{ kind: 'loading', lines: 6 }} />;
   if (!market) {
@@ -80,12 +87,13 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
     ? [`${teams.home.abbr} ${fmtLine(L, true)}`, `${teams.away.abbr} ${fmtLine(L == null ? null : -L, true)}`]
     : spec.noLine ? [teams.home.abbr, teams.away.abbr] : [`Over ${fmtLine(L)}`, `Under ${fmtLine(L)}`];
   return (
-    <div className="space-y-3">
-      <p className="text-label text-ink-muted">
-        {fr.changes30m} changes in 30 min · {fr.books} books · newest check {fmtAgo(secondsSince(fr.newestCheckAt, now))} ago
+    <LiveProvider value={live}>
+    <div className="space-y-3" data-show-recent={live.showRecent ? 'true' : undefined}>
+      <LiveHeader beats={fr.heartbeat}>
+        <span>· {fr.books} books · newest check {fmtAgo(secondsSince(fr.newestCheckAt, now))} ago</span>
         {fr.pulled.length ? <span className="text-bad-ink"> · {fr.pulled.length} pulled</span> : null}
-        {final ? ' · final: the prices as they closed' : ''}
-      </p>
+        {final ? <span> · final: the prices as they closed</span> : null}
+      </LiveHeader>
       {periods.length > 1 ? (
         <SegmentedToggle label="Period" size="sm" value={per} onChange={setPeriod}
           options={periods.map(p => ({ value: p, label: PERIOD_LABEL[p] ?? p }))} />
@@ -101,7 +109,7 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
         </div>
       )}
       <SharpPrices market={market} spec={spec} line={L} sideLabels={labels} now={now} onGoToLine={setL} />
-      <BestPrice rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
+      <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
       <Card title="Every book" scope={spec.noLine ? 'Moneyline' : `at ${fmtLine(L, spec.signed)}`} flush>
         {spec.noLine ? null : (
           <div className="px-3 pt-2">
@@ -120,6 +128,7 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
       </div>
       <OpenNow market={market} spec={spec} now={now} />
     </div>
+    </LiveProvider>
   );
 }
 

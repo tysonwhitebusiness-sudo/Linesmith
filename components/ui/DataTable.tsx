@@ -8,6 +8,7 @@ import { PercentileCell } from './Stats';
 import { Pagination, type PagingOptions } from './Pagination';
 import { Tooltip } from './Tooltip';
 import { cx } from './cx';
+import { useNow } from './useNow';
 
 /**
  * DataTable — the Hybrid (U spec §3): our engine and our density, with Untitled
@@ -154,6 +155,14 @@ export interface DataTableProps<Row> {
    * the meaning to assistive tech.
    */
   rowState?: (row: Row) => 'pulled' | 'returned' | 'new' | null;
+  /**
+   * P9: when the row's state began, as THIS page saw it (ms) — null for a
+   * state already true when the page loaded, which must not animate (opening
+   * a page is not news). Drives the one-off animation (pulled: a `bad` wash
+   * then struck through; returned: fades back in with a `good` wash; new:
+   * slides in with a 3.5 s `good` tint) and the words' age.
+   */
+  rowStateAt?: (row: Row) => number | null;
   className?: string;
   maxHeight?: number;
   /**
@@ -219,8 +228,11 @@ export function DataTable<Row>({
   maxHeight,
   rowClassName,
   rowState,
+  rowStateAt,
   columnGroups,
 }: DataTableProps<Row>) {
+  // Ticks only while some row's state is young enough to be counting ("Pulled · 12s ago").
+  const stateClock = useNow(rowStateAt && rows.some((r) => { const at = rowStateAt(r); return at != null && Date.now() - at < 3600e3; }) ? 1000 : null);
   const compact = density === 'compact' || (density === undefined && dense === true);
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(initialSort ?? null);
   const [page, setPage] = useState(1);
@@ -333,6 +345,10 @@ export function DataTable<Row>({
       const isOpen = open === key;
       const panel = !isTotals && expand ? expand(row) : null;
       const marked = !isTotals && highlight?.(row) === true;
+      const st = isTotals ? null : (rowState?.(row) ?? null);
+      const stAt = st ? (rowStateAt?.(row) ?? null) : null;
+      const stAge = stAt != null ? Math.max(0, (stateClock - stAt) / 1000) : null;
+      const animate = stAge != null && stAge < 4;
       return [
         <tr
           key={key}
@@ -346,8 +362,10 @@ export function DataTable<Row>({
             marked && 'bg-card-sunk',
             onRowClick && !isTotals && 'cursor-pointer',
             !isTotals && rowClassName?.(row),
-            !isTotals && rowState?.(row) === 'pulled' && 'line-through text-ink-muted',
+            st === 'pulled' && 'line-through text-ink-muted',
+            animate && (st === 'pulled' ? 'lb-row-pulled' : st === 'returned' ? 'lb-row-returned' : st === 'new' ? 'lb-row-new' : null),
           )}
+          data-row-state={st ?? undefined}
         >
           {columns.map((c, i) => {
             const v = c.render ? c.render(row) : ((row as Record<string, unknown>)[c.key] as ReactNode);
@@ -443,6 +461,7 @@ export function DataTable<Row>({
                   ) : (
                     (v ?? '—')
                   )}
+                  {i === 0 && st ? <RowStateWord state={st} age={stAge} /> : null}
                 </span>
               </td>
             );
@@ -579,4 +598,15 @@ export function DataTable<Row>({
       ) : null}
     </div>
   );
+}
+
+const ago = (s: number) => (s < 60 ? `${Math.floor(s)}s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h`);
+
+/** A row state in words, never colour alone (P8/P9). `inline-block` so a pulled row's strike-through does not cross it. */
+function RowStateWord({ state, age }: { state: 'pulled' | 'returned' | 'new'; age: number | null }) {
+  if (state === 'pulled') {
+    return <span className="inline-block text-label font-semibold text-bad-ink">Pulled{age != null ? ` · ${ago(age)} ago` : ''}</span>;
+  }
+  if (state === 'returned') return <span className="inline-block text-label font-semibold text-good-ink">Back{age != null ? ` · ${ago(age)} ago` : ''}</span>;
+  return age == null || age <= 120 ? <span className="inline-block text-label font-semibold text-good-ink">just now</span> : null;
 }

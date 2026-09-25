@@ -42,6 +42,7 @@ import { SlateSpotlights, useSlateFlags } from './slate/SlateSpotlights';
 import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
 import { SlateMovers, moversShown, useSlateMovers } from './slate/SlateMovers';
 import { useScanExtras, useSlateOdds } from './odds/useOdds';
+import { LiveProvider } from './odds/live';
 import { SlateModel, useSlateModel } from './slate/SlateModel';
 import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
 import { toYourLines } from '@/lib/slate/yourLines';
@@ -826,6 +827,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
               )}
             />
 
+            {/* P9: the Slate's odds refresh every 60 s; their live memory animates the game cards and Movers. */}
+            <LiveProvider value={slateOdds.live}>
             {sport === 'golf' ? (
               <section id="slate-games" className="mb-6 scroll-mt-[150px]">
                 <SectionBand title="Winner prices" />
@@ -847,6 +850,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 not stored per book, so there is no book-by-book spread to
                 compare (slate-sheet-cards.md §4.8). */}
             {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} sport={sport} teamLogoBySubject={teamLogoBySubject} odds={slateOdds.data?.games} refs={slateRefs} />}
+            </LiveProvider>
 
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
 

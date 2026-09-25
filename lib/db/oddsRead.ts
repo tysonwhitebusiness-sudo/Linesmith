@@ -241,9 +241,19 @@ function assembleGameMarkets(lines: LineRow[], legacy: LegacyRow[], checks: Map<
   return byMarket;
 }
 
-export async function readGameOdds(sport: string, gameId: string): Promise<GameOddsPayload> {
+/**
+ * `live: true` is the game page's 30 s refresh (P9 §4): current prices, pulls
+ * that are open or returned in the last hour, and the splits — no history,
+ * openers, power ratings or latency, which the first full read already gave
+ * the page (`lib/odds/section/liveMerge.ts` merges the two). The history read
+ * alone measured 2.2–2.5 s per game; the light read is the rest.
+ */
+export async function readGameOdds(sport: string, gameId: string, opts?: { live?: boolean }): Promise<GameOddsPayload> {
   const now = new Date();
+  const live = !!opts?.live;
   const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
+  const pullsSince = live ? new Date(now.getTime() - 3600e3).toISOString() : since;
+  const none = Promise.resolve([] as never[]);
   const g = genericSport(sport);
   const [lines, legacy, checks, changes, openers, pulls, power, lat] = await Promise.all([
     pgAll<{ period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
@@ -256,18 +266,21 @@ export async function readGameOdds(sport: string, gameId: string): Promise<GameO
       `SELECT market, side, bookmaker, source, point, american_odds, fetched_at
          FROM game_odds_book_lines WHERE sport = ? AND game_id = ? AND source NOT LIKE 'scraper:%'`, [g, gameId]),
     checkedBySource(gameId),
-    gameLineChangesForGame(gameId, since),
-    pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null; american_odds: number | null;
+    live ? none : gameLineChangesForGame(gameId, since),
+    live ? none : pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null; american_odds: number | null;
       opened_at: unknown; opener_source: string; check_flag: boolean; check_reason: string | null }>(
       `SELECT period, market, side, bookmaker, point, american_odds, opened_at, opener_source, check_flag, check_reason
          FROM market_openers WHERE kind = 'game' AND game_id = ?`, [gameId]),
     pgAll<{ period: string; market: string; side: string; bookmaker: string; point: number | null;
       last_american_odds: number | null; pulled_at: unknown; returned_at: unknown }>(
-      `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
-         FROM game_line_pulls WHERE sport = ? AND game_id = ? AND pulled_at >= ?::timestamptz`, [g, gameId, since]),
-    pgAll<{ subject: string; data: Record<string, unknown> }>(
+      live
+        ? `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
+             FROM game_line_pulls WHERE sport = ? AND game_id = ? AND (returned_at IS NULL OR returned_at >= ?::timestamptz)`
+        : `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
+             FROM game_line_pulls WHERE sport = ? AND game_id = ? AND pulled_at >= ?::timestamptz`, [g, gameId, pullsSince]),
+    live ? none : pgAll<{ subject: string; data: Record<string, unknown> }>(
       `SELECT subject, data FROM game_reference WHERE sport = ? AND game_id = ? AND kind = 'power_rating'`, [g, gameId]),
-    latency(sport),
+    live ? none : latency(sport),
   ]);
   const byMarket = assembleGameMarkets(lines, legacy, checks, changes, openers, pulls);
   return { sport, gameId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat,

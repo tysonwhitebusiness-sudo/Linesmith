@@ -1,7 +1,8 @@
 'use client';
 
 import { BookLogo } from '../BookLogo';
-import { Card, FlashValue, LiveDot } from '../ui';
+import { Card, FlashValue } from '../ui';
+import { CardLiveDot, LivePrice } from './LiveHeader';
 import { bookLabel } from '@/lib/odds/books/registry';
 import { bestPrice, decimal, withinFiveCents } from '@/lib/odds/section/board';
 import { holdSummary } from '@/lib/odds/section/hold';
@@ -14,7 +15,9 @@ import type { BestPrice as Best, BoardRow, MarketSpec } from '@/lib/odds/section
  * and the hold at one book (median) against the hold at the best prices. A
  * negative hold is stated as a fact (D20), never labelled an opportunity.
  */
-export function BestPrice({ rows, spec, line, sideLabels, userBook, now }: {
+export function BestPrice({ rows, spec, line, sideLabels, userBook, now, marketKey }: {
+  /** The market's key: its prices roll and flash in the live layer (P9). Unset = static (/kit). */
+  marketKey?: string;
   rows: BoardRow[];
   spec: MarketSpec;
   line: number | null;
@@ -31,13 +34,13 @@ export function BestPrice({ rows, spec, line, sideLabels, userBook, now }: {
   const W = (h: number) => `${Math.max(2, Math.min(100, (h / 0.1) * 100))}%`;
   return (
     <Card
-      title={<span className="inline-flex flex-wrap items-center gap-2">Best price <LiveDot checkedAt={checks[checks.length - 1]} cadenceS={70} now={now} /></span>}
+      title={<span className="inline-flex flex-wrap items-center gap-2">Best price <CardLiveDot marketKeys={marketKey ? [marketKey] : []} checkedAt={checks[checks.length - 1]} sources={rows.map(r => r.source)} /></span>}
       scope={spec.noLine ? 'Moneyline' : `at ${fmtLine(line, spec.signed)}`}
       info="The highest price any book offers on each side at this line. Pick'em apps and prices far from every other book (⚠ check) never count as best."
     >
       <div className="grid grid-cols-2 gap-3">
-        <BestBox best={b0} label={sideLabels[0]} now={now} />
-        <BestBox best={b1} label={sideLabels[1]} now={now} />
+        <BestBox best={b0} label={sideLabels[0]} now={now} marketKey={marketKey} />
+        <BestBox best={b1} label={sideLabels[1]} now={now} marketKey={marketKey} />
       </div>
       {me ? (
         <div className="mt-3 text-body-sm text-ink-secondary">
@@ -77,13 +80,13 @@ export function BestPrice({ rows, spec, line, sideLabels, userBook, now }: {
   );
 }
 
-function BestBox({ best, label, now }: { best: Best | null; label: string; now: number }) {
+function BestBox({ best, label, now, marketKey }: { best: Best | null; label: string; now: number; marketKey?: string }) {
   return (
     <div className="rounded-ctl bg-card-sunk p-3">
       <div className="text-overline text-ink-muted">Best {label.replace(/^(Over|Under)\b/, m => m.toLowerCase())}</div>
       {best ? (
         <>
-          <div className="text-display"><FlashValue value={best.quote.price} format={fmtAmerican} /></div>
+          <div className="text-display">{marketKey ? <LivePrice marketKey={marketKey} quote={best.quote} /> : <FlashValue value={best.quote.price} format={fmtAmerican} />}</div>
           <div className="mt-0.5 text-body-sm"><BookLogo bookId={best.book} size={14} withLabel /></div>
           <div className="text-label text-ink-muted">checked {fmtAgo(secondsSince(best.quote.checkedAt, now))} ago · since {fmtClock(best.quote.since, now)}</div>
         </>

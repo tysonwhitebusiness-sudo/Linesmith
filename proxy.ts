@@ -121,7 +121,18 @@ export const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: nu
       p.startsWith('/api/props/user-sportsbook') ||
       p.startsWith('/api/props/calibration') ||
       p.startsWith('/api/odds/lines') ||
-      p.startsWith('/api/odds/game-line'),
+      p.startsWith('/api/odds/game-line') ||
+      // Odds build P8's section reads, POLLED by P9 (player and game every
+      // 30 s, the Slate every 60 s). All are pattern-2 reads or the Slate's
+      // cachedRoute; none writes or calls a vendor. In the 10/minute provider
+      // class, one player page (player + game-line card = 4 polls a minute
+      // plus its load) and a second tab crossed the limit and froze on 429s
+      // -- measured by the P9 load check, 2026-09-25.
+      p.startsWith('/api/odds/player') ||
+      p.startsWith('/api/odds/game') ||
+      p.startsWith('/api/odds/slate') ||
+      p.startsWith('/api/odds/closes') ||
+      p.startsWith('/api/odds/scan'),
     limit: 60,
     windowMs: 60_000,
     label: 'page-read',

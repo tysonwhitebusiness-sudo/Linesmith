@@ -43,3 +43,41 @@ test('every components/odds/*.tsx is rendered on /kit', () => {
     .filter(name => !new RegExp(`<${name}\\b`).test(kit));
   assert.deepEqual(missing, []);
 });
+
+// ---------------------------------------------------------------------------
+// P9 (the live layer): every animation class is switched off under reduced
+// motion, and none is used outside components/odds and components/ui (the
+// chart primitive takes its classes as props from the odds section).
+// ---------------------------------------------------------------------------
+const CSS = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
+const liveBlock = CSS.slice(CSS.indexOf('Odds build P9'));
+const animated = [...liveBlock.matchAll(/^\.(lb-[a-z-]+)\s*\{([^}]*)\}/gm)].filter(m => /animation\s*:/.test(m[2])).map(m => m[1]);
+
+test('P9: the live layer defines its animation classes', () => {
+  for (const c of ['lb-roll', 'lb-flash-up', 'lb-flash-down', 'lb-live-ping', 'lb-live-pulse', 'lb-row-pulled', 'lb-row-returned', 'lb-row-new', 'lb-point-pop', 'lb-point-pulse']) {
+    assert.ok(animated.includes(c), `${c} is not defined with an animation`);
+  }
+});
+
+test('P9: the reduced-motion media query covers every animation class', () => {
+  const rm = liveBlock.slice(liveBlock.indexOf('@media (prefers-reduced-motion: reduce)'));
+  assert.ok(rm.length > 0, 'no reduced-motion block');
+  const none = rm.slice(0, rm.indexOf('animation: none'));
+  const missing = animated.filter(c => !new RegExp(`\\.${c}\\b`).test(none));
+  assert.deepEqual(missing, []);
+});
+
+test('P9: no animation class is used outside components/odds and components/ui', () => {
+  const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+    e.isDirectory() ? (e.name === 'node_modules' || e.name.startsWith('.') ? [] : walk(join(dir, e.name))) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []);
+  const files = ['components', 'app', 'lib'].flatMap(d => walk(join(process.cwd(), d)));
+  const bad: string[] = [];
+  for (const f of files) {
+    const rel = f.slice(process.cwd().length + 1).split(String.fromCharCode(92)).join('/');
+    if (rel.startsWith('components/odds/') || rel.startsWith('components/ui/')) continue;
+    const s = readFileSync(f, 'utf8');
+    for (const c of animated) if (new RegExp(`['"\` ]${c}['"\` ]`).test(s)) bad.push(`${rel}: ${c}`);
+  }
+  assert.deepEqual(bad, []);
+});
+

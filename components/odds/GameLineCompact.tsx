@@ -1,8 +1,10 @@
 'use client';
 
 import { BookLogo } from '../BookLogo';
-import { Card, DataTable, LiveDot } from '../ui';
-import { useGameOdds, type OddsState } from './useOdds';
+import { Card, DataTable } from '../ui';
+import { CardLiveDot, LivePrice } from './LiveHeader';
+import { LiveProvider } from './live';
+import { useGameOdds, type LiveOddsState, type OddsState } from './useOdds';
 import { bestPrice, boardRows, consensusLine } from '@/lib/odds/section/board';
 import { fmtAmerican, fmtLine, fmtPct } from '@/lib/odds/section/format';
 import { pinnacleAt } from '@/lib/odds/section/sharp';
@@ -43,9 +45,11 @@ export function GameLineCompact({ sport, gameId, teams, title = 'Game line', hre
     .filter(([k]) => by.has(k)).map(([k, name, kind]) => ({ key: k, name, market: by.get(k)!, spec: marketSpec(kind) }));
   const checks = rows.flatMap(r => r.market.cur.map(q => q.checkedAt)).filter((v): v is string => !!v).sort();
   const line = (r: Row) => (r.spec.noLine ? null : consensusLine(r.market, r.spec).modal);
-  return (
+  // Its own refreshes' memory (the player page's section is keyed by player markets, not game ones).
+  const live = 'live' in odds ? (odds as LiveOddsState<GameOddsPayload>).live : null;
+  const card = (
     <Card
-      title={<span className="inline-flex flex-wrap items-center gap-2">{title} <LiveDot checkedAt={checks[checks.length - 1]} cadenceS={70} now={now} /></span>}
+      title={<span className="inline-flex flex-wrap items-center gap-2">{title} <CardLiveDot marketKeys={rows.map(r => r.key)} checkedAt={checks[checks.length - 1]} sources={['scraper:pinnacle']} /></span>}
       scope={`${teams.away.abbr} @ ${teams.home.abbr}`}
       dense
       state={odds.loading && !odds.data ? { kind: 'loading', lines: 3 } : rows.length ? { kind: 'ready' } : { kind: 'empty', title: 'No game line yet', reason: 'No book has priced this matchup.' }}
@@ -69,7 +73,7 @@ export function GameLineCompact({ sport, gameId, teams, title = 'Game line', hre
                   {([0, 1] as const).map(i => {
                     const b = bestPrice(br, i);
                     const ln = r.spec.noLine ? '' : r.spec.kind === 'tot' ? fmtLine(L) : fmtLine(i ? (L == null ? null : -L) : L, true);
-                    return <span key={i} className="inline-flex items-center gap-1.5">{sides[i]} {ln} <b className="tabular-nums">{fmtAmerican(b?.quote.price)}</b>{b ? <BookLogo bookId={b.book} size={13} /> : null}</span>;
+                    return <span key={i} className="inline-flex items-center gap-1.5">{sides[i]} {ln} <b>{b ? <LivePrice marketKey={r.key} quote={b.quote} /> : '—'}</b>{b ? <BookLogo bookId={b.book} size={13} /> : null}</span>;
                   })}
                 </span>
               );
@@ -86,4 +90,5 @@ export function GameLineCompact({ sport, gameId, teams, title = 'Game line', hre
       />
     </Card>
   );
+  return live ? <LiveProvider value={live}>{card}</LiveProvider> : card;
 }

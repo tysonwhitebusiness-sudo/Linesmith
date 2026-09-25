@@ -99,3 +99,138 @@ None.
 - Edited: the three hooks, `components/ui/LiveDot.tsx`,
   `components/ui/FlashValue.tsx`, `components/ui/DataTable.tsx`, the chart
   primitive, and the odds section components (header counter, tab counts).
+
+---
+
+## Result (2026-09-25)
+
+**Built.**
+- **Refresh** (`components/odds/useOdds.ts`): `usePlayerOdds` / `useGameOdds`
+  poll every 45 s (§4's rule; below) and `useSlateOdds` every 60 s while the tab is visible;
+  hidden pauses, visible refetches at once; one request in flight per hook,
+  each with its own `AbortController`; a failed refresh keeps the last good
+  payload (the dot's age then says it is held back). A finished game fetches
+  once (`useGameOdds(…, { live: false })`). `useGameCloses` / `useScanExtras`
+  stay one-shot. The routes are unchanged in kind (pattern 2 for player and
+  game, the Slate's 60 s `cachedRoute`); the two polled routes gained a
+  `Server-Timing` header (read time + the pool's queue) for §4.
+- **Diff** (`lib/odds/section/liveDiff.ts`, pure): `keysOf`, `diffOdds`,
+  `advance` (carries "gone" keys so a reappearance reads *returned*). Keys as
+  specified; the Slate's summary keys carry the game in the period slot.
+- **Memory** (`components/odds/live.ts`): per section — each value's last
+  change (2 min trail), moves seen (2 min "just now"), row states, what
+  changed / was pulled since the page opened, and what each market tab has
+  not been looked at since. `LiveProvider` / `useLive`; outside a provider
+  nothing animates.
+- **Pieces:** `LiveDot` ticks from the shared visible-only clock
+  (`components/ui/useNow.ts`), pulses when live, pings once per change to its
+  card, cadence by source class (`lib/odds/section/cadence.ts`: direct 70 s,
+  aggregators 90 s, DK Network 480 s, Sleeper pick counts 900 s, Covers
+  3600 s). `FlashValue` rolls + flashes the fill (good up, bad down, 1.6 s),
+  then a ▲/▼ trail in the ink colour fading 1 → 0.15 over 120 s, then gone.
+  `DataTable.rowStateAt` animates `pulled` (bad wash, then struck through,
+  "Pulled · N s ago"), `returned` ("Back"), `new` ("just now", slides in
+  with a 3.5 s good tint); a state already true at page load never animates.
+  `StepLines`' live edge: a dashed "now" guide, each selected series' newest
+  point pulses, a point that arrived this refresh pops in (2.6 → 1, 0.9 s);
+  none on a finished game. Section header (`LiveHeader`): the 30-bar
+  heartbeat (current minute in `good`), and "N prices changed since you
+  opened this · M pulled", which outlines those values (`data-recent`) and
+  toggles off. Market tabs show "N new". Move lists (Line movement's every
+  move, the Slate's steam list) mark new rows "just now". The Slate's game
+  cards flash best moneylines, Pinnacle, the total and DK money %.
+- **Noise rules:** the flash cap (more than 12 changes in one card's market
+  in one refresh → the rows tint, the cells keep their trail and skip the
+  roll); reduced motion switches every animation class off (a colour fade
+  stays for a flash — colour is not motion); hidden tabs neither fetch nor
+  tick.
+
+**Tests:** `tests/live-diff.test.ts` (10), `tests/live-merge.test.ts` (2), `tests/live-pieces.test.tsx` (7),
+`tests/odds-ui.test.ts` (+3: the classes exist, reduced motion covers each,
+none is used outside `components/odds` / `components/ui`). `npm test` and
+`tsc` green.
+
+**Found by the live check and fixed:** a book MOVING its line (−7 → −7.5)
+dropped one price key and gained another, which the spec's key rules read as
+a pull plus a new price — so the commonest live event showed "Pulled". The
+diff now pairs a vanished and a new key on the same book and side as a
+change on the new key (test added).
+
+**Live check (2026-09-25, headless Chromium, fresh page per run, text checks
++ one screenshot, `results/p9-live-game-1440.png`):**
+- NFL 401872955 game page, 1440: polls every ~30 s (then 45 s); the header's
+  30-bar heartbeat, "N prices changed since you opened this · M pulled",
+  "N new" on market tabs; 9 pulled rows struck through, each reading
+  "Pulled"; no horizontal overflow. **Blocking `/api/odds/*`** (a Playwright
+  route abort — the devtools block, scripted): the first dot went **amber
+  after 100 s**, "updated 2 min ago".
+- The scraper stalled at 17:43 UTC (its watchdog restarted it at 17:44; the
+  bridge ran 447 s behind): the CFB 401858234 page at **400 px** showed every
+  dot amber by itself ("updated 6 min ago"), no overflow — the dot doing its
+  job on real staleness.
+- CFB 401862779 at 1440, live data: 111 real price changes in 5 min; ▲
+  trails in the good ink and ▼ in the bad ink fading with age (op 0.46 at
+  1 min); "just now" on new moves; pings. **No roll/flash fired: the flash cap
+  counted every changed value in the market, alt lines at ~38 books
+  included, and tripped on every refresh.** Fixed — the board now caps on the
+  values it SHOWS. With the next 5 minutes bringing no change to a visible
+  value, the flash was verified by nudging the second refresh's Pinnacle
+  spread price (+5 home, −5 away) in the intercepted response: +106 rolled
+  and flashed **up** (good fill), −119 **down** (bad fill), then ▲/▼ trails
+  in the matching ink.
+- The screenshot showed "just now" on books that had only posted another alt
+  line; "new" now means a book not on the board before (fixed).
+- The P8 dev server another session runs on :3001 returned 500 on both odds
+  routes while the same code served 200 directly and on this session's own
+  server (:3000); every number above is from :3000.
+
+**§4 load budget (measured 2026-09-25, 10 simulated tabs — 5 player pages
+polling player + game-line card, 5 game pages — from the laptop's dev server
+against the hosted database; `Server-Timing` read time and the pool's queue):**
+
+| run | req/min | p50 | p95 | max | pool queue (max) | non-200 |
+|---|---|---|---|---|---|---|
+| 30 s, as first built (full game payload every poll) | 22 | 0.8–2.1 s | **5.4 s** | 10.8 s | **22** | 0 |
+| 30 s, game page's light refresh | 24 | 0.8 s | **1.3 s** | 2.8 s | 4 | 0 |
+| **45 s**, light refresh (shipped) | 16 | 0.6 s | **1.08 s** | 1.3 s | 2 | 0 |
+
+A lone light game read is 220–300 ms; the queries themselves take 8–170 ms
+at the database (`EXPLAIN ANALYZE`), so the rest is round trips from the
+laptop and the dev server's own overhead, and concurrency on the six-connection
+pool (each game read is six parallel queries). **The < 500 ms bar is not met
+here; by §4's own rule the interval is 45 s** (`REFRESH_MS`), recorded here.
+Pool waits: the queue never exceeded 2 at 45 s and no request took over 1.3 s,
+so no wait reached 1 s. Re-measure on a hosted build before tightening.
+
+Two things the measurement found and fixed:
+1. **The game payload re-read ten days of history on every poll** (≈10k change
+   rows, 2.2–2.5 s per game). The game page now reads in full once, then
+   polls `/api/odds/game?…&live=1` (prices, open or just-returned pulls, the
+   splits — no history, openers, power ratings or latency) and merges it
+   (`lib/odds/section/liveMerge.ts`: a book whose main pair changed gains the
+   history point the reader would have made; moves and steam recomputed),
+   with a full resync every 8th poll (6 min). `tests/live-merge.test.ts`.
+2. **Every `/api/odds/*` read sat in the rate limiter's 10/minute "provider"
+   class** (`proxy.ts`): one player page polling (4 a minute plus its load)
+   and a second tab froze on 429s — 62 of 88 requests in the first run. P8's
+   read routes (`player`, `game`, `slate`, `closes`, `scan`) are now
+   `page-read` (60/minute), pinned in `tests/price-freshness.test.ts`;
+   `/api/odds/import` stays `provider`.
+
+**Deviations:**
+1. `useNow` lives in `components/ui/useNow.ts`, not `components/odds/`: both
+   kit pieces that tick (LiveDot, FlashValue) use it, and the kit does not
+   import from a page folder.
+2. The chart primitive takes its animation classes as props from the odds
+   section (`liveEdge.pulseClass` / `popClass`), so the guard's "no animation
+   class outside components/odds and components/ui" holds with the chart in
+   `components/charts/`.
+3. A line move is a change, not a pull (above) — a rule the spec did not
+   state.
+4. Player and game poll every **45 s**, not 30 s (§4, above), and the game
+   page polls a light payload merged onto the full one.
+5. The Slate's live memory is keyed on its per-game summary (best ML per
+   book, Pinnacle, consensus total/spread, DK money), not on every price,
+   because the Slate payload only carries the summary.
+
+**P9: CLOSED** (2026-09-25). Nothing needs a deploy (TypeScript only).

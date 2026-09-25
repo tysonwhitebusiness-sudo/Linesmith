@@ -57,4 +57,5 @@ export {
 export { Section, SectionBand, SectionNav } from './Section';
 export { BackLink, useUrlState } from './Navigation';
 export { LiveDot } from './LiveDot';
-export { FlashValue } from './FlashValue';
+export { FlashValue, TRAIL_S, type ValueChange } from './FlashValue';
+export { useNow } from './useNow';

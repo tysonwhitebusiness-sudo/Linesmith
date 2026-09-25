@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, SegmentedToggle, Tabs } from '../ui';
 import { BestPrice } from './BestPrice';
 import { Coverage } from './Coverage';
@@ -11,6 +11,8 @@ import { LineMovement } from './LineMovement';
 import { OpenNow } from './OpenNow';
 import { PriceBoard } from './PriceBoard';
 import { SharpPrices } from './SharpPrices';
+import { LiveHeader, marketOf } from './LiveHeader';
+import { LiveProvider } from './live';
 import { usePlayerOdds } from './useOdds';
 import { bestPrice, boardRows, consensusLine, pricedLines } from '@/lib/odds/section/board';
 import { freshness } from '@/lib/odds/section/freshness';
@@ -49,6 +51,9 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
   const market = markets.find(m => m.key === key) ?? null;
   const [lineByMarket, setLineByMarket] = useState<Record<string, number>>({});
   const [all, setAll] = useState<'line' | 'all'>('line');
+  const live = odds.live;
+  // The selected tab is being looked at: its "N new" stays at 0.
+  useEffect(() => { if (key) live.look(marketOf(key, false)); }, [key, live]);
 
   if (odds.loading && !odds.data) return <Card title="Odds & prices" state={{ kind: 'loading', lines: 6 }} />;
   if (!market) {
@@ -74,11 +79,13 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
     const rr = boardRows(m, spec, ml, userBook);
     const b0 = bestPrice(rr, 0), b1 = bestPrice(rr, 1);
     const pin = pinnacleAt(m, spec, ml) ?? pinnacleAt(m, spec, pinnacleMain(m, spec));
+    const fresh = m.key === market.key ? 0 : live.newIn(marketOf(m.key, false));
     return {
       value: m.key,
       label: (
         <span className="block min-w-36">
-          <span className="block text-body-sm font-semibold text-ink">{marketLabel(m.key)}</span>
+          <span className="flex items-baseline justify-between gap-2 text-body-sm font-semibold text-ink">{marketLabel(m.key)}
+            {fresh ? <span className="text-label font-semibold text-good-ink" data-tab-new>{fresh} new</span> : null}</span>
           <span className="block text-label text-ink-secondary tabular-nums">{fmtLine(ml)} · O {fmtAmerican(b0?.quote.price)} / U {fmtAmerican(b1?.quote.price)}</span>
           <span className="block text-label text-ink-muted">{new Set(m.cur.map(q => q.book)).size} books · {pin ? `Pin ${fmtAmerican(pin.a.price)}/${fmtAmerican(pin.b.price)}` : 'no sharp'}</span>
         </span>
@@ -86,12 +93,13 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
     };
   };
   return (
-    <div className="space-y-3">
-      <p className="text-label text-ink-muted">
-        {fr.changes30m} changes in 30 min · {fr.books} books · newest check {fmtAgo(secondsSince(fr.newestCheckAt, now))} ago
-        {fr.oldestUnchanged ? ` · oldest unchanged price ${bookLabel(fr.oldestUnchanged.book)} since ${fmtClock(fr.oldestUnchanged.since, now)}` : ''}
+    <LiveProvider value={live}>
+    <div className="space-y-3" data-show-recent={live.showRecent ? 'true' : undefined}>
+      <LiveHeader beats={fr.heartbeat}>
+        <span>· {fr.books} books · newest check {fmtAgo(secondsSince(fr.newestCheckAt, now))} ago
+          {fr.oldestUnchanged ? ` · oldest unchanged price ${bookLabel(fr.oldestUnchanged.book)} since ${fmtClock(fr.oldestUnchanged.since, now)}` : ''}</span>
         {fr.pulled.length ? <span className="text-bad-ink"> · {fr.pulled.length} pulled</span> : null}
-      </p>
+      </LiveHeader>
       <Tabs variant="cards" label="Markets" value={market.key} items={markets.slice(0, 8).map(tab)}
         onChange={k => { setPicked(k); onPickMarket?.(k); }} />
       <div className="flex flex-wrap items-center gap-2">
@@ -102,7 +110,7 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
         <span className="text-label text-ink-muted">{lines.length} lines priced · consensus {fmtLine(modal)} · Pinnacle {fmtLine(pinnacleMain(market, spec)) || '—'}</span>
       </div>
       <SharpPrices market={market} spec={spec} line={L} sideLabels={labels} now={now} onGoToLine={setL} />
-      <BestPrice rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
+      <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
       <Card title="Every book" scope={`at ${fmtLine(L)}`} flush
         info="Every book's price at the line in view; a book not at this line shows its own, greyed. Filled = best. Checked = when a source last confirmed the price; since = when it last changed.">
         <div className="px-3 pt-2">
@@ -121,5 +129,6 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
       <Coverage markets={markets} marketLabel={marketLabel} />
       {gameId && teams ? <GameLineCompact sport={sport} gameId={gameId} teams={teams} /> : null}
     </div>
+    </LiveProvider>
   );
 }

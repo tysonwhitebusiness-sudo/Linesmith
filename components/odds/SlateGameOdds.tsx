@@ -1,7 +1,10 @@
 'use client';
 
 import { BookLogo } from '../BookLogo';
-import { LiveDot } from '../ui';
+import { FlashValue, LiveDot } from '../ui';
+import { useLive } from './live';
+import { cadenceFor } from '@/lib/odds/section/cadence';
+import { slatePriceKey } from '@/lib/odds/section/liveDiff';
 import { SplitBar } from './SharpPrices';
 import { fmtAmerican, fmtLine, fmtMoney } from '@/lib/odds/section/format';
 import type { SlateOddsGame } from '@/lib/odds/section/slate';
@@ -23,15 +26,20 @@ export function SlateGameOdds({ odds, away, home, colors, live, now }: {
   live?: boolean;
   now?: number;
 }) {
-  const t = now ?? Date.now();
+  const lv = useLive();
+  // A number that rolls and flashes when the Slate's refresh moves it (P9).
+  const val = (book: string, market: string, side: string, v: number | null | undefined, format: (x: number) => string) => {
+    const k = slatePriceKey(odds.gameId, book, market, side);
+    return <FlashValue value={v} format={format} change={lv.change(k)} recent={lv.recent(k)} />;
+  };
   const pin = odds.pinnacle;
   const mv = odds.moved;
   const split = odds.dk && odds.dk.money != null && odds.dk.bets != null && Math.abs(odds.dk.money - odds.dk.bets) >= 15;
-  const best = (q: SlateOddsGame['ml']['home'], abbr: string) => (
+  const best = (q: SlateOddsGame['ml']['home'], abbr: string, side: 'home' | 'away') => (
     <div className="flex min-w-0 items-center justify-between gap-2">
       <span className="text-label text-ink-muted">Best {abbr}</span>
       <span className="inline-flex items-center gap-1.5">
-        <b className="tabular-nums text-ink">{fmtAmerican(q?.price)}</b>
+        <b className="text-ink">{q ? val(q.book, 'ml', side, q.price, fmtAmerican) : '—'}</b>
         {q ? <BookLogo bookId={q.book} size={14} /> : null}
       </span>
     </div>
@@ -39,20 +47,20 @@ export function SlateGameOdds({ odds, away, home, colors, live, now }: {
   return (
     <div className="space-y-2 border-t border-line-soft px-4 py-3 text-body-sm">
       <div className="grid grid-cols-2 gap-x-4">
-        {best(odds.ml.away, away)}
-        {best(odds.ml.home, home)}
+        {best(odds.ml.away, away, 'away')}
+        {best(odds.ml.home, home, 'home')}
       </div>
       <div className="rounded-md bg-card-sunk px-2.5 py-2">
         <div className="flex items-center justify-between gap-2">
           <b className="text-label text-ink">Sharp prices</b>
-          {pin?.checkedAt ? <LiveDot checkedAt={pin.checkedAt} cadenceS={70} now={t} /> : null}
+          {pin?.checkedAt ? <LiveDot checkedAt={pin.checkedAt} cadenceS={cadenceFor('scraper:pinnacle')} now={now} pingAt={lv.pingFor(`${odds.gameId}:fg|ml`)} /> : null}
         </div>
         {pin ? (
           <>
             <div className="mt-1 flex items-center gap-1.5">
               <BookLogo bookId="pinnacle" size={14} />
               <span className="text-label text-ink-secondary">Pinnacle</span>
-              <span className="ml-auto tabular-nums">{away} <b>{fmtAmerican(pin.away)}</b> · {home} <b>{fmtAmerican(pin.home)}</b></span>
+              <span className="ml-auto tabular-nums">{away} <b>{val('pinnacle', 'ml', 'away', pin.away, fmtAmerican)}</b> · {home} <b>{val('pinnacle', 'ml', 'home', pin.home, fmtAmerican)}</b></span>
             </div>
             <SplitBar p={1 - pin.fairHome} labels={[away, home]} colors={colors} />
           </>
@@ -63,7 +71,7 @@ export function SlateGameOdds({ odds, away, home, colors, live, now }: {
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         <span className="text-label text-ink-muted">Total</span>
         <span className="tabular-nums">
-          <b>{fmtLine(odds.total.line) || '—'}</b>
+          <b>{odds.total.line != null ? val('consensus', 'tot', 'over', odds.total.line, v => fmtLine(v)) : '—'}</b>
           {odds.total.open != null && odds.total.line != null && odds.total.open !== odds.total.line ? <span className="text-ink-muted"> (opened {fmtLine(odds.total.open)})</span> : null}
         </span>
         <span className="text-label text-ink-muted">Moved</span>
@@ -84,7 +92,7 @@ export function SlateGameOdds({ odds, away, home, colors, live, now }: {
                 <BookLogo bookId="draftkings" size={12} /> DK customers, {home}
                 {split ? <span className="font-semibold text-warn-ink">split</span> : null}
               </span>
-              <span className="tabular-nums text-label"><b>{odds.dk.money ?? '—'}%</b> money · <b>{odds.dk.bets ?? '—'}%</b> bets</span>
+              <span className="tabular-nums text-label"><b>{val('draftkings', 'money', 'home', odds.dk.money, v => `${v}%`)}</b> money · <b>{odds.dk.bets ?? '—'}%</b> bets</span>
             </div>
           ) : null}
           {odds.kalshi24h != null ? (

@@ -12,6 +12,7 @@
  */
 import { NextResponse } from 'next/server';
 import { readPlayerOdds } from '@/lib/db/oddsRead';
+import { pgPoolStats } from '@/lib/db/pgClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'sport, gameId and subjectId are required' }, { status: 400 });
   }
   try {
-    return NextResponse.json(await readPlayerOdds(sport, gameId, subjectId));
+    // P9 §4: see /api/odds/game — the read's time and the pool's queue, for the load budget.
+    const t0 = Date.now();
+    const q0 = pgPoolStats();
+    const body = await readPlayerOdds(sport, gameId, subjectId);
+    return NextResponse.json(body, { headers: { 'Server-Timing': `read;dur=${Date.now() - t0}, pool;desc="waiting=${q0?.waiting ?? 0} total=${q0?.total ?? 0}"` } });
   } catch (e) {
     console.error('[odds/player]', e);
     return NextResponse.json({ error: 'Odds read failed' }, { status: 500 });

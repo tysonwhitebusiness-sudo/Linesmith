@@ -1,6 +1,7 @@
 'use client';
 
 import { BookLogo, bookLabel } from '../BookLogo';
+import { useLive } from './live';
 import { Card, EmptyState } from '../ui';
 import { droppingList, moneylineMovers, pulledList, steamMovers, type SlateOddsGame } from '@/lib/odds/section/slate';
 import { fmtAmerican, fmtClock, fmtLine } from '@/lib/odds/section/format';
@@ -20,6 +21,12 @@ const MARKET: Record<string, string> = { ml: 'Moneyline', sp: 'Spread', tot: 'To
  */
 export function SlateOddsMovers({ games, refs, now }: { games: SlateOddsGame[]; refs: Map<string, SlateGameRef>; now?: number }) {
   const t = now ?? Date.now();
+  const live = useLive();
+  // P9: a steam row this page saw arrive slides in marked "just now" for two minutes.
+  const justNow = (gameId: string, market: string, book: string, at: string) => {
+    const seen = live.moveSeen(`${book}|${gameId}:fg|${market}|${at}`);
+    return seen != null && Date.now() - seen <= 120_000;
+  };
   const steam = steamMovers(games);
   const ml = moneylineMovers(games);
   const drop = droppingList(games);
@@ -43,8 +50,9 @@ export function SlateOddsMovers({ games, refs, now }: { games: SlateOddsGame[]; 
                 <p className="text-overline uppercase text-ink-muted">Steam · first mover</p>
                 <ul className="mt-1 divide-y divide-line-soft">
                   {steam.map(s => (
-                    <li key={`${s.gameId}|${s.market}|${s.t}`} className="py-1.5 text-body-sm">
-                      <span className="flex items-baseline justify-between gap-2">{link(s.gameId)}<span className="text-label text-ink-muted">{fmtClock(s.t, t)}</span></span>
+                    <li key={`${s.gameId}|${s.market}|${s.t}`} className={`py-1.5 text-body-sm ${justNow(s.gameId, s.market, s.books[0], s.t) ? 'lb-row-new' : ''}`}>
+                      <span className="flex items-baseline justify-between gap-2">{link(s.gameId)}<span className="text-label text-ink-muted">
+                        {justNow(s.gameId, s.market, s.books[0], s.t) ? <b className="mr-1 text-good-ink">just now</b> : null}{fmtClock(s.t, t)}</span></span>
                       <span className="text-ink-secondary">
                         {MARKET[s.market]} {fmtLine(s.from, s.market === 'sp')} → <b>{fmtLine(s.to[0], s.market === 'sp')}</b>: <b>{bookLabel(s.books[0])}</b> first, {s.books.length - 1} followed in{' '}
                         {Math.max(1, Math.round((Date.parse(s.times[s.times.length - 1]) - Date.parse(s.times[0])) / 60000))} min
