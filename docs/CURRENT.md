@@ -40,8 +40,13 @@ Read it next. In short:
    oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
-7. **ODDS BUILD — IN PROGRESS (unattended run P0 → P4, started 2026-09-24
-   21:00 UTC).** Order of work and approvals:
+7. **ODDS BUILD — P0–P4 DONE, P5 NEXT (handoff 2026-09-25).** **Start at
+   `docs/design/odds-build/HANDOFF-P5.md`**: the operator's approvals (full
+   approval for everything), the new decisions D24 (storage) and D25
+   ($50/month cost ceiling), P5 as approved (compact storage done properly,
+   the disk guard), and the state. The phase table below is the record.
+
+   (history)** Order of work and approvals:
    `docs/design/odds-build/HANDOFF-P0-P4.md`. Specs: `docs/design/odds-build/`.
    Build order and findings: `docs/design/odds-build-phases-2026-09-24.md`.
 
