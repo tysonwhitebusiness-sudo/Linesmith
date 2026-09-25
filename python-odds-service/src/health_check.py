@@ -1317,6 +1317,41 @@ async def check_disk_guard() -> dict:
             "status": ("PROBLEM: " + "; ".join(problems) + " — " + status) if problems else status}
 
 
+async def check_cost_guard() -> dict:
+    """D25 — the month's projected cost against the $50 ceiling (cost_guard.py).
+
+    Unhealthy when the projection passes the alert line ($45), when the brake
+    is on, when the state is older than 3 hours, or when an input has been
+    unmeasured for 7 days since the guard first ran this month -- the
+    projection is a floor while anything is unmeasured, and saying so is the
+    point.
+    """
+    import cost_guard
+
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        st = await cost_guard.read_state(conn)
+        first = await conn.fetchval("SELECT min(day) FROM usage_meters WHERE meter = 'cron.run_seconds'")
+    if not st:
+        return {"name": "costGuard", "healthy": False, "status": "no cost_guard_state — costGuardJob has never run"}
+    prices = cost_guard.load_prices()
+    age_h = (datetime.now(timezone.utc) - st["measured_at"]).total_seconds() / 3600
+    problems = []
+    if st["projected_usd"] > prices["alert_usd"]:
+        problems.append(f"projected ${st['projected_usd']:.2f} > alert ${prices['alert_usd']:.2f}")
+    if st["brake"]:
+        problems.append(f"BRAKE ON: {st['reason']}")
+    if age_h > 3:
+        problems.append(f"state {age_h:.1f} h old")
+    unmeasured_days = (datetime.now(timezone.utc).date() - first).days if first else 0
+    if st["unmeasured"] and unmeasured_days >= 7:
+        problems.append(f"unmeasured for {unmeasured_days} days: {', '.join(st['unmeasured'])}")
+    floor = " (a FLOOR: " + ", ".join(st["unmeasured"]) + " unmeasured)" if st["unmeasured"] else ""
+    status = f"${st['projected_usd']:.2f} of ${st['ceiling_usd']:.0f} projected for {st['month']:%Y-%m}{floor}"
+    return {"name": "costGuard", "healthy": not problems,
+            "status": ("PROBLEM: " + "; ".join(problems) + " — " + status) if problems else status}
+
+
 async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
     results = [
@@ -1337,6 +1372,7 @@ async def main() -> int:
         await check_harvester_scrapes(),
         await check_database_growth(),
         await check_disk_guard(),
+        await check_cost_guard(),
         await check_worker_memory(),
     ]
 
@@ -1400,6 +1436,9 @@ async def _cron() -> int:
     (`historyMover`), which `check_disk_guard` reads on the next run; a mover
     failure never hides a check result and never changes this exit code
     beyond its own recorded failure."""
+    import time as _time
+
+    started = _time.monotonic()
     rc = await main()
     try:
         import history_mover
@@ -1416,6 +1455,10 @@ async def _cron() -> int:
             }])
         except Exception:                                    # noqa: BLE001
             pass
+    # D25 meter: this run's own time, which is what Render bills the cron for.
+    import cost_guard
+
+    await cost_guard.add_meter("cron.run_seconds", _time.monotonic() - started)
     return rc
 
 

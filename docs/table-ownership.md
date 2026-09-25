@@ -150,6 +150,15 @@ from `golfPredictionsJob`) as their sole writer.
 > | `game_reference` | **NEW** | Python — `write_game_reference` |
 > | `prop_odds` | gains `changed_at` ("since") and `extra` | unchanged: Python, `write_prop_odds` |
 >
+> **What odds-build P6 adds (migration `20260925041339`, all RLS read-only):**
+>
+> | table | owner |
+> |---|---|
+> | `usage_meters` | Python — `cost_guard.add_meter`: the bridge (its egress bytes, rows), the health-check cron (its run time), `record_observed_cost.py` (figures read off provider usage pages); read by `costGuardJob` |
+> | `cost_guard_state` | Python — `costGuardJob` (`cost_guard.py`, D25); read by `health_check.check_cost_guard` and the scraper bridge (its brake) |
+> | `scraper_checks` | Python — the scraper bridge (P6 §6); read by the P8/P9 odds readers |
+> | `scraper_unmatched_prices` | Python — the scraper bridge (P6 §6b) |
+>
 > **Closed in P5.1 (`docs/design/odds-build/P5.1-hardening.md`, migration `20260925040000`; RLS turned out to be off on 20 tables, now on for all):** `slate_rankings`, `model_status`
 > and `tennis_match_stats` have RLS **off** (measured `pg_class.relrowsecurity`
 > 2026-09-25). They are Python-written and read-only to the app, so they want

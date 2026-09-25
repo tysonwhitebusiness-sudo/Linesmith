@@ -1227,6 +1227,13 @@ async def job_disk_guard(yield_fn=None) -> dict:
     return await _run_timed("diskGuardJob", disk_guard.run_disk_guard())
 
 
+async def job_cost_guard(yield_fn=None) -> dict:
+    """P6.0 (D25): see cost_guard.py. One S3 listing and a few small reads."""
+    import cost_guard
+
+    return await _run_timed("costGuardJob", cost_guard.run_cost_guard())
+
+
 # Task 4.5 (P3 M1) — CLV, computed here and STORED, never computed by the
 # renderer (Q13).
 #
@@ -1480,6 +1487,9 @@ JOB_REGISTRY = [
     # setting the history's hot window, and keeps partitions made ahead. The
     # export and drops run in the health-check cron (history_mover.py).
     ("diskGuardJob", job_disk_guard, 15 * 60),
+    # P6.0 (D25): the month's cost projection against the $50 ceiling, and the
+    # brake the scraper bridge obeys. Hourly: its inputs move by the day.
+    ("costGuardJob", job_cost_guard, 60 * 60),
     # M1 — the model register the app reads; see job_model_status.
     ("modelStatusJob", job_model_status, 24 * 60 * 60),
     # M3 — the Slate's rankings; see job_slate_rankings for why 15 minutes.

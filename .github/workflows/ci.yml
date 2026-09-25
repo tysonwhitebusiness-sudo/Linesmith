@@ -123,6 +123,9 @@ jobs:
 
       - name: test_corpus_chunk_rule
         run: python -u src/test_corpus_chunk_rule.py
+
+      - name: test_cost_guard
+        run: python -u src/test_cost_guard.py
       - name: test_scraper_markets
         run: python -u src/test_scraper_markets.py
       - name: test_scraper_match

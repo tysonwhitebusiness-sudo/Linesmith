@@ -1,0 +1,31 @@
+{
+  "_doc": "D25 prices as data (docs/design/odds-build/results/P6-cost-audit.md). Every number was read from the named source on `fetched`; change them only from a fresh read of that source.",
+  "fetched": "2026-09-25",
+  "ceiling_usd": 50.0,
+  "alert_usd": 45.0,
+  "brake_usd": 48.0,
+  "supabase": {
+    "source": "https://supabase.com/pricing",
+    "plan_usd": 25.0,
+    "compute_credit_usd": 10.0,
+    "compute_usd": {"micro": 10.0, "small": 15.0, "medium": 60.0},
+    "disk_included_gb": 8.0,
+    "disk_usd_per_gb": 0.125,
+    "provisioned_disk_gb": 27.0,
+    "egress_included_gb": 250.0,
+    "egress_usd_per_gb": 0.09,
+    "storage_included_gb": 100.0,
+    "storage_usd_per_gb": 0.0213
+  },
+  "render": {
+    "source": "https://render.com/pricing and https://render.com/docs/cronjobs",
+    "services": {
+      "srv-da36bm2bkg8c73fqrdeg": {"name": "line-buddy-odds-worker", "kind": "worker", "plan": "starter", "usd_month": 7.0},
+      "crn-da7lquqfngtc73ft1n2g": {"name": "line-buddy-odds-worker-health-check", "kind": "cron", "plan": "starter"}
+    },
+    "cron_usd_per_min": {"starter": 0.00016, "standard": 0.00058, "pro": 0.00197},
+    "cron_min_usd_per_service": 1.0,
+    "bandwidth_usd_per_gb": 0.15,
+    "bandwidth_included_gb": {"hobby": 5.0, "pro": 25.0}
+  }
+}
