@@ -2,26 +2,41 @@
 
 > **UNATTENDED RUN 2026-09-25 (operator away 10 h+, green light for P6–P13;
 > the approved mockup is `http://localhost:8125/odds-rebuild-mockup-2026-09-24.html`,
-> the `design-mockups` preview).**
+> the `design-mockups` preview). Updated 10:05 UTC.**
 >
-> - **P6 the bridge: LIVE since 06:52 UTC** on the laptop — scheduled task
->   `LinesmithScraperBridge` (registered; 5-min freshness watchdog,
->   `run-scraper-bridge.ps1`). Status: `odds-scraper/data/bridge_status.json`;
->   logs `bridge.out.log`, `bridge_match.log`, `bridge_watchdog.log`. Replay
->   test PASS, kill drill PASS. **Left in P6:** the 1-h green window
->   (07:05→08:05 UTC), then the STALE drill (disable the task, `-Stop`, wait
->   15 min for `health_check` STALE, enable + start → OK), and the DraftKings
->   live-latency number. Result: `P6-bridge.md` → Result.
-> - **P7 timing: built, `source_latency` filled (417 rows).** Proven fast =
->   Pinnacle, Kalshi, Polymarket only. The bridge runs `scraper_timing.py
->   --days 3 --write` daily after 05:00 local. **Left:** T0.4 (paid feeds'
->   timestamps; the-odds-api's raw payloads are in `odds_cache`, the other five
->   need one fetch each) and the P7 Result write-up.
-> - Then P8 → P13 in order. P11/P12 each need a worker deploy: the classifier
+> - **P6 the bridge: CLOSED — live on the laptop since 06:52 UTC**, scheduled
+>   task `LinesmithScraperBridge` (5-min freshness watchdog,
+>   `run-scraper-bridge.ps1`). Replay test, kill drill, stale drill and 1 h
+>   green all PASS; four live faults found and fixed — `P6-bridge.md` →
+>   Result. Status: `odds-scraper/data/bridge_status.json`; logs
+>   `bridge.out.log`, `bridge.err.log`, `bridge_match.log`,
+>   `bridge_watchdog.log`, `bridge_stacks.log` (a cycle > 180 s dumps stacks).
+> - **P7 timing: CLOSED** — `source_latency` 417 rows; proven fast =
+>   Pinnacle, Kalshi, Polymarket; T0.4 table in `P7-timing.md` → Result. The
+>   bridge runs `scraper_timing.py --days 3 --write` daily after 05:00 local.
+> - **P8 odds sections: IN PROGRESS.** Done: every `lib/odds/section/*`
+>   module (board, sharp, hold, freshness, openers, ladder, depth, coverage,
+>   format) with fixture tests on the mockup's snapshot; `lib/db/oddsRead.ts`;
+>   `/api/odds/player` + `/api/odds/game` (pattern 2); the components
+>   (`components/odds/*`, kit `LiveDot`, `FlashValue`, `DataTable.rowState`,
+>   `Tabs variant="cards"`, `charts/StepLines`); the player page's new
+>   section (O2) rendered live on MLB (`/mlb/player/691023`); `/kit` odds
+>   group. **Next:** `tests/odds-ui.test.ts` guard; O2's render check on the
+>   other sports and at 400; delete the old `PlayerOddsSection.tsx` /
+>   `PropOddsBoard` / `LineMovementCard` once nothing imports them; O3 game
+>   page (`kind: 'odds'` card) + team page; O4 Slate. Deviation to record:
+>   the section keeps its own line stepper (the prop block's `lineOffset` is
+>   relative; sharing is O2 polish).
+> - Then P9 → P13 in order. P11/P12 each need a worker deploy: the classifier
 >   refuses Render API deploys, so they wait for the operator's hand.
 > - Deploy state: worker at `3eb5e4b` (P6.0). The db.py writer changes since
 >   (halving, server-side mirror retry, openers dedupe) matter only to the
 >   laptop today; they reach the worker with its next deploy.
+> - **Operator items from this run:** the two D25 cost inputs (Supabase
+>   egress/compute, Render bandwidth); reclaim the scraper's 5.2 GB WAL
+>   (`wal_checkpoint(TRUNCATE)` at its next restart); the worker has no
+>   `CORPUS_S3_*` so the cost guard lists storage unmeasured; Propline's
+>   `last_change_at` → `changed_at` (D23 follow-up, worker change).
 
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
