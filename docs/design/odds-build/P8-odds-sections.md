@@ -361,8 +361,31 @@ F12 answer; revisit if a hosted app measures differently.
 7. `SlateTeam.abbr` is now set from the matchup ("CHC @ BOS") where it is
    one, for the odds block's tight rows.
 
-**Not yet done in P8:** renders on every sport at 1440 and 400 (MLB Slate at
-1440 checked, `results/p8-slate-games-1440.png`; the dev server was slow and
-flaky during the run); deleting the old `PlayerOddsSection.tsx` /
-`PropOddsBoard` / `LineMovementCard`. `bookLabel("marathon")` is missing from
-the registry.
+**Render sweep (2026-09-25, Playwright at 400 px, text checks):** the game
+page's odds section renders — Sharp prices, Best price, Every book — with no
+horizontal overflow on MLB 823085, NFL 401872958, CFB 401858465, NHL
+2026020004, soccer (EPL/MLS) 761834 and tennis (ATP) 183409; the team page's
+odds section with "Against the closing number" on MLB 158; a final (MLB 823411)
+shows `GameFinalOddsSection` (empty and honest: no pre-start per-book price is
+held from before the bridge) beside the old Game lines card, which holds that
+game's open and close. The Slate at 1440: `results/p8-slate-games-1440.png`.
+
+**Closes, measured:** for games before Sep 25 neither `game_lines` nor its
+history holds a row, and `game_odds_book_lines` holds only rows fetched after
+the start; `game_odds_history` does hold pre-start totals (23–25 books). So
+"Against the closing number" reads the total's close from there and a spread
+close only for games since the bridge started.
+
+**Deleted:** `LineMovementCard`, `PropOddsPanel` (`PropOddsBoard`), the old
+`PlayerOddsSection`, `useLineHistory`, `PlayerDetail`'s unmounted `oddsCards`,
+and every adapter's `propOddsBoard` + `PropOddsBoardProps`.
+
+**Follow-ups (not P8 blockers, listed for the next session):**
+1. Soccer's 1X2 (`fg_ml3`, three-way) has no tab on the game page: the board,
+   best price and no-vig are two-sided. Needs a three-way `MarketSpec`.
+2. `bookLabel("marathon")` is missing from the registry.
+3. `/api/props/line-history` has no caller now (its hook went with the card).
+4. Screenshots at 400 of each surface: the dev server was slow and the page
+   scrolls in an inner container, so the sweep is text checks.
+
+**P8: CLOSED** (2026-09-25).

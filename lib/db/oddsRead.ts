@@ -287,17 +287,38 @@ export interface GameClose {
 /**
  * Each game's consensus closing spread and total: per book, the last main
  * price at or before the start (history first; else the current row when it
- * has not changed since the start), then the line most books closed at.
+ * has not changed since the start; else the paid feeds' last pre-start line;
+ * for a total, else `game_odds_history`'s),
+ * then the line most books closed at.
  */
 export async function readGameCloses(sport: string, games: { gameId: string; start: string }[]): Promise<Record<string, GameClose>> {
   if (!games.length) return {};
   const g = genericSport(sport);
-  const [hist, cur] = await Promise.all([
+  const [hist, cur, paid, older] = await Promise.all([
     gameLineClosesForGames(games),
     pgAll<{ game_id: string; market: string; side: string; point: number | null; bookmaker: string; since: unknown }>(
       `SELECT game_id, market, side, point, bookmaker, coalesce(changed_at, fetched_at) AS since
          FROM game_lines WHERE sport = ? AND game_id = ANY(?) AND period = 'fg' AND market IN ('sp', 'tot') AND is_main`,
       [g, games.map(x => x.gameId)]),
+    // The paid feeds' per-book lines (append-only per fetch): each book's last
+    // spread and total fetched at or before the start. Before the bridge (Sep 25)
+    // this is the only per-book close held for a game (D14).
+    pgAll<{ game_id: string; market: string; point: number | null; bookmaker: string }>(
+      `SELECT DISTINCT ON (l.game_id, l.bookmaker, l.market) l.game_id, l.market, l.point, l.bookmaker
+         FROM game_odds_book_lines l
+         JOIN unnest(?::text[], ?::timestamptz[]) AS q(game_id, start) ON q.game_id = l.game_id
+        WHERE l.sport = ? AND l.market IN ('spread', 'total') AND l.side IN ('home', 'over') AND l.fetched_at <= q.start
+        ORDER BY l.game_id, l.bookmaker, l.market, l.fetched_at DESC`,
+      [games.map(x => x.gameId), games.map(x => x.start), g]),
+    // The oldest store, totals only (moneyline + total since 2026-08): each book's
+    // last total observed at or before the start.
+    pgAll<{ game_id: string; point: number | null; bookmaker: string }>(
+      `SELECT DISTINCT ON (h.event_id, h.bookmaker) h.event_id AS game_id, h.point, h.bookmaker
+         FROM game_odds_history h
+         JOIN unnest(?::text[], ?::timestamptz[]) AS q(game_id, start) ON q.game_id = h.event_id
+        WHERE h.market = 'total' AND h.side = 'over' AND h.observed_at <= q.start
+        ORDER BY h.event_id, h.bookmaker, h.observed_at DESC`,
+      [games.map(x => x.gameId), games.map(x => x.start)]),
   ]);
   const startOf = new Map(games.map(x => [x.gameId, Date.parse(x.start)]));
   // (game, market, book) -> side A's closing line
@@ -310,6 +331,15 @@ export async function readGameCloses(sport: string, games: { gameId: string; sta
     const k = `${r.game_id}|${r.market}|${r.bookmaker}`;
     if (close.has(k) || r.side !== sideA(r.market) || r.point == null || bookGroup(r.bookmaker) === 'pickem') continue;
     if (Date.parse(iso(r.since)) <= (startOf.get(r.game_id) ?? -Infinity)) close.set(k, r.point);
+  }
+  for (const r of paid) {
+    const mk = r.market === 'spread' ? 'sp' : 'tot';
+    const k = `${r.game_id}|${mk}|${r.bookmaker}`;
+    if (!close.has(k) && r.point != null && bookGroup(r.bookmaker) !== 'pickem') close.set(k, r.point);
+  }
+  for (const r of older) {
+    const k = `${r.game_id}|tot|${r.bookmaker}`;
+    if (!close.has(k) && r.point != null && bookGroup(r.bookmaker) !== 'pickem') close.set(k, r.point);
   }
   const out: Record<string, GameClose> = {};
   for (const { gameId } of games) {

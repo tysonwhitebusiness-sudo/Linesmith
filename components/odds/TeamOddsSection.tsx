@@ -33,7 +33,8 @@ interface CloseRow extends TeamPastGame {
  * The team page's odds (odds build P8, O3; the mockup's team surface): the next
  * game's line, the team's own total, the spread's movement, and the team's
  * record against the closing number in its recent finished games (closes from
- * `/api/odds/closes`; history is hot for ten days, so older games read "—").
+ * `/api/odds/closes`: the bridge's history, else the paid feeds' last pre-start
+ * line; a close the app does not hold reads "—").
  * Sport-agnostic: `side` says which side of the next game the team is.
  */
 export function TeamOddsSection({ sport, gameId, teams, side, past }: {
@@ -100,8 +101,8 @@ export function TeamOddsSection({ sport, gameId, teams, side, past }: {
         <Card title="Against the closing number" scope="recent finished games" flush
           state={closes.loading && !closes.data ? { kind: 'loading', lines: 4 } : past.length ? { kind: 'ready' } : { kind: 'empty', title: 'No finished games yet', reason: 'This season has no results to measure.' }}
           caption={withClose.length
-            ? `${tally(closeRows.map(r => r.ats), 'won', 'lost')} ATS · ${tally(closeRows.map(r => r.ou), 'over', 'under')} O/U against the consensus close (the line most books closed at). Closes are held for ten days. Research, not a pick.`
-            : 'No closes held for these games: closing prices are kept for ten days.'}>
+            ? `${tally(closeRows.map(r => r.ats), 'won', 'lost')} ATS · ${tally(closeRows.map(r => r.ou), 'over', 'under')} O/U against the consensus close (the line most books closed at). A "—" is a close the app does not hold: spreads are kept per book from Sep 25, totals from August. Research, not a pick.`
+            : 'No closes held for these games: spreads are kept per book from Sep 25, totals from August.'}>
           <DataTable<CloseRow>
             caption="Results against the closing spread and total"
             density="compact"

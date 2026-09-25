@@ -1,43 +1,36 @@
 # CURRENT — pick up here
 
-> **UNATTENDED RUN 2026-09-25 (operator away 10 h+, green light for P6–P13;
-> the approved mockup is `http://localhost:8125/odds-rebuild-mockup-2026-09-24.html`,
-> the `design-mockups` preview). Updated 10:45 UTC.**
+> **ODDS BUILD — updated 2026-09-25 15:00 UTC. P6, P7, P8 CLOSED. Next: P9.**
+> Start a NEW session per phase (the operator's call after this run's usage:
+> 95% of it ran above 150k context). Read this block, then the phase's spec in
+> `docs/design/odds-build/`, then build.
 >
-> - **⚠ SCRAPER DOWN since 10:19 UTC (operator).** The writer hung inside a
->   SQLite COMMIT (`data/stalls/stall-20260925-102243.txt`); the watchdog
->   killed it at 10:28 and the restart (pid 23028) sits in startup in
->   `entities.load` — a correlated `max(id) FROM events` per link against the
->   5.2 GB WAL (py-spy dump). Both stalls today (06:53, 10:19) began while a
->   long reader of ours was running (the 06:53 full scan; at 10:19 the daily
->   P7 timing job plus the P3 `OddsBridgeMatchReport` task, 14-day horizon,
->   running since 05:15 local). The classifier refused my stopping that report
->   run and even a read-only watch of scraper.db, so this is yours: stop the
->   report task (it is a P3 background check due for deletion 2026-10-01),
->   let the scraper start, then `wal_checkpoint(TRUNCATE)` to reclaim the WAL.
->   The bridge is healthy and caught up; it forwards again once the scraper
->   writes.
-> - **P6 the bridge: CLOSED** (live since 06:52 UTC, task
->   `LinesmithScraperBridge`); standing-price backfill added (fault 5).
->   Status `odds-scraper/data/bridge_status.json`.
-> - **P7 timing: CLOSED** — `P7-timing.md` → Result.
-> - **P8 odds sections: IN PROGRESS.** Done: `lib/odds/section/*` (+ fixture
->   tests, incl. `closing.ts`), `lib/db/oddsRead.ts`, `/api/odds/player`,
->   `/api/odds/game`, `/api/odds/closes` (pattern 2), every component; O2
->   player page; O3 game page (`kind: 'odds'` card → `GameOddsSection`, or
->   `GameFinalOddsSection` for a final with its score) and team page
->   (`TeamOddsSection`: next game's line, team total, movement, Against the
->   closing number). **Next: O4 Slate** (game card odds block, Movers +
->   Dropping odds, Market hub, Scan columns + hashes, `/api/odds/slate`
->   cachedRoute + p95), then renders on every sport at 1440/400, then delete
->   the old `PlayerOddsSection.tsx`/`PropOddsBoard`/`LineMovementCard`.
->   Deviations to record in `P8-odds-sections.md`: own line stepper; the
->   per-sport props card kept (GamePropsCard/PropsResults not built — the
->   existing card already shows props against the box score); the old final
->   "Game lines" card kept for games older than the 10-day history (D14).
-> - Then P9 → P13. P11/P12 need worker deploys by the operator's hand.
-> - **Operator items:** the scraper (above); the two D25 cost inputs; the
->   worker has no `CORPUS_S3_*`; Propline `last_change_at` → `changed_at`.
+> - **P9 next** (`docs/design/odds-build/P9-live.md`): the live refresh (30–60 s)
+>   and the flash/roll on the odds components. Everything it animates exists:
+>   `components/odds/*`, the kit's `LiveDot`/`FlashValue`/`DataTable.rowState`,
+>   hooks in `components/odds/useOdds.ts` (fetch once today; P9 adds the
+>   refresh). Then P10 → P13. P11 and P12 each need a worker deploy by the
+>   operator's hand (the classifier refuses Render API deploys).
+> - **P8 (closed)** — `P8-odds-sections.md` → Result: routes `/api/odds/{player,
+>   game,closes,scan}` (pattern 2) and `/api/odds/slate` (cachedRoute 60 s);
+>   player, game (live + final), team and Slate surfaces; Scan's D22 columns
+>   (pin 50770); old cards deleted. **Follow-ups listed there:** soccer's 1X2
+>   (`fg_ml3`) has no game-page tab (needs a three-way MarketSpec);
+>   `bookLabel("marathon")` missing; `/api/props/line-history` has no caller.
+> - **P6 bridge** live on the laptop (task `LinesmithScraperBridge`); status
+>   `odds-scraper/data/bridge_status.json` (15:00: lag 103 s, healthy).
+> - **Scraper stalls (operator):** the scraper's writer hung inside a SQLite
+>   COMMIT three times today (06:53, 10:19, 11:14 UTC); its watchdog restarted
+>   it each time (10:19 took ~1 h to come back: startup sat in
+>   `entities.load`'s correlated `max(id)` per link against the 5.2 GB WAL).
+>   Each coincided with long readers of ours (the 06:53 full scan; the daily P7
+>   timing job + the P3 `OddsBridgeMatchReport` task, 14-day horizon, daily at
+>   05:15 local — a P3 background check due for deletion 2026-10-01; the
+>   classifier refused my stopping it). Suggested: delete that task now, and
+>   `wal_checkpoint(TRUNCATE)` at a scraper restart to reclaim the WAL.
+> - **Operator items:** the above; the two D25 cost inputs; the worker has no
+>   `CORPUS_S3_*`; Propline `last_change_at` → `changed_at`. Worker deploy
+>   state: `3eb5e4b` (the laptop's db.py writer changes reach it next deploy).
 
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
