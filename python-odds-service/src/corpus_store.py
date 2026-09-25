@@ -141,14 +141,21 @@ CORPUS: dict[str, CorpusTable] = {
     # save space would destroy the one input a future line-movement model would
     # need, permanently, to solve a problem object storage solves for ~12 MB/day.
     #
-    # No `sport` and no `game_date`, so it keyset-chunks on its primary key like
-    # `mlb_pitch_events`. That PK index therefore MUST NOT be dropped, however
-    # unused `idx_scan` makes it look: it is what keeps this export from
-    # sequentially scanning a 632 MB heap once per chunk.
-    "prop_odds_history": CorpusTable(
-        "prop_odds_history", "observed_at", OBSERVED_AT_PREDICATE,
-        partition_by="id_chunk"),
+    #
+    # P5 (2026-09-25, D24): `prop_odds_history` IS NO LONGER A TABLE, so it is no
+    # longer in this registry. It was converted into the compact
+    # `prop_price_history`; its id-chunk files stay in the corpus, and
+    # `history_mover.py` adds one file per day beside them (same directory, same
+    # 13 columns, so one glob still reads the whole series). The final export of
+    # the old table, and the per-id proof that every row reached the corpus, use
+    # LEGACY_PROP_HISTORY below.
 }
+
+# The last export of `prop_odds_history` (P5 A1). Every row, not only those two
+# hours old: it runs once the writer has moved to `prop_price_history`, so
+# nothing can still be in flight. `convert_prop_history.py --legacy-proof`.
+LEGACY_PROP_HISTORY = CorpusTable(
+    "prop_odds_history", "observed_at", "true", partition_by="id_chunk")
 
 
 def spec_for(table: str, spec: "CorpusTable | None" = None) -> CorpusTable:

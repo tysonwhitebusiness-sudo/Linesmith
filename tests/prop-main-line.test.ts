@@ -160,3 +160,20 @@ test('after the start, history timestamps are not read as superseded', () => {
   const result = pickMainLine(rows, kickoff, { now: Date.parse('2026-09-15T01:00:00Z') });
   assert.equal(result.kind === 'main' && result.line, 5.5);
 });
+
+test('F6 (P5): a stale relayed price never beats the book read first-hand', () => {
+  // DraftKings via comparenbet, re-confirmed at 17:55 but unchanged since 09:00,
+  // against DraftKings read from its own site at 17:40 at a different price.
+  const relay = { ...row('draftkings', 5.5, 'over', -140, '2026-09-14T17:55:00Z'), providerId: 'scraper:comparenbet', changedAt: '2026-09-14T09:00:00Z' };
+  const own = { ...row('draftkings', 5.5, 'over', -110, '2026-09-14T17:40:00Z'), providerId: 'scraper:draftkings', changedAt: '2026-09-14T17:40:00Z' };
+  const under = row('draftkings', 5.5, 'under', -110, '2026-09-14T17:40:00Z');
+  const fd = [row('fanduel', 5.5, 'over', -112), row('fanduel', 5.5, 'under', -108)];
+  for (const rows of [[relay, own, under, ...fd], [own, relay, under, ...fd]]) {
+    const result = pickMainLine(rows as PropOddsRow[], START);
+    assert.equal(result.kind, 'main');
+    if (result.kind !== 'main') continue;
+    const dkOver = [result.over, result.under].filter((r) => r && r.bookmaker === 'draftkings' && r.side === 'over');
+    assert.ok(result.over && result.over.americanOdds !== -140, 'the relayed -140 is not the over');
+    assert.ok(dkOver.every((r) => r!.providerId === 'scraper:draftkings'), 'DraftKings stands for itself');
+  }
+});

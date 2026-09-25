@@ -1218,6 +1218,15 @@ async def job_retention(yield_fn=None) -> dict:
     return await _run_timed("retentionJob", db.run_retention())
 
 
+async def job_disk_guard(yield_fn=None) -> dict:
+    """P5 A2 (D24): measure database + WAL, set the history's hot window,
+    pause the bridge if even the floor cannot hold the disk, make partitions
+    ahead. See disk_guard.py. A handful of catalogue queries; no yield needed."""
+    import disk_guard
+
+    return await _run_timed("diskGuardJob", disk_guard.run_disk_guard())
+
+
 # Task 4.5 (P3 M1) — CLV, computed here and STORED, never computed by the
 # renderer (Q13).
 #
@@ -1467,6 +1476,10 @@ JOB_REGISTRY = [
     # its own, per CLAUDE.md's job architecture — a claim the Phase 0 gate
     # tests rather than assumes.
     ("retentionJob", job_retention, 24 * 60 * 60),
+    # P5 A2 (D24) — holds database + WAL under 85% of the provisioned disk by
+    # setting the history's hot window, and keeps partitions made ahead. The
+    # export and drops run in the health-check cron (history_mover.py).
+    ("diskGuardJob", job_disk_guard, 15 * 60),
     # M1 — the model register the app reads; see job_model_status.
     ("modelStatusJob", job_model_status, 24 * 60 * 60),
     # M3 — the Slate's rankings; see job_slate_rankings for why 15 minutes.

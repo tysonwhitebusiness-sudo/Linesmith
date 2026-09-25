@@ -52,7 +52,8 @@ DELETE_BATCH = 5_000
 
 
 async def verify_partition_live(conn, table: str, part: tuple, path: str,
-                                backend=None, filename: str | None = None) -> dict:
+                                backend=None, filename: str | None = None,
+                                spec: "cs.CorpusTable | None" = None) -> dict:
     """Compare the corpus file to live Postgres, and return the ids it is SAFE
     to delete.
 
@@ -123,7 +124,9 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
     deletable: list[int] = []
     live_only = 0
     corrupt: list[int] = []
-    sql, prefix = cs._partition_query(table, cols, part, cs.CHUNK_ROWS)
+    # `spec` overrides the registry: the legacy proof (P5) verifies a table that
+    # has left CORPUS, with every row counted.
+    sql, prefix = cs._partition_query(table, cols, part, cs.CHUNK_ROWS, spec)
     last_id = -1
     while True:
         raw = await conn.fetch(sql, *prefix, last_id)
@@ -183,10 +186,9 @@ KEEP_RECENT_DAYS = {
     # User CLV needed unlimited lookback from here and was deleted instead
     # (709d807). Model CLV reads `game_odds_history`, which is not pruned.
     #
-    # Measured that day: 1.74M of 7.96M rows (~0.52 GB of 2.39 GB) were older
-    # than 10 days. A DELETE does not shrink the file; the freed space is
-    # reused by new rows rather than returned to the disk.
-    "prop_odds_history": 10,
+    # P5 (2026-09-25): no longer here. The table became the day-partitioned
+    # `prop_price_history`, whose window (still 10 days, `disk_guard.HOT_DAYS`)
+    # is kept by `history_mover.py` dropping whole verified days.
     # R5 (2026-09-14). NOT a serving window: the hourly Statcast ingest
     # re-fetches the last 3 days, so a pitch pruned inside that window comes
     # back under a new id and is exported twice (see corpus_store's

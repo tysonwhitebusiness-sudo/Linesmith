@@ -1,11 +1,10 @@
+// P5 timing baseline: lib/odds/props/lineHistory.ts as of 2035a81 (reads prop_odds_history). Not used by the app.
 /**
  * Line movement for one prop, per bookmaker — the read behind `/api/props/line-history`.
  *
- * Phase 6.16. The prop price history (`prop_odds_history` then, 670,478
- * observations across 2,294 subjects and 26 books) was displayed nowhere;
- * `SeriesChart` and `Sparkline` had been sitting ready for it since 6.4. Since
- * P5 (2026-09-25) it is the compact `prop_price_history`, read only through
- * `lib/db/priceHistory.ts`.
+ * Phase 6.16. `prop_odds_history` holds 670,478 observations across 2,294
+ * subjects and 26 books and was displayed nowhere; `SeriesChart` and
+ * `Sparkline` have been sitting ready for it since 6.4.
  *
  * =================== WHY THERE IS NO "CONSENSUS" SERIES ====================
  *
@@ -70,7 +69,7 @@
  * steady when in truth nobody was looking.
  */
 
-import { propHistoryFloor, propLineBuckets, propLineCounts } from '@/lib/db/priceHistory';
+import { pgAll } from '../../lib/db/pgClient';
 
 export interface LineHistoryPoint {
   /** Bucket start, ISO. Aligned across every book in the response. */
@@ -117,25 +116,32 @@ const MAX_BUCKETS = 160;
  * count is clamped after, so the point budget holds for any window.
  */
 /**
- * How far back the prop price history still reaches in Postgres, in hours.
+ * How far back `prop_odds_history` still reaches in Postgres, in hours.
  *
- * PHASE 5.S.8 TRIMS THAT HISTORY TO A HOT WINDOW, with every older tick in the
+ * PHASE 5.S.8 TRIMS THAT TABLE TO A HOT WINDOW, with every older tick in the
  * Parquet corpus — and TypeScript has no way to read the corpus. So a window
  * wider than what Postgres retains cannot be served at all, and the failure is
  * silent by default: the chart simply renders a shorter series, which is
  * indistinguishable from a market that genuinely was not quoted earlier.
  *
- * The floor is DATA, published by the mover (`history_mover.py`) under
- * `corpus:retained-floor:prop_price_history` (`propHistoryFloor`), for the same
- * reason 5.S.5's pitch profile reads its floor rather than hardcoding one: the
- * window moves every time the retention setting — or the disk guard (D24) —
- * changes it, and a constant in a second language cannot track it.
+ * The floor is DATA, published by the pruner under
+ * `corpus:retained-floor:prop_odds_history`, for the same reason 5.S.5's pitch
+ * profile reads its floor rather than hardcoding one: the window moves every
+ * time the retention setting changes, and a constant in a second language
+ * cannot track it.
  *
- * `null` means nothing has been moved to the corpus yet, so every window the
- * route permits is real.
+ * `null` means nothing has been pruned, so every window the route permits is
+ * real — the correct reading for a database that has not run 5.S.8 yet.
  */
 export async function retainedHours(): Promise<number | null> {
-  const floor = await propHistoryFloor();
+  const rows = await pgAll<{ payload: unknown }>(
+    `SELECT payload FROM snapshot_cache WHERE cache_key = ?`,
+    ['corpus:retained-floor:prop_odds_history'],
+  );
+  if (!rows.length) return null;
+  const raw = rows[0].payload;
+  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const floor = (parsed as { floor?: string } | null)?.floor;
   if (!floor) return null;
   const hours = (Date.now() - new Date(floor).getTime()) / 3_600_000;
   return Number.isFinite(hours) && hours > 0 ? Math.floor(hours) : null;
@@ -219,13 +225,44 @@ export async function readLineHistory(q: LineHistoryQuery): Promise<LineHistoryR
   // Which lines exist at all, and how heavily each is quoted. Computed FIRST
   // because it is what distinguishes "this market has no handicap" from "these
   // books dropped one" — see the header.
-  const window = { gameId: q.gameId, subjectId: q.subjectId, marketKey: q.marketKey, side: q.side, hours, before: q.before ?? null };
-  const lineRows = await propLineCounts(window);
+  const lineRows = await pgAll<{ line: number | null; n: string }>(
+    `SELECT line, count(*) AS n
+       FROM prop_odds_history
+      WHERE game_id = ? AND subject_id = ? AND market_key = ? AND side = ?
+        AND observed_at >= now() - interval '${hours} hours'
+        AND (?::timestamptz IS NULL OR observed_at <= ?::timestamptz)
+      GROUP BY line
+      ORDER BY count(*) DESC`,
+    [q.gameId, q.subjectId, q.marketKey, q.side, q.before ?? null, q.before ?? null],
+  );
 
   const { availableLines, resolvedLine } = pinLine(lineRows, q.line);
 
-  // The last real observation per book per bucket, on the pinned line only.
-  const rows = await propLineBuckets({ ...window, bucketSeconds, line: resolvedLine });
+  const rows = await pgAll<{
+    bookmaker: string;
+    bucket: Date | string;
+    line: number | null;
+    american_odds: number | null;
+  }>(
+    `SELECT DISTINCT ON (bookmaker, bucket)
+            bookmaker,
+            to_timestamp(floor(extract(epoch FROM observed_at) / ${bucketSeconds}) * ${bucketSeconds}) AS bucket,
+            line,
+            american_odds
+       FROM prop_odds_history
+      WHERE game_id = ? AND subject_id = ? AND market_key = ? AND side = ?
+        AND observed_at >= now() - interval '${hours} hours'
+        AND (?::timestamptz IS NULL OR observed_at <= ?::timestamptz)
+        -- IS NOT DISTINCT FROM, not '=': it matches NULL to NULL, which is what
+        -- pins a genuinely line-less market to its own rows instead of
+        -- returning nothing. With a real line it also excludes the null-line
+        -- rows a book failed to record, which is the intent either way.
+        AND line IS NOT DISTINCT FROM ?
+      -- DESC on observed_at is what makes DISTINCT ON take the LAST real
+      -- observation in each bucket rather than the first. See the header.
+      ORDER BY bookmaker, bucket, observed_at DESC`,
+    [q.gameId, q.subjectId, q.marketKey, q.side, q.before ?? null, q.before ?? null, resolvedLine],
+  );
 
   const byBook = new Map<string, LineHistoryPoint[]>();
   const bucketSet = new Set<string>();

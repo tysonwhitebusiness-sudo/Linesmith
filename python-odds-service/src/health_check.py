@@ -82,7 +82,11 @@ GROWTH_MIN_WINDOW_DAYS = 1.0
 # The harvester runs every ~150 min per sport (scripts/harvester-laptop-setup.ps1),
 # so 6h clears several cycles without crying wolf over one skipped run.
 HARVESTER_STALE_HOURS = 6
-DB_LIMIT_MB = 8192          # Supabase Pro
+# D24 (2026-09-25): the ceiling is no longer Pro's included 8 GB but the disk
+# guard's limit — 85% of the provisioned 27 GB, which is where it starts moving
+# history out. Headroom is measured against the same number the guard acts on.
+import disk_guard as _disk_guard  # noqa: E402
+DB_LIMIT_MB = int(_disk_guard.PROVISIONED_GB * _disk_guard.LIMIT_PCT * 1000)
 WORKER_LIMIT_MB = 512       # Render plan
 # 80%: measure_projection_memory.py already treats 60% as the danger band for a
 # single job, and this is the whole process across a sequential queue.
@@ -1257,6 +1261,62 @@ async def check_database_growth() -> dict:
                        f"over {days:.1f}d, {days_left:,.0f} days of headroom")}
 
 
+async def check_disk_guard() -> dict:
+    """D24 — the disk guard and the history mover (P5 amendment A2).
+
+    Unhealthy when any of these holds:
+      * database + WAL is over the guard's limit (85% of the provisioned disk);
+      * the hot window is shorter than normal (the guard is moving history out
+        early to hold the disk);
+      * the bridge is paused;
+      * the guard has not written for 45 minutes (its job runs every 15);
+      * fewer than 7 days of partitions are ready ahead (a write would fail);
+      * a closed day has gone unexported for more than 36 hours;
+      * the mover's last pass failed.
+    """
+    import disk_guard
+    import price_history as ph
+
+    pool = await db.get_pool()
+    problems: list[str] = []
+    async with pool.acquire(timeout=30.0) as conn:
+        st = await disk_guard.read_state(conn)
+        if not st:
+            return {"name": "diskGuard", "healthy": False, "status": "no disk_guard_state row — diskGuardJob has never run"}
+        age_min = (datetime.now(timezone.utc) - st["measured_at"]).total_seconds() / 60
+        total = st["db_bytes"] + st["wal_bytes"]
+        if total > st["limit_bytes"]:
+            problems.append(f"over the limit ({total / 1e9:.2f} GB > {st['limit_bytes'] / 1e9:.2f} GB)")
+        if st["hot_days"] < disk_guard.HOT_DAYS:
+            problems.append(f"window shortened to {st['hot_days']} days")
+        if st["bridge_paused"]:
+            problems.append("BRIDGE PAUSED")
+        if age_min > 45:
+            problems.append(f"state {age_min:.0f} min old")
+        if st["partitions_ahead"] < 7:
+            problems.append(f"only {st['partitions_ahead']} days of partitions ahead")
+        ledger = {(r["table_name"], r["part"]) for r in
+                  await conn.fetch("SELECT table_name, part FROM odds_history_exports WHERE verified_at IS NOT NULL")}
+        stale = []
+        cutoff = datetime.now(timezone.utc).date()
+        for table in ph.HISTORY_TABLES:
+            for p in await ph.partition_days(conn, table):
+                closed_since = datetime.combine(p["day"], datetime.min.time(), timezone.utc).timestamp() + 86400
+                if (datetime.now(timezone.utc).timestamp() - closed_since > 36 * 3600
+                        and (table, f"d{p['day']:%Y%m%d}") not in ledger and p["day"] < cutoff):
+                    stale.append(f"{table}:{p['day']}")
+        if stale:
+            problems.append(f"{len(stale)} closed day(s) unexported over 36h ({', '.join(stale[:3])})")
+        mover = await conn.fetchrow("SELECT healthy, status FROM job_health_checks WHERE check_name = 'historyMover'")
+        if mover and not mover["healthy"]:
+            problems.append(f"mover: {mover['status']}")
+    status = (f"{total / 1e9:.2f} GB of {st['limit_bytes'] / 1e9:.2f} GB limit "
+              f"({total / (st['limit_bytes'] / disk_guard.LIMIT_PCT) * 100:.1f}% of provisioned), "
+              f"window {st['hot_days']} days, {st['partitions_ahead']} days ahead")
+    return {"name": "diskGuard", "healthy": not problems,
+            "status": ("PROBLEM: " + "; ".join(problems) + " — " + status) if problems else status}
+
+
 async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
     results = [
@@ -1276,6 +1336,7 @@ async def main() -> int:
         await check_history_prefix_cutoff(),
         await check_harvester_scrapes(),
         await check_database_growth(),
+        await check_disk_guard(),
         await check_worker_memory(),
     ]
 
@@ -1332,5 +1393,31 @@ async def main() -> int:
     return 1 if alerting_failures else 0
 
 
+async def _cron() -> int:
+    """The cron's entry point: the checks, then one pass of the history mover
+    (P5 A2 — it runs here, on the cron's own instance, because the worker has
+    no memory to spare for an export). The mover records its own heartbeat
+    (`historyMover`), which `check_disk_guard` reads on the next run; a mover
+    failure never hides a check result and never changes this exit code
+    beyond its own recorded failure."""
+    rc = await main()
+    try:
+        import history_mover
+
+        summary = await history_mover.run_mover()
+        print(f"[history_mover] {json.dumps(summary, default=str)}", flush=True)
+    except Exception as e:                                   # noqa: BLE001
+        print(f"[history_mover] FAILED: {type(e).__name__}: {e}", flush=True)
+        try:
+            await db.write_health_check_results([{
+                "name": "historyMover", "healthy": False,
+                "status": f"FAILED: {type(e).__name__}: {e}"[:400],
+                "raw": {"ran_at": datetime.now(timezone.utc).isoformat()},
+            }])
+        except Exception:                                    # noqa: BLE001
+            pass
+    return rc
+
+
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(asyncio.run(_cron()))

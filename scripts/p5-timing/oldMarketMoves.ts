@@ -1,12 +1,11 @@
+// P5 timing baseline: lib/slate/marketMoves.ts as of 2035a81 (reads prop_odds_history). Not used by the app.
 /**
  * The Slate's market reads: Movers (MV1–MV2) and the two market-shape cards
  * (S2).
  *
  * Three questions, all answered in POSTGRES rather than in Node, because the
- * tables are large and the answers are small: the prop history held 1.8
- * million rows over three days when this was written (`prop_odds_history`;
- * since P5 the compact `prop_price_history`, read through
- * `lib/db/priceHistory.ts`'s `PROP_MOVER_HISTORY`) and 120,495 prop lines that have moved in the
+ * tables are large and the answers are small: `prop_odds_history` holds 1.8
+ * million rows over three days and 120,495 prop lines that have moved in the
  * last 36 hours, and `prop_odds` holds 591,923 current quotes. Pulling any of
  * that over the wire to reduce it here is how this app already got a 2.26
  * GB/day egress line on its bill (`db.py`'s own note). Each reader below
@@ -23,8 +22,7 @@
  * edge, and nothing compares a move to a model.
  */
 
-import { pgAll } from '../db/pgClient';
-import { PROP_MOVER_HISTORY, type MoverHistorySource } from '../db/priceHistory';
+import { pgAll } from '../../lib/db/pgClient';
 
 /** Implied probability from American odds, as a SQL expression over `col`. */
 const IMPLIED = (col: string) => `(CASE WHEN ${col} > 0 THEN 100.0 / (${col} + 100) ELSE (-${col})::numeric / ((-${col}) + 100) END)`;
@@ -171,48 +169,32 @@ export function isSplit(lineFirst: number | null, line: number | null, movePts: 
   return Math.sign((line - lineFirst) * leans) !== Math.sign(movePts);
 }
 
-interface MoverSource extends MoverHistorySource {
+interface MoverSource {
+  table: string;
+  id: string;
+  subject: string;
+  market: string;
+  line: string;
   bound: number;
 }
 
-/**
- * The game-line history is one text table, so every "code" is its own text.
- * The prop history is the compact `prop_price_history`, read through
- * `lib/db/priceHistory.ts`: grouped on integer codes, decoded at the end
- * (P5 — see `MoverHistorySource` for the measurement behind it).
- */
-const TEXT = (_kind: string, col: string) => col;
 const SOURCES: Record<MoverKind, MoverSource> = {
-  props: { ...PROP_MOVER_HISTORY, bound: 2000 },
-  lines: {
-    from: () => 'game_odds_history t JOIN s ON s.gid = t.event_id::text',
-    game: 't.event_id::text',
-    subject: 'NULL::text',
-    market: 't.market',
-    line: 't.point',
-    side: 't.side',
-    book: 't.bookmaker',
-    odds: 't.american_odds',
-    bookNotIn: 'lower(t.bookmaker) <> ALL(?)',
-    sideIn: (col, names) => `${col} IN (${names.map((n) => `'${n}'`).join(', ')})`,
-    decode: TEXT,
-    encode: TEXT,
-    bound: 5000,
-  },
+  props: { table: 'prop_odds_history', id: 'game_id', subject: 't.subject_id', market: 'market_key', line: 'line', bound: 2000 },
+  lines: { table: 'game_odds_history', id: 'event_id', subject: 'NULL::text', market: 'market', line: 'point', bound: 5000 },
 };
 
 /** Pre-game observations for upcoming games, sane prices, consensus books only. */
 function preGameCte(src: MoverSource): string {
   return `s AS (SELECT unnest(?::text[]) AS gid, unnest(?::timestamptz[]) AS starts_at),
      h AS (
-       SELECT ${src.game} AS game_id, ${src.subject} AS subject_id, ${src.market} AS market, ${src.line} AS line,
-              ${src.side} AS side, ${src.book} AS bookmaker, t.observed_at, ${IMPLIED(src.odds)} AS p
-       FROM ${src.from("now() - interval '7 days'")}
+       SELECT t.${src.id}::text AS game_id, ${src.subject} AS subject_id, t.${src.market} AS market, t.${src.line} AS line,
+              t.side, t.bookmaker, t.observed_at, ${IMPLIED('t.american_odds')} AS p
+       FROM ${src.table} t JOIN s ON s.gid = t.${src.id}::text
        WHERE t.observed_at < s.starts_at
          AND s.starts_at > now()
          AND t.observed_at > now() - interval '7 days'
-         AND abs(${src.odds}) BETWEEN 100 AND ${src.bound}
-         AND ${src.bookNotIn}
+         AND abs(t.american_odds) BETWEEN 100 AND ${src.bound}
+         AND lower(t.bookmaker) <> ALL(?)
      )`;
 }
 
@@ -252,21 +234,12 @@ function consensusSql(src: MoverSource): string {
               array_agg(big_sign) FILTER (WHERE big_t IS NOT NULL AND sign(p_last - p_first) = big_sign) AS steam_sign
        FROM b GROUP BY 1, 2, 3, 4, 5
        HAVING count(*) >= ${MIN_CONSENSUS_BOOKS}
-     ),
-     top AS (
-       SELECT * FROM k
-       WHERE moved >= ${MIN_BOOKS_MOVED}
-         AND greatest(abs(m_last - m_first), abs(m_last - m_3h), abs(m_last - m_1h)) * 100 >= ${MIN_MOVE_PTS}
-       ORDER BY abs(m_last - m_first) DESC
-       LIMIT 1500
      )
-     -- Qualified: inside a decode subquery a bare \`subject_id\` would bind to the dictionary's own column.
-     SELECT top.game_id, ${src.decode('subject', 'top.subject_id')} AS subject_id,
-            ${src.decode('market', 'top.market')} AS market, top.line, ${src.decode('side', 'top.side')} AS side,
-            top.books, top.m_first, top.m_3h, top.m_1h, top.m_last, top.moved, top.first_move_at,
-            top.steam_t, top.steam_sign
-     FROM top
-     ORDER BY abs(top.m_last - top.m_first) DESC`;
+     SELECT * FROM k
+     WHERE moved >= ${MIN_BOOKS_MOVED}
+       AND greatest(abs(m_last - m_first), abs(m_last - m_3h), abs(m_last - m_1h)) * 100 >= ${MIN_MOVE_PTS}
+     ORDER BY abs(m_last - m_first) DESC
+     LIMIT 1500`;
 }
 
 /**
@@ -282,7 +255,7 @@ function lineShiftSql(src: MoverSource): string {
        SELECT game_id, subject_id, market, line, bookmaker,
               (array_agg(p ORDER BY observed_at))[1] AS p_first,
               (array_agg(p ORDER BY observed_at DESC))[1] AS p_last
-       FROM h WHERE ${src.sideIn('side', ['over', 'home'])} AND line IS NOT NULL
+       FROM h WHERE side IN ('over', 'home') AND line IS NOT NULL
        GROUP BY 1, 2, 3, 4, 5
      ),
      l AS (
@@ -295,37 +268,27 @@ function lineShiftSql(src: MoverSource): string {
            FROM l ORDER BY game_id, subject_id, market, abs(m_first - 0.5), books DESC),
      z AS (SELECT DISTINCT ON (game_id, subject_id, market) game_id, subject_id, market, line AS line_now
            FROM l ORDER BY game_id, subject_id, market, abs(m_last - 0.5), books DESC)
-     SELECT a.game_id, ${src.decode('subject', 'a.subject_id')} AS subject_id, ${src.decode('market', 'a.market')} AS market,
-            a.line_first, z.line_now
+     SELECT a.game_id, a.subject_id, a.market, a.line_first, z.line_now
      FROM a JOIN z ON z.game_id = a.game_id AND z.subject_id IS NOT DISTINCT FROM a.subject_id AND z.market = a.market`;
 }
 
 /** Hourly consensus (median of that hour's quotes) for the chosen keys, over the 48 hours to now (or to the start). */
 function trendSql(src: MoverSource): string {
-  const after = "(SELECT least(now(), min(starts_at)) FROM s) - interval '48 hours'";
   return `WITH s AS (SELECT unnest(?::text[]) AS gid, unnest(?::timestamptz[]) AS starts_at),
-     kk AS (SELECT * FROM unnest(?::text[], ?::text[], ?::text[], ?::float8[], ?::text[]) WITH ORDINALITY AS kk(game_id, subject_id, market, line, side, idx)),
-     k AS (SELECT kk.idx, kk.game_id, ${src.encode('subject', 'kk.subject_id')} AS subject_id,
-                  ${src.encode('market', 'kk.market')} AS market, kk.line, ${src.encode('side', 'kk.side')} AS side
-           FROM kk)
+     k AS (SELECT * FROM unnest(?::text[], ?::text[], ?::text[], ?::float8[], ?::text[]) WITH ORDINALITY AS k(game_id, subject_id, market, line, side, idx))
      SELECT k.idx, date_trunc('hour', t.observed_at) AS hr,
-            percentile_cont(0.5) WITHIN GROUP (ORDER BY ${IMPLIED(src.odds)}) AS m
-     ${
-       src.keyedFrom
-         ? `FROM ${src.keyedFrom(after)}
-     WHERE ${src.line} IS NOT DISTINCT FROM k.line AND ${src.side} = k.side
-       AND`
-         : `FROM ${src.from(after)}
-     JOIN k ON k.game_id = ${src.game}
-           AND ${src.subject} IS NOT DISTINCT FROM k.subject_id
-           AND ${src.market} = k.market
-           AND ${src.line} IS NOT DISTINCT FROM k.line
-           AND ${src.side} = k.side
-     WHERE`
-     } t.observed_at < s.starts_at
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY ${IMPLIED('t.american_odds')}) AS m
+     FROM k
+     JOIN ${src.table} t ON t.${src.id}::text = k.game_id
+                        AND ${src.subject} IS NOT DISTINCT FROM k.subject_id
+                        AND t.${src.market} = k.market
+                        AND t.${src.line} IS NOT DISTINCT FROM k.line
+                        AND t.side = k.side
+     JOIN s ON s.gid = t.${src.id}::text
+     WHERE t.observed_at < s.starts_at
        AND t.observed_at > least(now(), s.starts_at) - interval '48 hours'
-       AND abs(${src.odds}) BETWEEN 100 AND ${src.bound}
-       AND ${src.bookNotIn}
+       AND abs(t.american_odds) BETWEEN 100 AND ${src.bound}
+       AND lower(t.bookmaker) <> ALL(?)
      GROUP BY 1, 2 ORDER BY 1, 2`;
 }
 
@@ -639,3 +602,4 @@ export async function readLineDisagreements(gameIds: string[], limit = 12): Prom
     otherBookmakers: (r.other_bookmakers as string[] | null) ?? [],
   }));
 }
+

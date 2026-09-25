@@ -30,6 +30,8 @@ const row = (over: Partial<PropOddsRow>): PropOddsRow => ({
   fetchedAt: '2026-09-15T19:50:00Z',
   isDelayed: false,
   delaySeconds: null,
+  changedAt: null,
+  extra: null,
   ...over,
 });
 const twoSided = (book: string, line: number, over: number, under: number, extra: Partial<PropOddsRow> = {}) => [
@@ -261,8 +263,9 @@ test('the rail no longer carries the odds cards the section replaced, and the ol
 
 test('the lines route serves pre-game rows for a started game, and line history can stop at the start', () => {
   assert.match(readFileSync('app/api/props/lines/route.ts', 'utf8'), /readPreGamePropOddsForGame\(gameId, start\)/);
-  const lh = readFileSync('lib/odds/props/lineHistory.ts', 'utf8');
-  assert.equal((lh.match(/observed_at <= \?::timestamptz/g) ?? []).length, 2, 'both the line count and the series stop at the start');
+  // P5: the chart's SQL moved into the one shared reader (`propLineCounts`, `propLineBuckets`).
+  const lh = readFileSync('lib/db/priceHistory.ts', 'utf8');
+  assert.equal((lh.match(/OR h\.observed_at <= \?::timestamptz/g) ?? []).length, 2, 'both the line count and the series stop at the start');
 });
 
 test('an over hits once it passes the line; an under below its line has not hit yet (R6 audit)', async () => {

@@ -206,16 +206,23 @@ async def db_sizes() -> dict:
 
     pool = await db.get_pool()
     out = {"db_bytes": await pool.fetchval("SELECT pg_database_size(current_database())")}
-    for t in ("prop_odds_history", "game_odds_history", "prop_odds"):
+    for t in ("game_odds_history", "prop_odds"):
         r = await pool.fetchrow("SELECT pg_total_relation_size($1::regclass) AS b, "
                                 "(SELECT reltuples FROM pg_class WHERE oid = $1::regclass) AS n", t)
         out[t] = {"bytes": int(r["b"]), "rows": float(r["n"]), "bytes_per_row": round(r["b"] / max(r["n"], 1), 1)}
+    # P5: prop history is the compact, partitioned prop_price_history (it was
+    # prop_odds_history, 345 B/row, when P4 ran this). Summed over partitions.
+    import price_history as ph
+    async with pool.acquire() as conn:
+        z = await ph.table_size(conn, ph.PROP_TABLE)
+    out["prop_history"] = {"bytes": z["bytes"], "rows": float(z["rows"]),
+                           "bytes_per_row": round(z["bytes"] / max(z["rows"], 1), 1)}
     return out
 
 
 def project(tally: dict, keys: dict, hours: float, sizes: dict, cap_gb: float = 8.0) -> dict:
     per_day = 24.0 / hours
-    B_PROP = sizes["prop_odds_history"]["bytes_per_row"]
+    B_PROP = sizes["prop_history"]["bytes_per_row"]
     B_GAME = sizes["game_odds_history"]["bytes_per_row"]
     B_CUR = sizes["prop_odds"]["bytes_per_row"]
 
@@ -272,7 +279,7 @@ def main() -> None:
     #  B1 = B with ONE relay per relay-only book (the relay carrying most of that book's rows);
     #  F  = first-hand sources only.
     per_day_f = 24.0 / hours
-    bp, bg = sizes["prop_odds_history"]["bytes_per_row"], sizes["game_odds_history"]["bytes_per_row"]
+    bp, bg = sizes["prop_history"]["bytes_per_row"], sizes["game_odds_history"]["bytes_per_row"]
     relay = defaultdict(lambda: defaultdict(float))
     fh = defaultdict(float)
     for (k, cls, book, src, ph), v in m["by_book"].items():

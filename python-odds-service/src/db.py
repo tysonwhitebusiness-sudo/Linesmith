@@ -29,6 +29,9 @@ from config import DATABASE_URL, DB_POOLER_MODE
 # write_game_odds_book_lines to canonicalise bookmaker spellings at the one
 # choke point every Python game-line writer already passes through (task 5.3).
 from entity_resolution import canonical_bookmaker
+# P5 (A1): the compact history's layout lives in one module; db.py's writers and
+# readers go through it. price_history imports nothing from db, so no cycle.
+import price_history
 
 _pool: asyncpg.Pool | None = None
 
@@ -491,6 +494,12 @@ class PropOddsInput:
     decimal_odds: float | None
     is_delayed: bool = False
     delay_seconds: int | None = None
+    # P5 (D23): the source's own times. Both default to None, which keeps every
+    # existing caller's behaviour exactly: "checked" and "since" become the
+    # write time, as they always were.
+    observed_at: datetime | None = None   # checked: when the source last confirmed the price
+    changed_at: datetime | None = None    # since: when the price last changed at the source
+    extra: dict | None = None             # limit, bid/ask, volume, version, payout
 
 
 # The only side values `prop_odds_side_valid` permits. Kept beside the writer
@@ -523,7 +532,7 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
          null-safe equality the way SQLite's was for the original code this
          was ported from.
       2. If there's no prior row, or the price genuinely changed, insert a
-         row into prop_odds_history — an append-only log of price MOVEMENTS,
+         row into the price history (prop_price_history since P5) — an append-only log of price MOVEMENTS,
          not one row per poll. A repeat of the same price on the next cycle
          is not a history point.
       3. Unconditionally upsert prop_odds itself (the current-state table)
@@ -536,7 +545,7 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
          whose (line, side, bookmaker) the batch did not return. The upsert
          alone never removed anything, so a rung a book stopped quoting read as
          current for hours (WTA 183791: a 12:19 DraftKings row beside 19:18
-         FanDuel rows). `prop_odds_history` keeps the record. Only a caller
+         FanDuel rows). The price history keeps the record, and since P5 the removal itself is a `prop_odds_pulls` row. Only a caller
          that knows its fetch read everything may name a provider here; a
          market the batch does not mention is never touched.
 
@@ -555,6 +564,21 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
     behaviour ships without the observation that proves it. Corrected in
     task 2.8. As of 2026-08-29 the callers are every ProviderSpec-driven
     job in jobs.py, via job_runner.
+
+    TWO TIMES AND PULLS (P5, 2026-09-25; D23, D24).
+      * History goes to the compact `prop_price_history` through
+        `price_history` (A1), with `observed_at` = the change time at the
+        source (`changed_at`, else `observed_at`, else the write time) and
+        `recorded_at` = the write time.
+      * `prop_odds.fetched_at` is "checked" (`observed_at`, else the write
+        time) and `changed_at` is "since": it moves only when the price
+        does. `extra` keeps the last non-null source detail.
+      * Step 4's delete now RECORDS what it removed: each rung a complete
+        provider stopped quoting becomes a `prop_odds_pulls` row with its
+        last price (`reason = 'complete_fetch'`), in the same statement.
+        A key that comes back (no prior current row) closes its open pull
+        (`returned_at`).
+      A caller that passes no times gets exactly the pre-P5 behaviour.
     """
     if not rows:
         return
@@ -591,7 +615,22 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
         latest[(r.provider_id, r.game_id, r.subject_id, r.market_key, r.line, r.side, r.bookmaker)] = r
     batch = list(latest.values())
 
+    # Dictionary codes for the compact history, resolved BEFORE the write
+    # transaction on their own connection (price_history's docstring: a code
+    # created inside a transaction that rolls back would be cached here and
+    # point at nothing). A line a `real` cannot hold exactly is not stored
+    # rounded: it stays in `prop_odds`, is left out of the history, and is
+    # reported. None of the 7,051,336 converted rows had one.
+    storable, unstorable = price_history.split_unstorable(batch, "line")
+    if unstorable:
+        print(f"[db] write_prop_odds: {len(unstorable)} row(s) have a line the history cannot hold "
+              f"exactly and were left out of it: "
+              + "; ".join(f"{r.provider_id}/{r.game_id}/{r.market_key} line={r.line!r}" for r in unstorable[:3]),
+              flush=True)
+    unstorable_ids = {id(r) for r in unstorable}
     pool = await get_pool()
+    await price_history.resolve_prop_rows(pool, [_history_row(r, fetched_at) for r in storable])
+
     async with pool.acquire(timeout=30.0) as conn:
         async with conn.transaction():
             # ONE query for every prior price, not one per row — task 3.10,
@@ -625,49 +664,68 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
 
             # History is log-on-CHANGE only: a repeat of the same price on the
             # next cycle is not a history point.
-            changed = [r for k, r in latest.items() if prior.get(k) != r.american_odds]
-            if changed:
-                await conn.executemany(
-                    """
-                    INSERT INTO prop_odds_history
-                      (provider_id, game_id, subject_id, market_key, line, side, bookmaker,
-                       american_odds, decimal_odds, observed_at, is_delayed, delay_seconds)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                    """,
-                    [
-                        (r.provider_id, r.game_id, r.subject_id, r.market_key, r.line, r.side, r.bookmaker,
-                         r.american_odds, r.decimal_odds, fetched_at, r.is_delayed, r.delay_seconds)
-                        for r in changed
-                    ],
-                )
+            changed = [r for k, r in latest.items()
+                       if prior.get(k) != r.american_odds and id(r) not in unstorable_ids]
+            await price_history.insert_prop_history(conn, [_history_row(r, fetched_at) for r in changed])
 
             # Current state is upserted unconditionally, changed or not — the
-            # fetched_at bump is what freshness checks read.
+            # fetched_at bump is what freshness checks read. `changed_at` moves
+            # only when the price does: in a SET, `prop_odds.american_odds` is
+            # the OLD row's value.
             await conn.executemany(
                 """
                 INSERT INTO prop_odds
                   (provider_id, game_id, subject_id, subject_name, market_key, line, side, bookmaker,
-                   american_odds, decimal_odds, fetched_at, is_delayed, delay_seconds)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                   american_odds, decimal_odds, fetched_at, is_delayed, delay_seconds, changed_at, extra)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
                 ON CONFLICT (provider_id, game_id, subject_id, market_key, line, side, bookmaker) DO UPDATE SET
                   subject_name  = excluded.subject_name,
                   american_odds = excluded.american_odds,
                   decimal_odds  = excluded.decimal_odds,
                   fetched_at    = excluded.fetched_at,
                   is_delayed    = excluded.is_delayed,
-                  delay_seconds = excluded.delay_seconds
+                  delay_seconds = excluded.delay_seconds,
+                  changed_at    = CASE WHEN prop_odds.american_odds IS DISTINCT FROM excluded.american_odds
+                                       THEN excluded.changed_at
+                                       ELSE COALESCE(prop_odds.changed_at, excluded.changed_at) END,
+                  extra         = COALESCE(excluded.extra, prop_odds.extra)
                 """,
                 [
                     (r.provider_id, r.game_id, r.subject_id, r.subject_name, r.market_key, r.line, r.side, r.bookmaker,
-                     r.american_odds, r.decimal_odds, fetched_at, r.is_delayed, r.delay_seconds)
+                     r.american_odds, r.decimal_odds, r.observed_at or fetched_at, r.is_delayed, r.delay_seconds,
+                     r.changed_at or r.observed_at or fetched_at,
+                     json.dumps(r.extra, sort_keys=True) if r.extra else None)
                     for r in batch
                 ],
             )
+
+            # A key with no prior current row has (re)appeared: close any open
+            # pull on it, at the time the source says it was seen.
+            fresh = [r for k, r in latest.items() if k not in prior]
+            if fresh:
+                await conn.execute(
+                    """
+                    UPDATE prop_odds_pulls p SET returned_at = k.at
+                      FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::double precision[],
+                                  $6::text[], $7::text[], $8::timestamptz[])
+                           AS k(provider_id, game_id, subject_id, market_key, line, side, bookmaker, at)
+                     WHERE p.returned_at IS NULL
+                       AND p.provider_id = k.provider_id AND p.game_id = k.game_id AND p.subject_id = k.subject_id
+                       AND p.market_key = k.market_key AND p.line IS NOT DISTINCT FROM k.line
+                       AND p.side = k.side AND p.bookmaker = k.bookmaker
+                    """,
+                    [r.provider_id for r in fresh], [r.game_id for r in fresh], [r.subject_id for r in fresh],
+                    [r.market_key for r in fresh], [r.line for r in fresh], [r.side for r in fresh],
+                    [r.bookmaker for r in fresh], [r.observed_at or fetched_at for r in fresh],
+                )
 
             for provider in complete_providers:
                 mine = [r for r in batch if r.provider_id == provider]
                 if not mine:
                     continue
+                # The delete RETURNS what it removed and the same statement
+                # records each rung as a pull (P5): a book that stopped quoting
+                # a price is market information, not something to lose.
                 await conn.execute(
                     """
                     WITH ret AS (
@@ -675,19 +733,40 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
                                AS r(game_id, subject_id, market_key, line, side, bookmaker)
                     ), markets AS (
                         SELECT DISTINCT game_id, subject_id, market_key FROM ret
+                    ), gone AS (
+                        DELETE FROM prop_odds p
+                         USING markets m
+                         WHERE p.provider_id = $1
+                           AND p.game_id = m.game_id AND p.subject_id = m.subject_id AND p.market_key = m.market_key
+                           AND NOT EXISTS (
+                               SELECT 1 FROM ret r
+                                WHERE r.game_id = p.game_id AND r.subject_id = p.subject_id AND r.market_key = p.market_key
+                                  AND r.line IS NOT DISTINCT FROM p.line AND r.side = p.side AND r.bookmaker = p.bookmaker)
+                        RETURNING p.provider_id, p.game_id, p.subject_id, p.market_key, p.line, p.side, p.bookmaker,
+                                  p.american_odds
                     )
-                    DELETE FROM prop_odds p
-                     USING markets m
-                     WHERE p.provider_id = $1
-                       AND p.game_id = m.game_id AND p.subject_id = m.subject_id AND p.market_key = m.market_key
-                       AND NOT EXISTS (
-                           SELECT 1 FROM ret r
-                            WHERE r.game_id = p.game_id AND r.subject_id = p.subject_id AND r.market_key = p.market_key
-                              AND r.line IS NOT DISTINCT FROM p.line AND r.side = p.side AND r.bookmaker = p.bookmaker)
+                    INSERT INTO prop_odds_pulls
+                      (provider_id, game_id, subject_id, market_key, line, side, bookmaker, last_american_odds,
+                       pulled_at, reason)
+                    SELECT provider_id, game_id, subject_id, market_key, line, side, bookmaker, american_odds,
+                           $8, 'complete_fetch'
+                      FROM gone
                     """,
                     provider, [r.game_id for r in mine], [r.subject_id for r in mine], [r.market_key for r in mine],
-                    [r.line for r in mine], [r.side for r in mine], [r.bookmaker for r in mine],
+                    [r.line for r in mine], [r.side for r in mine], [r.bookmaker for r in mine], fetched_at,
                 )
+
+
+def _history_row(r: PropOddsInput, fetched_at: datetime) -> "price_history.PropHistoryRow":
+    """One `PropOddsInput` as a compact-history row: `observed_at` is the change
+    time at the source when the producer knows it, else the write time (the
+    column's meaning since it existed); `recorded_at` is always the write time."""
+    return price_history.PropHistoryRow(
+        provider_id=r.provider_id, is_delayed=bool(r.is_delayed), delay_seconds=r.delay_seconds,
+        game_id=r.game_id, subject_id=r.subject_id, market_key=r.market_key, line=r.line, side=r.side,
+        bookmaker=r.bookmaker, american_odds=r.american_odds, decimal_odds=r.decimal_odds,
+        observed_at=r.changed_at or r.observed_at or fetched_at, recorded_at=fetched_at,
+    )
 
 
 @dataclass
@@ -1496,7 +1575,7 @@ class PickHistoryGrade:
     actual_value: float | None
     # The market's side of the edge, joined in at grading time (task 2.7b).
     # Grading is the first moment a row's surfaced_at can be matched against
-    # the price history that was accumulating in prop_odds_history at the
+    # the price history that was accumulating in the prop price history at the
     # same instant, so these are written here rather than at surface time.
     # All optional: a row with no two-sided price to join against is graded
     # on outcome alone, which is honest rather than a gap to fill in.
@@ -1622,19 +1701,11 @@ async def read_prop_odds_history_for_key(game_id: str, subject_id: str, market_k
 
     `IS NOT DISTINCT FROM` on `line`, not `=`: a NULL line (moneyline, and
     any market whose line the provider didn't carry) must match NULL, which
-    `=` never does. Carried over from the TS original deliberately."""
+    `=` never does. Carried over from the TS original deliberately.
+
+    Reads the compact `prop_price_history` through `price_history` (P5 A1)."""
     pool = await get_pool()
-    rows = await pool.fetch(
-        """
-        SELECT provider_id, bookmaker, side, american_odds, observed_at
-        FROM prop_odds_history
-        WHERE game_id = $1 AND subject_id = $2 AND market_key = $3 AND line IS NOT DISTINCT FROM $4
-        """,
-        game_id,
-        subject_id,
-        market_key,
-        line,
-    )
+    rows = await price_history.read_prop_history_for_key(pool, game_id, subject_id, market_key, line)
     return [
         PropOddsHistoryPoint(
             provider_id=r["provider_id"], bookmaker=r["bookmaker"], side=r["side"],
@@ -3935,6 +4006,565 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# P5 (odds workstream, 2026-09-25): writers for the scraper bridge and the
+# Track O odds sections. `docs/design/odds-build/P5-schema-and-writers.md` §2.
+# Every one normalises at the writer (the 5.3 rule): generic sport key,
+# canonical bookmaker. The P6 bridge is their first caller.
+# ---------------------------------------------------------------------------
+
+# game_odds_book_lines' market names for the P2 game types that have one. Only
+# the full-game MAIN line of these three is mirrored there, so today's pages
+# show the scraper's books before P8 moves them onto game_lines.
+_BOOK_LINES_MARKET = {"ml": "moneyline", "sp": "spread", "tot": "total"}
+
+
+@dataclass
+class PropPullInput:
+    provider_id: str
+    game_id: str
+    subject_id: str
+    market_key: str
+    line: float | None
+    side: str
+    bookmaker: str
+    pulled_at: datetime
+    reason: str          # 'line' | 'event_gone' | 'complete_fetch'
+
+
+async def write_prop_pulls(pulls: list[PropPullInput]) -> int:
+    """Record prices a book stopped offering, and take them out of `prop_odds`.
+
+    Each pull deletes the matching current row (its price becomes
+    `last_american_odds`) and inserts one `prop_odds_pulls` row. A key that is
+    already pulled and not yet returned is not pulled twice. Returns rows
+    inserted. One statement for the whole batch.
+    """
+    if not pulls:
+        return 0
+    for p in pulls:
+        p.side = canonical_prop_side(p.side)
+    pool = await get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        async with conn.transaction():
+            res = await conn.execute(
+                """
+                WITH k AS (
+                    SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::float8[], $6::text[],
+                                         $7::text[], $8::timestamptz[], $9::text[])
+                           AS k(provider_id, game_id, subject_id, market_key, line, side, bookmaker, pulled_at, reason)
+                ), gone AS (
+                    DELETE FROM prop_odds p USING k
+                     WHERE p.provider_id = k.provider_id AND p.game_id = k.game_id AND p.subject_id = k.subject_id
+                       AND p.market_key = k.market_key AND p.line IS NOT DISTINCT FROM k.line
+                       AND p.side = k.side AND p.bookmaker = k.bookmaker
+                    RETURNING p.provider_id, p.game_id, p.subject_id, p.market_key, p.line, p.side, p.bookmaker,
+                              p.american_odds
+                )
+                INSERT INTO prop_odds_pulls
+                  (provider_id, game_id, subject_id, market_key, line, side, bookmaker, last_american_odds,
+                   pulled_at, reason)
+                SELECT k.provider_id, k.game_id, k.subject_id, k.market_key, k.line, k.side, k.bookmaker,
+                       g.american_odds, k.pulled_at, k.reason
+                  FROM k
+                  LEFT JOIN gone g ON g.provider_id = k.provider_id AND g.game_id = k.game_id
+                                  AND g.subject_id = k.subject_id AND g.market_key = k.market_key
+                                  AND g.line IS NOT DISTINCT FROM k.line AND g.side = k.side
+                                  AND g.bookmaker = k.bookmaker
+                 WHERE NOT EXISTS (
+                        SELECT 1 FROM prop_odds_pulls o
+                         WHERE o.returned_at IS NULL AND o.provider_id = k.provider_id AND o.game_id = k.game_id
+                           AND o.subject_id = k.subject_id AND o.market_key = k.market_key
+                           AND o.line IS NOT DISTINCT FROM k.line AND o.side = k.side AND o.bookmaker = k.bookmaker)
+                """,
+                [p.provider_id for p in pulls], [p.game_id for p in pulls], [p.subject_id for p in pulls],
+                [p.market_key for p in pulls], [p.line for p in pulls], [p.side for p in pulls],
+                [p.bookmaker for p in pulls], [p.pulled_at for p in pulls], [p.reason for p in pulls],
+            )
+    return int(res.split()[-1])
+
+
+@dataclass
+class GameLineInput:
+    sport: str
+    game_id: str
+    period: str
+    market: str
+    side: str
+    point: float | None
+    is_main: bool
+    bookmaker: str
+    source: str
+    american_odds: int
+    decimal_odds: float | None = None
+    observed_at: datetime | None = None   # checked
+    changed_at: datetime | None = None    # since
+    extra: dict | None = None
+
+
+def _game_line_key(r: GameLineInput) -> tuple:
+    return (r.sport, r.game_id, r.period, r.market, r.side, r.point, r.bookmaker, r.source)
+
+
+_GAME_LINES_UPSERT = """
+    INSERT INTO game_lines
+        (sport, game_id, period, market, side, point, is_main, bookmaker, source, american_odds, decimal_odds,
+         fetched_at, changed_at, extra)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+    ON CONFLICT ON CONSTRAINT game_lines_key DO UPDATE SET
+        is_main       = excluded.is_main,
+        american_odds = excluded.american_odds,
+        decimal_odds  = excluded.decimal_odds,
+        fetched_at    = excluded.fetched_at,
+        changed_at    = CASE WHEN game_lines.american_odds IS DISTINCT FROM excluded.american_odds
+                             THEN excluded.changed_at ELSE game_lines.changed_at END,
+        extra         = COALESCE(excluded.extra, game_lines.extra)
+"""
+
+
+async def write_game_lines(rows: list[GameLineInput], complete_sources: frozenset[str] = frozenset()) -> None:
+    """Current per-book game lines for every period, alternate and market
+    type, plus their history (P5). Pure additions to what exists: no other
+    table's rows are touched except the full-game main ml/sp/tot, which are
+    ALSO written to `game_odds_book_lines` so today's pages show them.
+
+      * History is log-on-change into the compact `game_lines_history`
+        (price_history): a row when the price or the main-line flag differs
+        from the current row, or there is none. `observed_at` = the change time
+        at the source (`changed_at`, else `observed_at`, else now).
+      * Batch first, isolate only on failure — `write_game_odds_book_lines`'
+        pattern: a chunk that violates a constraint (a `-50` price, an unknown
+        sport) is replayed row by row and only the bad rows are dropped, with
+        no history row for them either.
+      * `complete_sources`: a source whose fetch read everything for the
+        (game, period, market)s this batch covers. Its rungs the batch did not
+        return are deleted and recorded in `game_line_pulls`.
+      * A key with no current row closes its open pull.
+    """
+    if not rows:
+        return
+    now = datetime.now(timezone.utc)
+    for r in rows:
+        r.sport = _GENERIC_SPORT_KEY.get(r.sport, r.sport)
+        r.bookmaker = canonical_bookmaker(r.bookmaker)
+    latest: dict[tuple, GameLineInput] = {}
+    for r in rows:
+        latest[_game_line_key(r)] = r
+    batch = list(latest.values())
+
+    def _hist(r: GameLineInput) -> "price_history.GameLineHistoryRow":
+        return price_history.GameLineHistoryRow(
+            sport=r.sport, game_id=r.game_id, period=r.period, market=r.market, side=r.side, point=r.point,
+            is_main=r.is_main, bookmaker=r.bookmaker, source=r.source, american_odds=r.american_odds,
+            observed_at=r.changed_at or r.observed_at or now, recorded_at=now)
+
+    storable, unstorable = price_history.split_unstorable(batch, "point")
+    if unstorable:
+        print(f"[db] write_game_lines: {len(unstorable)} row(s) have a point the history cannot hold exactly "
+              f"and were left out of it: "
+              + "; ".join(f"{r.source}/{r.game_id}/{r.market} point={r.point!r}" for r in unstorable[:3]), flush=True)
+    no_history = {id(r) for r in unstorable}
+    pool = await get_pool()
+    await price_history.resolve_game_rows(pool, [_hist(r) for r in storable])
+
+    def _params(r: GameLineInput) -> tuple:
+        return (r.sport, r.game_id, r.period, r.market, r.side, r.point, bool(r.is_main), r.bookmaker, r.source,
+                r.american_odds, r.decimal_odds, r.observed_at or now, r.changed_at or r.observed_at or now,
+                json.dumps(r.extra, sort_keys=True) if r.extra else None)
+
+    rejected: list[str] = []
+    written: list[GameLineInput] = []
+    fresh: list[GameLineInput] = []
+    async with pool.acquire(timeout=30.0) as conn:
+        keys = list(latest.keys())
+        prior_rows = await conn.fetch(
+            """
+            SELECT g.sport, g.game_id, g.period, g.market, g.side, g.point, g.bookmaker, g.source,
+                   g.american_odds, g.is_main
+              FROM game_lines g
+              JOIN unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::float8[], $7::text[], $8::text[])
+                   AS k(sport, game_id, period, market, side, point, bookmaker, source)
+                ON g.sport = k.sport AND g.game_id = k.game_id AND g.period = k.period AND g.market = k.market
+               AND g.side = k.side AND g.point IS NOT DISTINCT FROM k.point AND g.bookmaker = k.bookmaker
+               AND g.source = k.source
+            """,
+            *[[k[i] for k in keys] for i in range(8)],
+        )
+        prior = {(p["sport"], p["game_id"], p["period"], p["market"], p["side"], p["point"], p["bookmaker"],
+                  p["source"]): (p["american_odds"], p["is_main"]) for p in prior_rows}
+
+        def _changed(r: GameLineInput) -> bool:
+            return prior.get(_game_line_key(r)) != (r.american_odds, bool(r.is_main)) and id(r) not in no_history
+
+        chunk_size = 500
+        for i in range(0, len(batch), chunk_size):
+            chunk = batch[i:i + chunk_size]
+            try:
+                async with conn.transaction():
+                    await conn.executemany(_GAME_LINES_UPSERT, [_params(r) for r in chunk])
+                    await price_history.insert_game_line_history(conn, [_hist(r) for r in chunk if _changed(r)])
+                written.extend(chunk)
+            except asyncpg.CheckViolationError:
+                for r in chunk:
+                    try:
+                        async with conn.transaction():
+                            await conn.execute(_GAME_LINES_UPSERT, *_params(r))
+                            if _changed(r):
+                                await price_history.insert_game_line_history(conn, [_hist(r)])
+                        written.append(r)
+                    except asyncpg.CheckViolationError as e:
+                        rejected.append(f"{r.sport}/{r.game_id}/{r.period}/{r.market}/{r.side}/{r.bookmaker}"
+                                        f" point={r.point} odds={r.american_odds} ({type(e).__name__})")
+        fresh = [r for r in written if _game_line_key(r) not in prior]
+
+        async with conn.transaction():
+            if fresh:
+                await conn.execute(
+                    """
+                    UPDATE game_line_pulls p SET returned_at = k.at
+                      FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::float8[],
+                                  $7::text[], $8::text[], $9::timestamptz[])
+                           AS k(sport, game_id, period, market, side, point, bookmaker, source, at)
+                     WHERE p.returned_at IS NULL AND p.sport = k.sport AND p.game_id = k.game_id
+                       AND p.period = k.period AND p.market = k.market AND p.side = k.side
+                       AND p.point IS NOT DISTINCT FROM k.point AND p.bookmaker = k.bookmaker AND p.source = k.source
+                    """,
+                    *[[_game_line_key(r)[i] for r in fresh] for i in range(8)],
+                    [r.observed_at or now for r in fresh],
+                )
+            for source in complete_sources:
+                mine = [r for r in written if r.source == source]
+                if not mine:
+                    continue
+                await conn.execute(
+                    """
+                    WITH ret AS (
+                        SELECT * FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::float8[],
+                                             $8::text[])
+                               AS r(sport, game_id, period, market, side, point, bookmaker)
+                    ), markets AS (
+                        SELECT DISTINCT sport, game_id, period, market FROM ret
+                    ), gone AS (
+                        DELETE FROM game_lines g USING markets m
+                         WHERE g.source = $1 AND g.sport = m.sport AND g.game_id = m.game_id
+                           AND g.period = m.period AND g.market = m.market
+                           AND NOT EXISTS (
+                               SELECT 1 FROM ret r
+                                WHERE r.sport = g.sport AND r.game_id = g.game_id AND r.period = g.period
+                                  AND r.market = g.market AND r.side = g.side
+                                  AND r.point IS NOT DISTINCT FROM g.point AND r.bookmaker = g.bookmaker)
+                        RETURNING g.sport, g.game_id, g.period, g.market, g.side, g.point, g.bookmaker, g.source,
+                                  g.american_odds
+                    )
+                    INSERT INTO game_line_pulls
+                      (sport, game_id, period, market, side, point, bookmaker, source, last_american_odds,
+                       pulled_at, reason)
+                    SELECT sport, game_id, period, market, side, point, bookmaker, source, american_odds,
+                           $9, 'complete_fetch'
+                      FROM gone
+                    """,
+                    source, *[[_game_line_key(r)[i] for r in mine] for i in range(7)], now,
+                )
+
+    if rejected:
+        print(f"[db] write_game_lines rejected {len(rejected)} of {len(batch)} rows: {'; '.join(rejected[:5])}"
+              + (f" (+{len(rejected) - 5} more)" if len(rejected) > 5 else ""), flush=True)
+
+    # The full-game main ml/sp/tot, mirrored for today's pages (§2). The
+    # existing constraints on that table still police them.
+    mirror = [
+        GameOddsBookLineInput(sport=r.sport, game_id=r.game_id, market=_BOOK_LINES_MARKET[r.market], side=r.side,
+                              bookmaker=r.bookmaker, source=r.source, american_odds=r.american_odds,
+                              point=None if r.market == "ml" else r.point, decimal_odds=r.decimal_odds)
+        for r in written
+        if r.period == "fg" and r.is_main and r.market in _BOOK_LINES_MARKET
+    ]
+    if mirror:
+        await write_game_odds_book_lines(mirror)
+
+
+@dataclass
+class GameLinePullInput:
+    sport: str
+    game_id: str
+    period: str
+    market: str
+    side: str
+    point: float | None
+    bookmaker: str
+    source: str
+    pulled_at: datetime
+    reason: str
+
+
+async def write_game_line_pulls(pulls: list[GameLinePullInput]) -> int:
+    """`write_prop_pulls` for game lines: delete the current row, record the pull."""
+    if not pulls:
+        return 0
+    for p in pulls:
+        p.sport = _GENERIC_SPORT_KEY.get(p.sport, p.sport)
+        p.bookmaker = canonical_bookmaker(p.bookmaker)
+    cols = [[p.sport for p in pulls], [p.game_id for p in pulls], [p.period for p in pulls],
+            [p.market for p in pulls], [p.side for p in pulls], [p.point for p in pulls],
+            [p.bookmaker for p in pulls], [p.source for p in pulls], [p.pulled_at for p in pulls],
+            [p.reason for p in pulls]]
+    pool = await get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        async with conn.transaction():
+            res = await conn.execute(
+                """
+                WITH k AS (
+                    SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::float8[],
+                                         $7::text[], $8::text[], $9::timestamptz[], $10::text[])
+                           AS k(sport, game_id, period, market, side, point, bookmaker, source, pulled_at, reason)
+                ), gone AS (
+                    DELETE FROM game_lines g USING k
+                     WHERE g.sport = k.sport AND g.game_id = k.game_id AND g.period = k.period
+                       AND g.market = k.market AND g.side = k.side AND g.point IS NOT DISTINCT FROM k.point
+                       AND g.bookmaker = k.bookmaker AND g.source = k.source
+                    RETURNING g.sport, g.game_id, g.period, g.market, g.side, g.point, g.bookmaker, g.source,
+                              g.american_odds
+                )
+                INSERT INTO game_line_pulls
+                  (sport, game_id, period, market, side, point, bookmaker, source, last_american_odds, pulled_at, reason)
+                SELECT k.sport, k.game_id, k.period, k.market, k.side, k.point, k.bookmaker, k.source,
+                       g.american_odds, k.pulled_at, k.reason
+                  FROM k
+                  LEFT JOIN gone g ON g.sport = k.sport AND g.game_id = k.game_id AND g.period = k.period
+                                  AND g.market = k.market AND g.side = k.side
+                                  AND g.point IS NOT DISTINCT FROM k.point AND g.bookmaker = k.bookmaker
+                                  AND g.source = k.source
+                 WHERE NOT EXISTS (
+                        SELECT 1 FROM game_line_pulls o
+                         WHERE o.returned_at IS NULL AND o.sport = k.sport AND o.game_id = k.game_id
+                           AND o.period = k.period AND o.market = k.market AND o.side = k.side
+                           AND o.point IS NOT DISTINCT FROM k.point AND o.bookmaker = k.bookmaker
+                           AND o.source = k.source)
+                """,
+                *cols,
+            )
+    return int(res.split()[-1])
+
+
+@dataclass
+class OpenerInput:
+    kind: str                 # 'prop' | 'game'
+    sport: str
+    game_id: str
+    subject_id: str           # '' for a game market
+    period: str
+    market: str
+    side: str
+    bookmaker: str
+    point: float | None
+    american_odds: int | None
+    opened_at: datetime
+    opener_source: str        # 'first_seen' | 'vsin_open' | 'an_open' | 'theoddsgap'
+    check_flag: bool = False
+    check_reason: str | None = None
+
+
+async def write_openers(rows: list[OpenerInput]) -> int:
+    """The first price per book (D21). First write wins, with one exception:
+    VSiN's OPEN row replaces a `first_seen` opener for the same key, because
+    for a Nevada book it IS the opener and `first_seen` is only when we first
+    looked. A failed sanity check is stored (`check_flag`), never dropped.
+    Returns rows inserted or replaced."""
+    if not rows:
+        return 0
+    for r in rows:
+        r.sport = _GENERIC_SPORT_KEY.get(r.sport, r.sport)
+        r.bookmaker = canonical_bookmaker(r.bookmaker)
+    pool = await get_pool()
+    res = await pool.execute(
+        """
+        INSERT INTO market_openers
+          (kind, sport, game_id, subject_id, period, market, side, bookmaker, point, american_odds, opened_at,
+           opener_source, check_flag, check_reason)
+        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
+                             $8::text[], $9::float8[], $10::int[], $11::timestamptz[], $12::text[], $13::boolean[],
+                             $14::text[])
+        ON CONFLICT ON CONSTRAINT market_openers_key DO UPDATE SET
+          point = excluded.point, american_odds = excluded.american_odds, opened_at = excluded.opened_at,
+          opener_source = excluded.opener_source, check_flag = excluded.check_flag,
+          check_reason = excluded.check_reason
+        WHERE excluded.opener_source = 'vsin_open' AND market_openers.opener_source = 'first_seen'
+        """,
+        [r.kind for r in rows], [r.sport for r in rows], [r.game_id for r in rows],
+        [r.subject_id or "" for r in rows], [r.period or "fg" for r in rows], [r.market for r in rows],
+        [r.side for r in rows], [r.bookmaker for r in rows], [r.point for r in rows],
+        [r.american_odds for r in rows], [r.opened_at for r in rows], [r.opener_source for r in rows],
+        [bool(r.check_flag) for r in rows], [r.check_reason for r in rows],
+    )
+    return int(res.split()[-1])
+
+
+@dataclass
+class SplitInput:
+    sport: str
+    game_id: str
+    subject_id: str
+    period: str
+    market: str
+    side: str
+    line: float | None
+    source: str
+    book: str | None
+    kind: str                 # 'bets_money' | 'picks' | 'pick_counts' | 'bet_count'
+    pct_bets: float | None
+    pct_money: float | None
+    count: int | None
+    count_total: int | None
+    observed_at: datetime
+
+
+async def write_splits(rows: list[SplitInput]) -> int:
+    """Bets/money %, picks and counts, one row per CHANGE (Track V): a row is
+    written only when its values differ from the latest stored row for the same
+    (game, subject, period, market, side, source, book, kind). Returns rows
+    inserted."""
+    if not rows:
+        return 0
+    for r in rows:
+        r.sport = _GENERIC_SPORT_KEY.get(r.sport, r.sport)
+        r.subject_id = r.subject_id or ""
+        r.period = r.period or "fg"
+    pool = await get_pool()
+    res = await pool.execute(
+        """
+        WITH k AS (
+            SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                                 $7::float8[], $8::text[], $9::text[], $10::text[], $11::float8[], $12::float8[],
+                                 $13::int[], $14::int[], $15::timestamptz[])
+                   AS k(sport, game_id, subject_id, period, market, side, line, source, book, kind,
+                        pct_bets, pct_money, count, count_total, observed_at)
+        ), prior AS (
+            SELECT DISTINCT ON (s.game_id, s.subject_id, s.period, s.market, s.side, s.source, s.book, s.kind)
+                   s.game_id, s.subject_id, s.period, s.market, s.side, s.source, s.book, s.kind,
+                   s.pct_bets, s.pct_money, s.count, s.count_total
+              FROM market_splits s
+              JOIN (SELECT DISTINCT game_id, market, source FROM k) d
+                ON s.game_id = d.game_id AND s.market = d.market AND s.source = d.source
+             ORDER BY s.game_id, s.subject_id, s.period, s.market, s.side, s.source, s.book, s.kind,
+                      s.observed_at DESC, s.id DESC
+        )
+        INSERT INTO market_splits
+          (sport, game_id, subject_id, period, market, side, line, source, book, kind, pct_bets, pct_money,
+           count, count_total, observed_at)
+        SELECT k.sport, k.game_id, k.subject_id, k.period, k.market, k.side, k.line, k.source, k.book, k.kind,
+               k.pct_bets, k.pct_money, k.count, k.count_total, k.observed_at
+          FROM k
+          LEFT JOIN prior p
+            ON p.game_id = k.game_id AND p.subject_id = k.subject_id AND p.period = k.period
+           AND p.market = k.market AND p.side = k.side AND p.source = k.source
+           AND p.book IS NOT DISTINCT FROM k.book AND p.kind = k.kind
+         WHERE p.game_id IS NULL
+            OR (p.pct_bets, p.pct_money, p.count, p.count_total)
+               IS DISTINCT FROM (k.pct_bets, k.pct_money, k.count, k.count_total)
+        """,
+        [r.sport for r in rows], [r.game_id for r in rows], [r.subject_id for r in rows], [r.period for r in rows],
+        [r.market for r in rows], [r.side for r in rows], [r.line for r in rows], [r.source for r in rows],
+        [r.book for r in rows], [r.kind for r in rows], [r.pct_bets for r in rows], [r.pct_money for r in rows],
+        [r.count for r in rows], [r.count_total for r in rows], [r.observed_at for r in rows],
+    )
+    return int(res.split()[-1])
+
+
+@dataclass
+class ExchangeBookInput:
+    exchange: str             # 'kalshi' | 'polymarket'
+    contract_id: str
+    sport: str
+    game_id: str
+    subject_id: str
+    period: str
+    market: str
+    side: str
+    point: float | None
+    best_bid: float | None
+    best_ask: float | None
+    bid_size: float | None
+    ask_size: float | None
+    volume_24h: float | None
+    open_interest: float | None
+    liquidity: float | None
+    ladder: dict | None
+    changed_at: datetime
+    fetched_at: datetime
+
+
+async def write_exchange_books(rows: list[ExchangeBookInput]) -> int:
+    """Current order book per contract: one row per (exchange, contract_id)."""
+    if not rows:
+        return 0
+    latest = {(r.exchange, r.contract_id): r for r in rows}
+    rows = list(latest.values())
+    for r in rows:
+        r.sport = _GENERIC_SPORT_KEY.get(r.sport, r.sport)
+    pool = await get_pool()
+    await pool.executemany(
+        """
+        INSERT INTO exchange_books
+          (exchange, contract_id, sport, game_id, subject_id, period, market, side, point, best_bid, best_ask,
+           bid_size, ask_size, volume_24h, open_interest, liquidity, ladder, changed_at, fetched_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19)
+        ON CONFLICT (exchange, contract_id) DO UPDATE SET
+          sport = excluded.sport, game_id = excluded.game_id, subject_id = excluded.subject_id,
+          period = excluded.period, market = excluded.market, side = excluded.side, point = excluded.point,
+          best_bid = excluded.best_bid, best_ask = excluded.best_ask, bid_size = excluded.bid_size,
+          ask_size = excluded.ask_size, volume_24h = excluded.volume_24h, open_interest = excluded.open_interest,
+          liquidity = excluded.liquidity, ladder = excluded.ladder, changed_at = excluded.changed_at,
+          fetched_at = excluded.fetched_at
+        """,
+        [(r.exchange, r.contract_id, r.sport, r.game_id, r.subject_id or "", r.period or "fg", r.market, r.side,
+          r.point, r.best_bid, r.best_ask, r.bid_size, r.ask_size, r.volume_24h, r.open_interest, r.liquidity,
+          json.dumps(r.ladder, sort_keys=True) if r.ladder is not None else None, r.changed_at, r.fetched_at)
+         for r in rows],
+    )
+    return len(rows)
+
+
+@dataclass
+class GameReferenceInput:
+    sport: str
+    game_id: str
+    source: str
+    kind: str                 # 'power_rating' | 'umpire' | 'referee' | 'book_link'
+    subject: str
+    data: dict
+    observed_at: datetime
+
+
+async def write_game_reference(rows: list[GameReferenceInput]) -> int:
+    """Per-game reference facts; the latest observation wins (an older one
+    arriving late never overwrites a newer one). Returns rows written."""
+    if not rows:
+        return 0
+    latest: dict[tuple, GameReferenceInput] = {}
+    for r in rows:
+        r.sport = _GENERIC_SPORT_KEY.get(r.sport, r.sport)
+        k = (r.sport, r.game_id, r.source, r.kind, r.subject or "")
+        if k not in latest or latest[k].observed_at <= r.observed_at:
+            latest[k] = r
+    rows = list(latest.values())
+    pool = await get_pool()
+    res = await pool.execute(
+        """
+        INSERT INTO game_reference (sport, game_id, source, kind, subject, data, observed_at)
+        SELECT k.sport, k.game_id, k.source, k.kind, k.subject, k.data::jsonb, k.observed_at
+          FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[])
+               AS k(sport, game_id, source, kind, subject, data, observed_at)
+        ON CONFLICT (sport, game_id, source, kind, subject) DO UPDATE SET
+          data = excluded.data, observed_at = excluded.observed_at
+        WHERE game_reference.observed_at <= excluded.observed_at
+        """,
+        [r.sport for r in rows], [r.game_id for r in rows], [r.source for r in rows], [r.kind for r in rows],
+        [r.subject or "" for r in rows], [json.dumps(r.data, sort_keys=True) for r in rows],
+        [r.observed_at for r in rows],
+    )
+    return int(res.split()[-1])
+
+
+# ---------------------------------------------------------------------------
 # Python's independently-computed gameModel + Elo (Phase N of the TS
 # cutover gameplan) — additive only, nothing reads this yet.
 # ---------------------------------------------------------------------------
@@ -4422,7 +5052,7 @@ async def write_golf_tournament_results(rows: list[GolfTournamentResultInput]) -
 # (table, predicate, human reason). Ordered biggest-win-first so a partial run
 # (statement timeout, a dropped connection) still frees the space that matters.
 #
-# What is deliberately NOT here: prop_odds_history and game_odds_history. Those
+# What is deliberately NOT here: the prop price history (prop_price_history, pruned by the mover by whole day) and game_odds_history. Those
 # are the line-movement dataset — append-only, log-on-change, slow-growing, and
 # the thing Phase 5/6 identify as the actual product asset. They are not
 # regenerable from any public source. Never add them to this list.
@@ -4446,7 +5076,7 @@ RETENTION_RULES: list[tuple[str, str, str]] = [
     (
         "prop_odds",
         "fetched_at < now() - interval '7 days'",
-        "current prop lines for games that finished a week ago; the history of how they moved lives in prop_odds_history, which this never touches",
+        "current prop lines for games that finished a week ago; the history of how they moved lives in prop_price_history, which this never touches",
     ),
     (
         "game_odds_book_lines",

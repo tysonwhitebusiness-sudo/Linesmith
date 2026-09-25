@@ -127,6 +127,34 @@ from `golfPredictionsJob`) as their sole writer.
 | **TS · admin** | Written only by a hand-invoked operator/backfill route, never on a user's page-load path. |
 | **⚠ contested** | Two writers today. The Task column names what closes it. |
 
+> **What odds-build P5 changed on 2026-09-25** (migration `20260925010830`,
+> `docs/design/odds-build/P5-schema-and-writers.md` A1–A3). Every new table has
+> RLS on with one read policy; the partitions have RLS on and no policy (read
+> through the parent). The scraper bridge (P6) is a third Python writer through
+> these same `db.write_*` functions, run on the laptop.
+>
+> | table | change | owner |
+> |---|---|---|
+> | `prop_odds_history` | **REPLACED** by `prop_price_history` — converted row for row (7,074,963 rows, all 13 columns proven identical), then dropped | — |
+> | `prop_price_history` | **NEW**, compact (dictionary codes, one partition per UTC day of `recorded_at`, 101 B/row measured vs 341) | Python — `write_prop_odds` via `price_history.insert_prop_history`; the mover exports each closed day to the corpus and drops it after the window (`history_mover.py`, health-check cron); read ONLY through `lib/db/priceHistory.ts` and `src/price_history.py` |
+> | `game_lines_history` | **NEW**, compact like the above | Python — `write_game_lines`; exported/dropped by the mover |
+> | `odds_games`, `odds_subjects`, `odds_markets`, `odds_books`, `odds_sources`, `odds_sides`, `odds_periods` | **NEW** dictionaries, append-only | Python — `price_history.Codes.resolve` (every history writer) |
+> | `odds_history_exports` | **NEW** ledger | Python — `history_mover.export_day`; `convert_prop_history.py --legacy-proof` writes its `legacy` row |
+> | `disk_guard_state` | **NEW**, one row | Python — `diskGuardJob` (`disk_guard.py`); read by the mover, `health_check.check_disk_guard` and (P6) the bridge |
+> | `game_lines` | **NEW** current state | Python — `write_game_lines` (the P6 bridge); read by the Track O odds sections (P8) |
+> | `prop_odds_pulls` | **NEW** | Python — `write_prop_odds` (step 4's recorded delete, returns) and `write_prop_pulls` (the bridge) |
+> | `game_line_pulls` | **NEW** | Python — `write_game_lines` (`complete_sources`), `write_game_line_pulls` |
+> | `market_openers` | **NEW** | Python — `write_openers` |
+> | `market_splits` | **NEW** | Python — `write_splits` |
+> | `exchange_books` | **NEW** | Python — `write_exchange_books` |
+> | `game_reference` | **NEW** | Python — `write_game_reference` |
+> | `prop_odds` | gains `changed_at` ("since") and `extra` | unchanged: Python, `write_prop_odds` |
+>
+> **Open item found here, not fixed here:** `slate_rankings`, `model_status`
+> and `tennis_match_stats` have RLS **off** (measured `pg_class.relrowsecurity`
+> 2026-09-25). They are Python-written and read-only to the app, so they want
+> the same pattern as the tables above.
+
 ---
 
 ## The 36 tables

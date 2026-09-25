@@ -32,6 +32,7 @@
 import type { OddsInfo, PickCandidate } from '@/lib/core/types';
 import type { PropOddsRow } from '@/lib/db/client';
 import { candidateCategoryToSide } from './entityResolution';
+import { preferQuote } from '../sourcePrecedence';
 
 /**
  * Pick'em / DFS operators. Their "price" is a fixed payout multiplier, not odds
@@ -99,8 +100,8 @@ export const SUPERSEDED_AFTER_MS = 30 * 60_000;
 export interface MainLineOptions {
   /**
    * The clock, for deciding whether the game has started. Superseded rungs are
-   * only dropped BEFORE the start: a started game's rows come from
-   * `prop_odds_history`, which records a price when it changes, so a stable,
+   * only dropped BEFORE the start: a started game's rows come from the price
+   * history, which records a price when it changes, so a stable,
    * still-quoted rung carries an old timestamp there and would be dropped
    * wrongly. Omit to skip the check (the pure default).
    */
@@ -109,8 +110,10 @@ export interface MainLineOptions {
 
 /**
  * Last counted, pre-start quote per (book, side, line). `prop_odds` is keyed on
- * provider too, so one book arriving through two providers is two rows; the
- * later one stands for the book.
+ * provider too, so one book arriving through two providers is two rows;
+ * `preferQuote` (`lib/odds/sourcePrecedence.ts`) picks the one that stands for
+ * the book: first-hand over relayed, then the later change, then the later
+ * check (P5, finding F6).
  *
  * SUPERSEDED RUNGS ARE DROPPED. `prop_odds` is an upsert that never deletes, so
  * a line a book pulled hours ago still reads as current. Measured 2026-09-14,
@@ -140,7 +143,9 @@ export function lastPreGameQuotes(rows: PropOddsRow[], startIso?: string | null,
     if (dropSuperseded && timeOf(r.fetchedAt) < newestByBook.get(book)! - SUPERSEDED_AFTER_MS) continue;
     const key = `${book}|${r.side}|${r.line ?? 'null'}`;
     const prev = latest.get(key);
-    if (!prev || timeOf(r.fetchedAt) > timeOf(prev.fetchedAt)) latest.set(key, r);
+    // F6 (P5): a book's own site beats a relayed copy, then the later change,
+    // then the later check — never simply the later check.
+    latest.set(key, prev ? preferQuote(prev, r) : r);
   }
   return [...latest.values()];
 }

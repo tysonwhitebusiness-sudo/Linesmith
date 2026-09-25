@@ -70,6 +70,18 @@ Practical rules that follow:
   third one.
 - **The four user tables (`bets`/`picks`/`watchlist`/`tracked_lines`) stay in
   TypeScript** — request-scoped and session-authenticated. Do not move them.
+- **The scraper bridge (odds build P6) is a third Python writer**, run on the
+  laptop, through the same shared `db.write_*` functions as the worker — never
+  its own SQL.
+- **Price history is compact and has ONE reader per language** (P5, D24):
+  `prop_price_history` / `game_lines_history` are integer-coded, one partition
+  per UTC day, 10 days hot, then moved to the Parquet corpus by
+  `history_mover.py` and dropped by whole verified day. Only
+  `lib/db/priceHistory.ts` and `python-odds-service/src/price_history.py`
+  query them (`tests/price-history-reader.test.ts`,
+  `src/test_price_history.py`). `diskGuardJob` holds database + WAL under 85%
+  of the provisioned disk by shortening that window, and pauses the bridge at
+  its floor.
 - **Cross-process locking uses `withJobLock`** (`lib/db/pgClient.ts`), which is
   a **lease table**, not a Postgres advisory lock. Advisory locks are
   session-scoped and this app connects through a transaction-mode pooler, where

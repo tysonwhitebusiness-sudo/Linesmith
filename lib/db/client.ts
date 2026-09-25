@@ -23,6 +23,7 @@
  */
 
 import { pgGet, pgAll, pgRun, pgTransaction } from './pgClient';
+import { propHistoryAccumulation, propHistoryRowCount, propLatestAtOrBefore } from './priceHistory';
 import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import type { BookmakerOdds, UnifiedGameLine } from '../odds/types';
 import { americanToDecimal, bestMoneylineFromBooks, bestSpreadFromBooks, bestTotalFromBooks } from '../odds/display';
@@ -506,9 +507,14 @@ export interface PropOddsRow {
   bookmaker: string;
   americanOdds: number;
   decimalOdds: number | null;
+  /** "checked": when a source last confirmed this price (D23). */
   fetchedAt: string;
   isDelayed: boolean;
   delaySeconds: number | null;
+  /** "since": when the price last changed at the source; null on rows written before P5. */
+  changedAt: string | null;
+  /** Source detail (limit, bid/ask, volume, version, payout), when the source gives any. */
+  extra: Record<string, unknown> | null;
 }
 
 const PROP_ODDS_COLUMNS = `
@@ -525,7 +531,9 @@ const PROP_ODDS_COLUMNS = `
   decimal_odds  AS "decimalOdds",
   fetched_at    AS "fetchedAt",
   is_delayed    AS "isDelayed",
-  delay_seconds AS "delaySeconds"
+  delay_seconds AS "delaySeconds",
+  changed_at    AS "changedAt",
+  extra
 `;
 
 function mapPropOddsRow(row: any): PropOddsRow {
@@ -796,8 +804,9 @@ export async function readPropOddsForGame(gameId: string): Promise<PropOddsRow[]
  * `prop_odds` is current state: the writer upserts one row per (provider, book,
  * line, side), and it keeps polling for up to two days after a game, so once a
  * game starts an in-play price overwrites the pre-game one. The pre-game price
- * survives in `prop_odds_history`, which logs every price change, so the price
- * in effect at the start is the last history row at or before it. Current rows
+ * survives in the prop price history, which logs every price change, so the price
+ * in effect at the start is the last history row at or before it (read through
+ * `lib/db/priceHistory.ts`; `prop_price_history` since P5). Current rows
  * last polled before the start are unioned in as well, which covers a key
  * whose only history row has aged past the 10-day prune (`prune_corpus.py`).
  * That window is sized for THIS reader: a game older than it shows no prop
@@ -810,31 +819,14 @@ export async function readPreGamePropOddsForGame(gameId: string, startIso: strin
   const start = startIso && startIso.includes('T') ? Date.parse(startIso) : NaN;
   if (!Number.isFinite(start) || start > Date.now()) return readPropOddsForGame(gameId);
   const startAt = new Date(start).toISOString();
-  const rows = await pgAll<any>(
-    `SELECT ${PROP_ODDS_COLUMNS} FROM prop_odds WHERE game_id = ? AND fetched_at <= ?
-     UNION ALL
-     SELECT * FROM (
-       SELECT DISTINCT ON (h.provider_id, h.subject_id, h.market_key, h.line, h.side, h.bookmaker)
-         h.id,
-         h.provider_id   AS "providerId",
-         h.game_id       AS "gameId",
-         h.subject_id    AS "subjectId",
-         COALESCE((SELECT p.subject_name FROM prop_odds p WHERE p.game_id = h.game_id AND p.subject_id = h.subject_id LIMIT 1), h.subject_id) AS "subjectName",
-         h.market_key    AS "marketKey",
-         h.line,
-         h.side,
-         h.bookmaker,
-         h.american_odds AS "americanOdds",
-         h.decimal_odds  AS "decimalOdds",
-         h.observed_at   AS "fetchedAt",
-         h.is_delayed    AS "isDelayed",
-         h.delay_seconds AS "delaySeconds"
-       FROM prop_odds_history h
-       WHERE h.game_id = ? AND h.observed_at <= ?
-       ORDER BY h.provider_id, h.subject_id, h.market_key, h.line, h.side, h.bookmaker, h.observed_at DESC
-     ) latest`,
-    [gameId, startAt, gameId, startAt],
-  );
+  // Two reads, concatenated: current rows last polled before the start, and
+  // the history's last change per key at or before it. Duplicates between the
+  // two are intended — the main-line rule (`mainLine.ts`) picks per key.
+  const [current, history] = await Promise.all([
+    pgAll<any>(`SELECT ${PROP_ODDS_COLUMNS} FROM prop_odds WHERE game_id = ? AND fetched_at <= ?`, [gameId, startAt]),
+    propLatestAtOrBefore(gameId, startAt),
+  ]);
+  const rows = [...current, ...history];
   return rows.map(mapPropOddsRow);
 }
 
@@ -2643,7 +2635,8 @@ const HEALTH_TRACKED_TABLES = [
   'pick_history',
   'game_picks',
   'prop_odds',
-  'prop_odds_history',
+  // The prop price history is counted through `priceHistory.ts` below: it is
+  // the compact `prop_price_history` since P5, and only that file names it.
   'game_odds_history',
   'odds_unresolved',
   'park_factors',
@@ -2669,6 +2662,7 @@ export async function dbTableRowCounts(): Promise<TableRowCount[]> {
     const row = await pgGet<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`);
     results.push({ table, rows: row!.n });
   }
+  results.splice(3, 0, { table: 'prop_price_history', rows: await propHistoryRowCount() });
   return results;
 }
 
@@ -2709,7 +2703,15 @@ export async function dataAccumulationSnapshot(): Promise<DataAccumulationRow[]>
 
   return Promise.all([
     table('pick_history', 'surfaced_at', 'Every pick this app has surfaced, graded or not'),
-    table('prop_odds_history', 'observed_at', 'Player-prop price history — no backfill exists anywhere for this, forward accumulation only'),
+    propHistoryAccumulation().then((a) => ({
+      table: 'prop_price_history',
+      label: 'Player-prop price history — no backfill exists anywhere for this, forward accumulation only (older days live in the Parquet corpus)',
+      rows: a.n,
+      earliest: a.earliest,
+      latest: a.latest,
+      last24h: a.last24h,
+      last7d: a.last7d,
+    })),
     table('game_odds_history', 'observed_at', 'Moneyline/total price history (live-collected, separate from the ingested 2010-2025 archive)'),
     table('golf_hole_scores', 'ingested_at', 'Golf hole-by-hole scores — started from zero this session, no backfill exists yet (see project memory)'),
     table('golf_round_scores', 'ingested_at', 'Golf full-round totals — same forward-only accumulation as golf_hole_scores'),

@@ -134,7 +134,9 @@ async def check_ceilings(conn) -> bool:
 async def check_growth(conn) -> bool:
     """5.0b — WHAT is growing, as a rate. The level is not the finding."""
     _hdr("5.0b  GROWTH RATE BY TABLE (last 7 days)")
-    tables = [("prop_odds_history", "observed_at"), ("prop_odds_archive", "ingested_at"),
+    # P5: the prop price history is the partitioned prop_price_history now,
+    # measured separately below (relkind 'p' has no size of its own).
+    tables = [("prop_odds_archive", "ingested_at"),
               ("game_odds_history", "observed_at"), ("odds_archive", "captured_at"),
               ("player_game_history", "fetched_at"), ("game_result", "ingested_at")]
     sizes = {r["t"]: (r["tot"], max(r["est"], 1)) for r in await conn.fetch(
@@ -334,30 +336,34 @@ async def check_corpus_intact(conn) -> bool:
 async def check_rollup_is_safe(conn) -> bool:
     """5.0f — 5.3's premise: no model reads prop_odds_history, and its volume
     is genuine rather than a dedup bug."""
-    _hdr("5.0f  IS prop_odds_history SAFE TO ROLL UP?")
+    _hdr("5.0f  IS THE PROP PRICE HISTORY SAFE TO ROLL UP?")
     readers = []
     for mod in MODEL_MODULES:
         path = os.path.join(HERE, mod)
         if not os.path.exists(path):
             continue
         with open(path, encoding="utf-8") as fh:
-            if "prop_odds_history" in fh.read():
+            text = fh.read()
+            if "prop_odds_history" in text or "prop_price_history" in text or "price_history" in text:
                 readers.append(mod)
     print(f"  model/serving modules referencing it : {readers or 'none'}")
 
+    # P5: summed over prop_price_history's daily partitions.
     r = await conn.fetchrow(
-        """SELECT seq_scan + idx_scan AS reads, n_tup_ins AS ins
-             FROM pg_stat_user_tables WHERE relname = 'prop_odds_history'""")
+        """SELECT sum(seq_scan + coalesce(idx_scan, 0))::bigint AS reads, sum(n_tup_ins)::bigint AS ins
+             FROM pg_stat_user_tables WHERE relname LIKE 'prop_price_history_p%'""")
     ratio = (r["ins"] or 0) / max(r["reads"] or 1, 1)
     print(f"  lifetime reads {r['reads']:>12,}   inserts {r['ins']:>12,}   1:{ratio:,.0f}")
 
+    import price_history as ph
+    decoded = ph.decoded_select(ph.PROP_TABLE, "h.recorded_at > now() - interval '6 hours'")
     dup = await conn.fetchrow(
-        """WITH s AS (
+        f"""WITH d AS ({decoded}), s AS (
              SELECT american_odds,
                     LAG(american_odds) OVER (
                       PARTITION BY provider_id, game_id, subject_id, market_key,
                                    line, side, bookmaker ORDER BY observed_at) prev
-               FROM prop_odds_history WHERE observed_at > now() - interval '6 hours')
+               FROM d)
            SELECT count(*) n, count(*) FILTER (WHERE prev = american_odds) same FROM s""")
     dup_pct = (dup["same"] or 0) / max(dup["n"] or 1, 1) * 100
     print(f"  consecutive identical prices (6h)    : {dup_pct:.1f}%  (movement-only rule)")

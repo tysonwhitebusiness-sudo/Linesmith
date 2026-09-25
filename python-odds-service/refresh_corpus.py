@@ -1,7 +1,7 @@
 """Keep the corpus current: incremental export, then upload. One command.
 
     python refresh_corpus.py                    # every id-chunked corpus table
-    python refresh_corpus.py prop_odds_history
+    python refresh_corpus.py mlb_pitch_events
     python refresh_corpus.py --check            # report lag; write nothing
 
 THIS EXISTS BECAUSE A HOT WINDOW MAKES THE EXPORT LOAD-BEARING. Before 5.S.8,
@@ -78,7 +78,10 @@ PRUNE_EVERY_HOURS = 24.0
 
 # One table at a time, named -- prune_corpus Rule 3, mirrored here rather than
 # passing a list, so a mistake stays partial.
-PRUNE_TABLES = ("prop_odds_history", "mlb_pitch_events")
+# `prop_odds_history` left this list in P5 (2026-09-25): its successor,
+# `prop_price_history`, is exported and pruned by `history_mover.py` in the
+# health-check cron, by whole verified day.
+PRUNE_TABLES = ("mlb_pitch_events",)
 
 # Only these are keyset-chunked on `id` and therefore subject to the open-final-
 # partition rule above. Date-partitioned tables re-export a whole year, so their

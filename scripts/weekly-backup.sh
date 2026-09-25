@@ -5,7 +5,7 @@
 # protect against Supabase's failures, not against yours. A DELETE you run by
 # hand is still your problem seven days later. 8.1 says to keep this.
 #
-# Scope is the nine tables no public source can regenerate — your own graded
+# Scope is the tables no public source can regenerate — your own graded
 # predictions, the line-movement dataset, fitted weights, and user data.
 # Deliberately NOT the whole database: snapshot_cache and prop_odds are
 # rebuildable from providers and would multiply the dump size for nothing.
@@ -42,7 +42,10 @@ LOG="$OUT_DIR/weekly-backup.log"
   echo "=== $(date '+%Y-%m-%d %H:%M:%S') starting backup -> $FILE"
   "$PGBIN/pg_dump.exe" "$URL" \
     -t public.pick_history \
-    -t public.prop_odds_history \
+    -t 'public.prop_price_history*' \
+    -t 'public.game_lines_history*' \
+    -t public.odds_games -t public.odds_subjects -t public.odds_markets -t public.odds_books \
+    -t public.odds_sources -t public.odds_sides -t public.odds_periods \
     -t public.game_odds_history \
     -t public.model_weights \
     -t public.game_picks \

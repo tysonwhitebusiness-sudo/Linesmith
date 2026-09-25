@@ -795,7 +795,7 @@ function trainingStaleness(active: ModelWeightsRow): { newestSeason: number; mis
  * Player-prop Beta-Binomial priors (lib/odds/props/edgeModel.ts) are
  * explicitly disclosed as v1 — hand-set, not yet fit against real
  * calibration data — pending "a real season of live-graded edges" in
- * prop_odds_history, which has no historical backfill (unlike moneyline/
+ * the prop price history, which has no historical backfill (unlike moneyline/
  * total's ingested 2010-2025 archive) and only starts accumulating from
  * whenever this app first ran. Six months is a practical proxy for "a real
  * season" — enough live-graded picks to fit against without waiting a full
@@ -2558,7 +2558,7 @@ export default function DiagnosticsPage() {
                   </div>
 
                   {(() => {
-                    const propOdds = systemHealth.dataAccumulation.find((d) => d.table === 'prop_odds_history');
+                    const propOdds = systemHealth.dataAccumulation.find((d) => d.table === 'prop_price_history');
                     const readiness = playerPropCalibrationReadiness(propOdds?.earliest ?? null);
                     if (!readiness) return null;
                     return (
@@ -2570,13 +2570,13 @@ export default function DiagnosticsPage() {
                         <span className="font-semibold">Player-prop model (non-HR) is still v1 (hand-set priors, not fit).</span>{' '}
                         {readiness.ready ? (
                           <>
-                            prop_odds_history has been accumulating for {readiness.daysElapsed} days — past the ~6-month mark
+                            The prop price history has been accumulating for {readiness.daysElapsed} days — past the ~6-month mark
                             ({readiness.targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}).
                             Worth revisiting edgeModel.ts's hand-set priors against real graded outcomes now.
                           </>
                         ) : (
                           <>
-                            Revisit once prop_odds_history has ~6 months of live-graded history — {readiness.daysElapsed} days in
+                            Revisit once the prop price history has ~6 months of live-graded history — {readiness.daysElapsed} days in
                             so far, ~{readiness.daysRemaining} to go (target{' '}
                             {readiness.targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}).
                           </>
