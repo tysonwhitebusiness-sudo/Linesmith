@@ -150,7 +150,7 @@ from `golfPredictionsJob`) as their sole writer.
 > | `game_reference` | **NEW** | Python — `write_game_reference` |
 > | `prop_odds` | gains `changed_at` ("since") and `extra` | unchanged: Python, `write_prop_odds` |
 >
-> **Open item found here, not fixed here:** `slate_rankings`, `model_status`
+> **Open item found here, fixed in P5.1 (`docs/design/odds-build/P5.1-hardening.md`):** `slate_rankings`, `model_status`
 > and `tennis_match_stats` have RLS **off** (measured `pg_class.relrowsecurity`
 > 2026-09-25). They are Python-written and read-only to the app, so they want
 > the same pattern as the tables above.

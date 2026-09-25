@@ -18,6 +18,7 @@ operator still owns are marked ⚑ and are not made by the builder.
 | P3 Matching | `P3-matching.md` | laptop |
 | P4 Storage decision | `P4-storage-decision.md` | measurement ⚑ |
 | P5 Schema + writers | `P5-schema-and-writers.md` | DB + Python + app |
+| P5.1 Hardening (corpus export gap, RLS) | `P5.1-hardening.md` | Python + DB |
 | P6 Bridge | `P6-bridge.md` | laptop |
 | P7 Timing | `P7-timing.md` | laptop / Python |
 | P8 Odds sections (UI) | `P8-odds-sections.md` | app |
