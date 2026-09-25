@@ -46,7 +46,7 @@ Read it next. In short:
    ($50/month cost ceiling), P5 as approved (compact storage done properly,
    the disk guard), and the state. The phase table below is the record.
 
-   (history)** Order of work and approvals:
+   History — order of work and approvals:
    `docs/design/odds-build/HANDOFF-P0-P4.md`. Specs: `docs/design/odds-build/`.
    Build order and findings: `docs/design/odds-build-phases-2026-09-24.md`.
 
