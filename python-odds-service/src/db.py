@@ -4445,6 +4445,25 @@ async def write_openers(rows: list[OpenerInput]) -> int:
     for r in rows:
         r.sport = _GENERIC_SPORT_KEY.get(r.sport, r.sport)
         r.bookmaker = canonical_bookmaker(r.bookmaker)
+        r.subject_id = r.subject_id or ""
+        r.period = r.period or "fg"
+    # One row per market_openers_key, or the upsert refuses the whole batch
+    # ("cannot affect row a second time"; the P6 bridge's first live start,
+    # 2026-09-25: VSiN re-posts its OPEN rows). A vsin_open row outranks a
+    # first_seen one and, among VSiN's, the latest wins (its OPEN column is the
+    # authority); otherwise the earliest opener wins.
+    def better(r: OpenerInput, b: OpenerInput) -> bool:
+        rv, bv = r.opener_source == "vsin_open", b.opener_source == "vsin_open"
+        if rv != bv:
+            return rv
+        return r.opened_at >= b.opened_at if rv else r.opened_at < b.opened_at
+
+    best: dict[tuple, OpenerInput] = {}
+    for r in rows:
+        k = (r.kind, r.game_id, r.subject_id, r.period, r.market, r.side, r.bookmaker)
+        if k not in best or better(r, best[k]):
+            best[k] = r
+    rows = list(best.values())
     pool = await get_pool()
     res = await pool.execute(
         """

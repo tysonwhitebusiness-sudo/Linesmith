@@ -753,6 +753,12 @@ class Bridge:
         def chunks(name, fn, rows, **kw):
             return [(name, fn, rows[i:i + BATCH], kw) for i in range(0, len(rows), BATCH)]
         hook = self._unmatched_hook()
+        # One pull per key per cycle: two endpoints can drop the same price in
+        # one read, and the writer would record it twice.
+        prop_pulls = list({(p.provider_id, p.game_id, p.subject_id, p.market_key, p.line, p.side, p.bookmaker): p
+                           for p in reversed(prop_pulls)}.values())
+        game_pulls = list({(p.sport, p.game_id, p.period, p.market, p.side, p.point, p.bookmaker, p.source): p
+                           for p in reversed(game_pulls)}.values())
         plan = []
         plan += chunks("prop_odds", db.write_prop_odds, prop_rows, in_tx=hook)
         plan += chunks("game_lines", db.write_game_lines, game_rows, in_tx=hook)

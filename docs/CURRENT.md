@@ -1,16 +1,27 @@
 # CURRENT — pick up here
 
-> **IN FLIGHT 2026-09-25 (unattended run, operator away 10 h+): P6 the bridge.**
-> P6.0 (cost guard) is committed (`3eb5e4b`) and DEPLOYED (worker, by the
-> operator's hand at 04:37 UTC; the classifier refused the Render API deploy).
-> The bridge build is under way, uncommitted until tested:
-> `src/scraper_bridge.py`, `src/odds_checks.py`, `scraper_bridge_policy.json`,
-> db.py (`in_tx` hooks, `write_scraper_checks`/`write_scraper_unmatched`,
-> retention rules, `DB_POOL_MAX_SIZE`/`DB_APPLICATION_NAME`), bridge_state
-> (cursors, opener_seeded, app team names), scraper_match `--horizon-hours`.
-> Next: `scraper_bridge_run.py`, tests, replay test, health check, launcher,
-> go-live + drills. Spec correction found: a spread's point is PER SIDE in
-> scraper.db, so a reversed game swaps side and does NOT negate the point.
+> **UNATTENDED RUN 2026-09-25 (operator away 10 h+, green light for P6–P13;
+> the approved mockup is `http://localhost:8125/odds-rebuild-mockup-2026-09-24.html`,
+> the `design-mockups` preview).**
+>
+> - **P6 the bridge: LIVE since 06:52 UTC** on the laptop — scheduled task
+>   `LinesmithScraperBridge` (registered; 5-min freshness watchdog,
+>   `run-scraper-bridge.ps1`). Status: `odds-scraper/data/bridge_status.json`;
+>   logs `bridge.out.log`, `bridge_match.log`, `bridge_watchdog.log`. Replay
+>   test PASS, kill drill PASS. **Left in P6:** the 1-h green window
+>   (07:05→08:05 UTC), then the STALE drill (disable the task, `-Stop`, wait
+>   15 min for `health_check` STALE, enable + start → OK), and the DraftKings
+>   live-latency number. Result: `P6-bridge.md` → Result.
+> - **P7 timing: built, `source_latency` filled (417 rows).** Proven fast =
+>   Pinnacle, Kalshi, Polymarket only. The bridge runs `scraper_timing.py
+>   --days 3 --write` daily after 05:00 local. **Left:** T0.4 (paid feeds'
+>   timestamps; the-odds-api's raw payloads are in `odds_cache`, the other five
+>   need one fetch each) and the P7 Result write-up.
+> - Then P8 → P13 in order. P11/P12 each need a worker deploy: the classifier
+>   refuses Render API deploys, so they wait for the operator's hand.
+> - Deploy state: worker at `3eb5e4b` (P6.0). The db.py writer changes since
+>   (halving, server-side mirror retry, openers dedupe) matter only to the
+>   laptop today; they reach the worker with its next deploy.
 
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is

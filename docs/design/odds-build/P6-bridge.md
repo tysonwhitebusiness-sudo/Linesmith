@@ -358,6 +358,78 @@ section.
   `docs/table-ownership.md` (both tables), the migration (§6, §6b), `.github/workflows/ci.yml`, `docs/CURRENT.md`.
 - odds-scraper: none (the bridge only reads `scraper.db`).
 
+## Result
+
+**P6.0 closed 2026-09-25 04:37 UTC; the bridge went live 06:41 UTC (restarted
+06:52 with the openers fix).** Commits `3eb5e4b` (P6.0), `7398670`, `47e05dd`
+and the close-out. Deploys: the worker at `3eb5e4b` by the operator's hand
+(04:37 UTC; the permission classifier refused the Render API deploy); the
+health-check cron auto-deploys on push and carries `check_scraper_bridge`.
+
+**Hermetic tests (CI):** `test_scraper_bridge.py` (mapping, hold buffer,
+policy, openers, splits, book links, ratings), `test_odds_checks.py` (every
+threshold at its boundary, the BetMGM NV fixture), `test_scraper_match.py`.
+
+**Replay test (`scraper_bridge_replay.py`): PASS.** One recorded hour
+(2026-09-25 04:10–05:12 UTC: 8,976 snapshots, 250,822 offers, 228,140
+offer events, 13,001 splits) against the live database under
+`scraper-test:*`, counted independently cycle by cycle:
+- `prop_odds` 16,842 current rows == 16,842 expected; `game_lines` 21,665 ==
+  21,665; `scraper_unmatched_prices` 8,484 == 8,484;
+- `prop_price_history` **27,666 rows == 27,666 expected, row for row,
+  `observed_at` included** (the source's own time survives);
+- the unmatched lifecycle, live: upserted with every field; the next change
+  moves `since` (a re-reading moves only `checked`); a hook that raises rolls
+  BOTH the delete and the mapped write back; the mapped write deletes the row
+  in its own transaction;
+- cleanup: zero `scraper-test` rows left in all 14 tables it touches.
+
+**Laptop write latency — found by the replay, fixed at the shared writers.**
+From the laptop every statement is a 60–130 ms round trip (the worker sits
+beside the database and never saw this). The first full replay took 864 s for
+an hour, 730 s of it in `game_lines`: a chunk the `game_odds_book_lines`
+mirror refused (in-game totals outside the plausibility bands, 50–70 a
+batch) was replayed ROW BY ROW. Now: `write_game_lines` halves a refused
+chunk (`_write_isolating`, k·log n statements), and the mirror retries a
+refused chunk in ONE server-side `DO` block that records the rows the
+constraint refuses — still the only judge. The same hour: **223 s**.
+
+**Live (from 06:52 UTC):**
+- first cycles: 27,187 offers read, 12,105 changes confirmed; 1,098 openers
+  seeded from history, 517 flagged by `opener_sanity`; writes ~25 s a cycle;
+- heartbeat `job_health_checks.scraper_bridge` healthy;
+  `health_check.check_scraper_bridge()` reads it; `usage_meters`
+  `bridge.egress_bytes` (336 KB in the first 7 min) and `bridge.rows_written`
+  recording;
+- `scraper:*` rows in `prop_odds` and `game_lines` within minutes.
+- **Found live, fixed:** VSiN re-posts its OPEN rows, so the start-up
+  openers batch held one key twice and the upsert refused it
+  ("cannot affect row a second time"). `write_openers` now keeps one row per
+  key (VSiN's latest outranks `first_seen`; otherwise the earliest); the
+  bridge also dedupes pulls per cycle.
+
+**Drills:**
+- kill: the bridge killed 07:00:55 UTC; the `LinesmithScraperBridge` task
+  (registered from `LinesmithScraperBridge.task.xml`) restarted it 07:05:02 —
+  inside 5 min. **PASS.**
+
+**Connections:** Supavisor's transaction pooler does NOT pass
+`application_name` through (every client shows `''` in `pg_stat_activity`),
+so the spec's query cannot see the bridge. Measured instead on the laptop:
+established TCP connections to the pooler per process — the bridge held 1
+(pool max 2), the matcher runs with max 1 and the P7 timing run with max 1,
+never beside the matcher. The budget of 3 holds by construction.
+
+**Known issues, routed:**
+- **comparenbet's `tot` mixes markets** (scraper lane): its NFL/CFB `tot`
+  rows carry real totals (32.5–48) beside 0.5–14.5 and 146.5–449.5 lines
+  (yardage / touchdown totals) under the same market and no label. They land
+  in `game_lines` as alternates of `scraper:comparenbet`; the mirror's bands
+  keep them off today's pages. The fix is comparenbet's parser in
+  odds-scraper; P8 reads comparenbet game lines by `is_main`.
+- The worker's cost guard lists `supabase.storage` as unmeasured: the worker
+  has no `CORPUS_S3_*` settings (the cron has them). 0.445 GB of 100 GB, $0.
+
 ## Changelog
 
 - **2026-09-24 — unmatched rows are kept with their prices** (plan B4;
