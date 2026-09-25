@@ -416,6 +416,16 @@ async def read_recent_changes(pool, game_ids: list[str], books: list[str], since
     return props, lines
 
 
+async def read_game_history_for_market(pool, game_id: str, period: str, market: str) -> list:
+    """P13 (the closing-line test): every price change for one game market, all
+    books and lines, oldest first — the report takes each book's last price
+    before the start from it."""
+    where = ("h.game = (SELECT id FROM odds_games WHERE game_id = $1) "
+             "AND h.period = (SELECT id FROM odds_periods WHERE name = $2) "
+             "AND h.market = (SELECT id FROM odds_markets WHERE name = $3)")
+    return await pool.fetch(decoded_select(GAME_TABLE, where, "h.observed_at"), game_id, period, market)
+
+
 async def read_prop_changes_for_games(conn, game_ids: list[str], since) -> list:
     """P12 §3 (odds research flags): every over/under prop price change on these
     games since `since`, oldest first — the input to a book's main-line series

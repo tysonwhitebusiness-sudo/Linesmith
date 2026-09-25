@@ -5863,6 +5863,7 @@ async def write_market_edges(results, displayed: bool, now) -> dict:
 def _edge_reference(r) -> dict:
     out = r.reference.as_json()
     out["subject_name"] = r.market.subject_name or None
+    out["start"] = r.market.start.isoformat() if r.market.start else None   # P13 reads the close before it
     out["ev_by_method"] = {m: round(v, 5) for m, v in r.ev_by_method.items()}
     out["soft"] = {"book": r.soft.book, "provider": r.soft.provider, "american": r.soft.american,
                    "checked_at": r.soft.checked_at.isoformat(), "since": r.soft.since.isoformat() if r.soft.since else None}
