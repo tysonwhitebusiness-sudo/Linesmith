@@ -109,6 +109,8 @@ def since_time(source_ts_ms: int | None, fetched_at: datetime, cache_age_s: int 
 
 
 def extra_from(depth: dict | None, price_alt: float | None, source: str) -> dict | None:
+    if not isinstance(depth, dict):          # some sources store a list there
+        depth = None
     out = {k: depth[k] for k in EXTRA_KEYS if depth and depth.get(k) is not None}
     if source in PICKEM_SOURCES and price_alt is not None:
         out["multiplier"] = price_alt

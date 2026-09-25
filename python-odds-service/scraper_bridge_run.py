@@ -54,7 +54,7 @@ from bridge_state import DEFAULT_PATH as STATE_DB, open_state  # noqa: E402
 from odds_checks import opener_sanity  # noqa: E402
 from scraper_bridge import (  # noqa: E402
     GameRef, HoldBuffer, Mapped, Offer, PlayerRef, Policy, PropRef, an_open_opener, book_links, choose_main,
-    game_key, line_id, map_offer, map_split, match_ratings, opener_from_row, opener_key, parse_ts,
+    line_id, map_offer, map_split, match_ratings, opener_from_row, opener_key, parse_ts,
     parse_vsin_opener, source_rank,
 )
 from scraper_match import SCRAPER_TO_APP_SPORT  # noqa: E402
@@ -264,6 +264,7 @@ class Bridge:
         self.last_heartbeat = 0.0
         self.last_match = 0.0
         self.match_proc = None
+        self.timing_proc = None
         self.newest_bridged: datetime | None = None
         self.cycle_ok = True
         self.last_error: str | None = None
@@ -273,10 +274,11 @@ class Bridge:
         self.paused_reason: str | None = None
         self.started = now_utc()
         self.last_prune = time.time()
+        self.write_seconds: dict[str, float] = {}
 
     # --- cursors -------------------------------------------------------------
     def load_cursors(self) -> None:
-        saved = {n: v for n, v in self.state.execute("SELECT name, last_id FROM cursors")}
+        saved = {n: v for n, v in self.state.execute("SELECT name, last_id FROM cursors") if n in TABLES}
         q = self.scraper.execute
         if self.args.from_start:
             self.cursor = {t: 0 for t in TABLES}
@@ -377,8 +379,7 @@ class Bridge:
         offers, snaps, events = batch["offers"], batch["snaps"], batch["events"]
         if self.args.cycle_log:
             with open(self.args.cycle_log, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"from": self.read_pos, "to": batch["pos"], "bound": batch["bound"]}) + "
-")
+                fh.write(json.dumps({"from": self.read_pos, "to": batch["pos"], "bound": batch["bound"]}) + "\n")
 
         self.res.prime_events({(o.source, o.event_external_id) for o in offers}
                               | {(e[3], e[7]) for e in events if e[7]}
@@ -392,73 +393,95 @@ class Bridge:
 
         openers: list = []
         for o in sorted(offers, key=lambda x: (source_rank(x.source), x.id)):
-            game, miss = self.res.game(o.source, o.event_external_id)
-            if o.book_key == "anopen" and game is not None:
-                op = an_open_opener(o, game, self.book_prefix)
-                if op is not None and opener_key(op) not in self.opened:
-                    openers.append(op)
-                    self.opened.add(opener_key(op))
-                continue
-            prop, _parent = self.res.prop(o.source, o.prop_market_external_id)
-            player = self.res.player(o.source, prop, game.app_game_id) if game else None
-            label = self.res.label(o.source, o.event_external_id) if game is None or (o.prop_market_external_id and
-                                                                                     player is None) else None
-            m = map_offer(o, game=game, game_miss=miss, prop=prop, player=player, policy=self.policy,
-                          event_label=label, provider_prefix=self.prefix)
-            if m.kind == "skip":
-                self.skips[m.reason] += 1
-                continue
-            m.row._sk = (f"{self.prefix}:{o.source}", m.scraper_key)   # read by the unmatched-delete hook
-            if m.kind == "unmatched":
-                self.unmatched_counter[(m.row.reason, m.row.event or "", m.row.player or "", m.row.market,
-                                        m.row.book)] += 1
-            else:
-                self.endpoint_games[(o.source, o.endpoint)].add(m.row.game_id)
-            if m.kind == "game":
-                r = m.row
-                g = (r.sport, r.game_id, r.period, r.market, r.bookmaker, r.source)
-                self.book_state[g][(r.side, r.point)] = r.american_odds
-                self.group_keys[g].add(m.key)
-            self.hold.offer(m, o.snapshot_id, (o.source, o.endpoint), o.fetched_at)
+            try:
+                self._take(o, openers)
+            except Exception as e:                   # noqa: BLE001 — one bad row never stops the bridge
+                self.skips[f"error:{type(e).__name__}"] += 1
+                if self.skips[f"error:{type(e).__name__}"] <= 3:
+                    print(f"[bridge] offer {o.id} ({o.source}) skipped: {type(e).__name__}: {e}", flush=True)
+        await self._after_offers(batch, events, snaps, openers)
 
+    def _take(self, o: Offer, openers: list) -> None:
+        """Map one offer and hand it to the hold buffer (or count why not)."""
+        game, miss = self.res.game(o.source, o.event_external_id)
+        if o.book_key == "anopen" and game is not None:
+            op = an_open_opener(o, game, self.book_prefix)
+            if op is not None and opener_key(op) not in self.opened:
+                openers.append(op)
+                self.opened.add(opener_key(op))
+            return
+        prop, _parent = self.res.prop(o.source, o.prop_market_external_id)
+        player = self.res.player(o.source, prop, game.app_game_id) if game else None
+        label = self.res.label(o.source, o.event_external_id) if game is None or (o.prop_market_external_id and
+                                                                                 player is None) else None
+        m = map_offer(o, game=game, game_miss=miss, prop=prop, player=player, policy=self.policy,
+                      event_label=label, provider_prefix=self.prefix)
+        if m.kind == "skip":
+            self.skips[m.reason] += 1
+            return
+        m.row._sk = (f"{self.prefix}:{o.source}", m.scraper_key)   # read by the unmatched-delete hook
+        if m.kind == "unmatched":
+            self.unmatched_counter[(m.row.reason, m.row.event or "", m.row.player or "", m.row.market,
+                                    m.row.book)] += 1
+        else:
+            self.endpoint_games[(o.source, o.endpoint)].add(m.row.game_id)
+        if m.kind == "game":
+            r = m.row
+            g = (r.sport, r.game_id, r.period, r.market, r.bookmaker, r.source)
+            self.book_state[g][(r.side, r.point)] = r.american_odds
+            self.group_keys[g].add(m.key)
+        self.hold.offer(m, o.snapshot_id, (o.source, o.endpoint), o.fetched_at)
+
+    async def _after_offers(self, batch, events, snaps, openers: list) -> None:
+        """Pulls, confirmation, and the cycle's writes."""
         # Pulls (B3): drop a pending change; record the pull unless the price
         # never reached the app (pending only).
         prop_pulls, game_pulls = [], []
-        for (_id, snap_id, at, source, endpoint, event, reason, ev_ext, pm_ext, market, side, book, line,
-             price) in events:
-            if event != "pulled" or not ev_ext:
-                continue
-            bk = self.res.book_key(source, ev_ext, market, book) if book else None
-            o = Offer(id=0, snapshot_id=snap_id or 0, source=source, endpoint=endpoint or "", event_external_id=ev_ext,
-                      prop_market_external_id=pm_ext, market=market or "", side=side, line=line, book=book,
-                      book_key=bk, price=price if price else 100.0, price_alt=None, source_ts_ms=None, depth=None,
-                      fetched_at=parse_ts(at))
-            game, miss = self.res.game(source, ev_ext)
-            prop, _ = self.res.prop(source, pm_ext)
-            player = self.res.player(source, prop, game.app_game_id) if game else None
-            m = map_offer(o, game=game, game_miss=miss, prop=prop, player=player, policy=self.policy,
-                          provider_prefix=self.prefix)
-            if m.kind not in ("prop", "game"):
-                continue
-            pending_only = m.key in self.hold.pending and m.key not in self.hold.forwarded
-            self.hold.pull(m.key)
-            r = m.row
-            if m.kind == "game":
-                g = (r.sport, r.game_id, r.period, r.market, r.bookmaker, r.source)
-                self.book_state[g].pop((r.side, r.point), None)
-                self.fwd_game_rows.pop(m.key, None)
-            if pending_only:
-                continue
-            if m.kind == "prop":
-                prop_pulls.append(db.PropPullInput(provider_id=r.provider_id, game_id=r.game_id, subject_id=r.subject_id,
-                                                   market_key=r.market_key, line=r.line, side=r.side,
-                                                   bookmaker=r.bookmaker, pulled_at=o.fetched_at, reason=reason or "line"))
-            else:
-                game_pulls.append(db.GameLinePullInput(sport=r.sport, game_id=r.game_id, period=r.period,
-                                                       market=r.market, side=r.side, point=r.point,
-                                                       bookmaker=r.bookmaker, source=r.source, pulled_at=o.fetched_at,
-                                                       reason=reason or "line"))
+        for ev_row in events:
+            try:
+                self._pull(ev_row, prop_pulls, game_pulls)
+            except Exception as e:                   # noqa: BLE001 — one bad row never stops the bridge
+                self.skips[f"pull-error:{type(e).__name__}"] += 1
 
+        await self._finish(batch, snaps, openers, prop_pulls, game_pulls)
+
+    def _pull(self, ev_row, prop_pulls: list, game_pulls: list) -> None:
+        (_id, snap_id, at, source, endpoint, event, reason, ev_ext, pm_ext, market, side, book, line, price) = ev_row
+        if event != "pulled" or not ev_ext:
+            return
+        bk = self.res.book_key(source, ev_ext, market, book) if book else None
+        o = Offer(id=0, snapshot_id=snap_id or 0, source=source, endpoint=endpoint or "", event_external_id=ev_ext,
+                  prop_market_external_id=pm_ext, market=market or "", side=side, line=line, book=book,
+                  book_key=bk, price=price if price else 100.0, price_alt=None, source_ts_ms=None, depth=None,
+                  fetched_at=parse_ts(at))
+        game, miss = self.res.game(source, ev_ext)
+        prop, _ = self.res.prop(source, pm_ext)
+        player = self.res.player(source, prop, game.app_game_id) if game else None
+        m = map_offer(o, game=game, game_miss=miss, prop=prop, player=player, policy=self.policy,
+                      provider_prefix=self.prefix)
+        if m.kind not in ("prop", "game"):
+            return
+        pending_only = m.key in self.hold.pending and m.key not in self.hold.forwarded
+        self.hold.pull(m.key)
+        r = m.row
+        if m.kind == "game":
+            g = (r.sport, r.game_id, r.period, r.market, r.bookmaker, r.source)
+            self.book_state[g].pop((r.side, r.point), None)
+            self.fwd_game_rows.pop(m.key, None)
+        if pending_only:
+            return
+        if m.kind == "prop":
+            prop_pulls.append(db.PropPullInput(provider_id=r.provider_id, game_id=r.game_id, subject_id=r.subject_id,
+                                               market_key=r.market_key, line=r.line, side=r.side,
+                                               bookmaker=r.bookmaker, pulled_at=o.fetched_at, reason=reason or "line"))
+        else:
+            game_pulls.append(db.GameLinePullInput(sport=r.sport, game_id=r.game_id, period=r.period,
+                                                   market=r.market, side=r.side, point=r.point,
+                                                   bookmaker=r.bookmaker, source=r.source, pulled_at=o.fetched_at,
+                                                   reason=reason or "line"))
+
+    async def _finish(self, batch, snaps, openers: list, prop_pulls: list, game_pulls: list) -> None:
+        """Confirmation, the forwarded rows, and the cycle's writes."""
         # Confirmation: the latest ok/unchanged snapshot per (source, endpoint).
         checks = []
         for sid, source, endpoint, fetched, status in snaps:
@@ -497,7 +520,7 @@ class Bridge:
                                  unmatched_rows, checks)
         self.pending_cursor = batch["pos"]
         self.read_pos = dict(batch["pos"])
-        self.stats["offers_read"] += len(offers)
+        self.stats["offers_read"] += len(batch["offers"])
         self.stats["confirmed"] += len(confirmed)
         await self.flush()
 
@@ -649,6 +672,7 @@ class Bridge:
                     "WHERE o.source = ? AND s.fetched_at >= ?", (ext, src, SEED_SINCE)).fetchall()
                          if r[15] is None]
             rows.sort(key=lambda r: r[0])
+            self.res.prime_events({(r[2], r[4]) for r in rows})
             first: dict[tuple, list] = {}
             for r in rows:
                 depth = None
@@ -663,7 +687,6 @@ class Bridge:
                           prop_market_external_id=None, market=r[5], side=r[6], line=r[7], book=r[8], book_key=r[9],
                           price=r[10], price_alt=None, source_ts_ms=r[11], depth=depth, fetched_at=parse_ts(r[13]),
                           cache_age_s=r[14])
-                self.res.prime_events({(o.source, o.event_external_id)})
                 game, _ = self.res.game(o.source, o.event_external_id)
                 if game is None:
                     continue
@@ -746,8 +769,12 @@ class Bridge:
     async def flush(self) -> None:
         while self.outbox:
             name, fn, rows, kw = self.outbox[0]
+            t = time.time()
             try:
                 await fn(rows, **kw)
+                self.write_seconds[name] = round(self.write_seconds.get(name, 0.0) + time.time() - t, 1)
+                if time.time() - t > 10:
+                    print(f"[bridge] slow write: {name} {len(rows)} rows in {time.time() - t:.1f}s", flush=True)
             except Exception as e:                      # noqa: BLE001 — retried whole next cycle
                 self.cycle_ok = False
                 self.last_error = f"{name}: {type(e).__name__}: {e}"[:500]
@@ -766,8 +793,41 @@ class Bridge:
         self.last_error = None
 
     # --- matching subprocess -----------------------------------------------------
+    async def maybe_timing(self) -> None:
+        """P7: `scraper_timing.py --days 3 --write` once a day after 05:00 local,
+        as the bridge's own scheduled work (P7 §3), never beside the matcher:
+        bridge 2 + one helper 1 = the 3-connection budget. The day it last ran
+        is kept in bridge.db (cursors row 'timing_day')."""
+        if self.args.no_match:
+            return
+        if self.timing_proc is not None:
+            if self.timing_proc.returncode is None:
+                return
+            self.stats["timing_runs"] += 1
+            if self.timing_proc.returncode != 0:
+                self.stats["timing_failures"] += 1
+            self.timing_proc = None
+        local = datetime.now()
+        day = int(local.strftime("%Y%m%d"))
+        done = self.state.execute("SELECT last_id FROM cursors WHERE name = 'timing_day'").fetchone()
+        if local.hour < 5 or (done and done[0] >= day) or self.match_proc is not None:
+            return
+        self.state.execute("INSERT OR REPLACE INTO cursors (name, last_id, updated_at) VALUES ('timing_day', ?, ?)",
+                           (day, now_utc().isoformat()))
+        self.state.commit()
+        env = dict(os.environ, DB_POOL_MAX_SIZE="1", DB_APPLICATION_NAME="scraper_bridge_timing")
+        log = open(os.path.join(SCRAPER_DATA, "source_timing.log"), "a", encoding="utf-8")
+        log.write(f"---- {now_utc().isoformat()}\n")
+        log.flush()
+        self.timing_proc = await asyncio.create_subprocess_exec(
+            sys.executable, os.path.join(HERE, "scraper_timing.py"), "--days", "3", "--write",
+            "--scraper-db", self.args.scraper_db, "--state-db", self.args.state_db,
+            stdout=log, stderr=log, env=env, cwd=HERE)
+
     async def maybe_match(self) -> None:
         if self.args.no_match:
+            return
+        if self.timing_proc is not None and self.timing_proc.returncode is None:
             return
         if self.match_proc is not None:
             if self.match_proc.returncode is None:
@@ -806,6 +866,8 @@ class Bridge:
             "stats": {k: v for k, v in self.stats.items() if not k.startswith("rows_")},
             "skipped": dict(self.skips.most_common(20)), "outbox": len(self.outbox or []),
             "egress_bytes": EgressMeter.total, "unmatched_keys": len(self.unmatched_keys),
+            "db_pool_size": db._pool.get_size() if db._pool is not None else 0,
+            "write_seconds": self.write_seconds,
             "prune_risk": bool(lag and lag > LAG_PRUNE_ALERT_S),
         }
 
@@ -917,6 +979,7 @@ class Bridge:
             t0 = time.time()
             try:
                 await self.maybe_match()
+                await self.maybe_timing()
                 self.paused_reason = None if self.test else await self.brakes_on()
                 if self.paused_reason is None:
                     before = self.stats["offers_read"] + self.stats["confirmed"]
@@ -955,12 +1018,16 @@ async def main() -> None:
     ap.add_argument("--no-seed", action="store_true", help="do not seed first_seen openers from history")
     ap.add_argument("--no-heartbeat", action="store_true")
     ap.add_argument("--max-offers", type=int, default=MAX_OFFERS, help="offers read per cycle")
+    ap.add_argument("--debug-stacks", type=int, default=0, help="dump every thread's stack every N seconds")
     ap.add_argument("--cycle-log", help="append each cycle's read bounds here (the replay test's counter)")
     a = ap.parse_args()
     if a.replay_db:
         a.scraper_db = a.replay_db
     if a.provider_prefix != "scraper":
         a.no_heartbeat = True
+    if a.debug_stacks:
+        import faulthandler
+        faulthandler.dump_traceback_later(a.debug_stacks, repeat=True)
     await Bridge(a).run()
 
 

@@ -34,7 +34,6 @@ import argparse
 import asyncio
 import json
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -344,6 +343,7 @@ async def main() -> int:
     ap.add_argument("--max-offers", type=int, default=20000)
     ap.add_argument("--keep", action="store_true", help="leave the scraper-test rows (inspect by hand)")
     ap.add_argument("--cleanup-only", action="store_true")
+    ap.add_argument("--reuse-copy", action="store_true", help="keep the last run's hour copy (skips ~200 s)")
     ap.add_argument("--workdir", default=os.path.join(tempfile.gettempdir(), "scraper_bridge_replay"))
     a = ap.parse_args()
     if a.cleanup_only:
@@ -356,25 +356,33 @@ async def main() -> int:
         os.remove(cycle_log)
     h0 = datetime.now(timezone.utc) - timedelta(hours=a.hours_ago)
     h1 = h0 + timedelta(hours=1)
-    print(f"hour: {h0:%Y-%m-%d %H:%M} .. {h1:%H:%M} UTC", flush=True)
     t = time.time()
-    info = build_copy(copy_path, h0, h1)
+    if a.reuse_copy and os.path.exists(copy_path):
+        rc = sqlite3.connect(copy_path)
+        lo, hi = rc.execute("SELECT min(fetched_at), max(fetched_at) FROM snapshots").fetchone()
+        info = {"reused": True, "offers": rc.execute("SELECT count(*) FROM offers").fetchone()[0]}
+        rc.close()
+        h0, h1 = parse_ts(lo), parse_ts(hi)
+    else:
+        info = build_copy(copy_path, h0, h1)
+    print(f"hour: {h0:%Y-%m-%d %H:%M} .. {h1:%H:%M} UTC", flush=True)
     copy_state(state_path)
     print(f"copy built in {time.time() - t:.0f}s: {info}", flush=True)
     report = {"hour": [h0.isoformat(), h1.isoformat()], "copy": info}
     try:
         print(f"leftovers from an earlier run: {(await cleanup())['deleted']}", flush=True)
         t = time.time()
-        proc = subprocess.run([sys.executable, os.path.join(HERE, "scraper_bridge_run.py"), "--replay-db", copy_path,
-                               "--state-db", state_path, "--provider-prefix", PREFIX, "--from-start", "--until-idle",
-                               "--no-match", "--max-offers", str(a.max_offers), "--cycle-log", cycle_log],
-                              cwd=HERE, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        bridge_log = os.path.join(a.workdir, "bridge.log")
+        with open(bridge_log, "w", encoding="utf-8") as fh:
+            proc = subprocess.run([sys.executable, "-u", os.path.join(HERE, "scraper_bridge_run.py"), "--replay-db",
+                                   copy_path, "--state-db", state_path, "--provider-prefix", PREFIX, "--from-start",
+                                   "--until-idle", "--no-match", "--max-offers", str(a.max_offers), "--cycle-log",
+                                   cycle_log], cwd=HERE, stdout=fh, stderr=subprocess.STDOUT)
         report["run_seconds"] = round(time.time() - t)
-        tail = proc.stdout[-6000:]
-        print(tail, flush=True)
-        if proc.returncode != 0 or "Traceback" in proc.stderr + proc.stdout:
-            print(proc.stderr[-4000:], flush=True)
-        check("the bridge ran to idle", proc.returncode == 0, f"exit {proc.returncode}")
+        out = open(bridge_log, encoding="utf-8", errors="replace").read()
+        proc.stdout = out
+        print(out[-6000:], flush=True)
+        check("the bridge ran to idle", proc.returncode == 0 and "Traceback" not in out, f"exit {proc.returncode}")
         try:
             status = json.loads(proc.stdout[proc.stdout.rindex("\n{") + 1:])
         except ValueError:

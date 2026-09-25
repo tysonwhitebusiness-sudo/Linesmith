@@ -3916,6 +3916,28 @@ _GENERIC_SPORT_KEY = {
 }
 
 
+async def _write_isolating(conn, rows: list, write_chunk) -> tuple[list, list]:
+    """Write `rows` with `write_chunk(rows)` in one transaction; when the
+    database refuses the batch (a CHECK constraint), split it in HALVES and
+    retry each, down to the single bad rows. Returns (written, [(row, error)]).
+
+    Replaces a row-by-row replay of the whole chunk (P6, 2026-09-25): from the
+    laptop every statement is a ~60-130 ms round trip, and 3 implausible rows
+    in a 567-row mirror batch cost 140 s one row at a time. Halving costs about
+    k * log2(n) statements for k bad rows."""
+    try:
+        async with conn.transaction():
+            await write_chunk(rows)
+        return list(rows), []
+    except asyncpg.CheckViolationError as e:
+        if len(rows) == 1:
+            return [], [(rows[0], e)]
+        mid = len(rows) // 2
+        w1, r1 = await _write_isolating(conn, rows[:mid], write_chunk)
+        w2, r2 = await _write_isolating(conn, rows[mid:], write_chunk)
+        return w1 + w2, r1 + r2
+
+
 async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
     """Upserts current per-bookmaker game-line prices. Safe to call with a
     fresh full snapshot every cycle — ON CONFLICT DO UPDATE means a
@@ -3999,19 +4021,53 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
             try:
                 async with conn.transaction():
                     await conn.executemany(sql, [_params(r) for r in chunk])
+                continue
             except asyncpg.CheckViolationError:
-                # executemany cannot say WHICH row failed, so this chunk goes
-                # back through the slow path to find out. Only the bad rows are
-                # dropped; the good ones in the same chunk still land.
-                for r in chunk:
-                    try:
-                        async with conn.transaction():
-                            await conn.execute(sql, *_params(r))
-                    except asyncpg.CheckViolationError as e:
-                        rejected.append(
-                            f"{r.sport}/{r.game_id}/{r.market}/{r.side}/{r.bookmaker}"
-                            f" point={r.point} odds={r.american_odds} ({type(e).__name__})"
-                        )
+                pass
+            # executemany cannot say WHICH row failed. The chunk is retried
+            # SERVER-SIDE: one DO block inserts each row under its own
+            # exception handler and records the ones the constraint refuses
+            # (P6, 2026-09-25). From the laptop a round trip is 60-130 ms, and
+            # the mirror of an in-game slate carried 50-70 refused rows per
+            # batch: row-by-row that was 140 s a batch, halving still minutes;
+            # this is ~5 round trips whatever the count. The constraint stays
+            # the only judge of what is plausible.
+            async with conn.transaction():
+                await conn.execute("""
+                    CREATE TEMP TABLE _gobl_in (i int, sport text, game_id text, market text, side text,
+                        bookmaker text, source text, point double precision, american_odds int,
+                        decimal_odds double precision, fetched_at timestamptz) ON COMMIT DROP;
+                    CREATE TEMP TABLE _gobl_bad (i int) ON COMMIT DROP""")
+                p = [_params(r) for r in chunk]
+                await conn.execute(
+                    """INSERT INTO _gobl_in SELECT * FROM unnest($1::int[], $2::text[], $3::text[], $4::text[],
+                           $5::text[], $6::text[], $7::text[], $8::float8[], $9::int[], $10::float8[],
+                           $11::timestamptz[])""",
+                    list(range(len(p))), *[[x[k] for x in p] for k in range(10)])
+                await conn.execute("""
+                    DO $$ DECLARE r record; BEGIN
+                      FOR r IN SELECT * FROM _gobl_in ORDER BY i LOOP
+                        BEGIN
+                          INSERT INTO game_odds_book_lines
+                              (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds,
+                               fetched_at)
+                          VALUES (r.sport, r.game_id, r.market, r.side, r.bookmaker, r.source, r.point,
+                                  r.american_odds, r.decimal_odds, r.fetched_at)
+                          ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
+                              point = excluded.point, american_odds = excluded.american_odds,
+                              decimal_odds = excluded.decimal_odds, fetched_at = excluded.fetched_at;
+                        EXCEPTION WHEN check_violation THEN
+                          INSERT INTO _gobl_bad VALUES (r.i);
+                        END;
+                      END LOOP;
+                    END $$""")
+                bad = [r["i"] for r in await conn.fetch("SELECT i FROM _gobl_bad ORDER BY i")]
+            for j in bad:
+                r = chunk[j]
+                rejected.append(
+                    f"{r.sport}/{r.game_id}/{r.market}/{r.side}/{r.bookmaker}"
+                    f" point={r.point} odds={r.american_odds} (CheckViolationError)"
+                )
 
     if rejected:
         print(
@@ -4158,8 +4214,8 @@ async def write_game_lines(rows: list[GameLineInput], complete_sources: frozense
         return are deleted and recorded in `game_line_pulls`.
       * A key with no current row closes its open pull.
       * `in_tx` (P6): `write_prop_odds`' hook, called inside EACH transaction
-        that commits rows, with exactly the rows it commits (a chunk, or one
-        row on the isolation path).
+        that commits rows, with exactly the rows it commits (a chunk, or a
+        half of one on the isolation path).
     """
     if not rows:
         return
@@ -4216,29 +4272,19 @@ async def write_game_lines(rows: list[GameLineInput], complete_sources: frozense
         def _changed(r: GameLineInput) -> bool:
             return prior.get(_game_line_key(r)) != (r.american_odds, bool(r.is_main)) and id(r) not in no_history
 
+        async def write_chunk(chunk):
+            await conn.executemany(_GAME_LINES_UPSERT, [_params(r) for r in chunk])
+            await price_history.insert_game_line_history(conn, [_hist(r) for r in chunk if _changed(r)])
+            if in_tx is not None:
+                await in_tx(conn, chunk)
+
         chunk_size = 500
         for i in range(0, len(batch), chunk_size):
-            chunk = batch[i:i + chunk_size]
-            try:
-                async with conn.transaction():
-                    await conn.executemany(_GAME_LINES_UPSERT, [_params(r) for r in chunk])
-                    await price_history.insert_game_line_history(conn, [_hist(r) for r in chunk if _changed(r)])
-                    if in_tx is not None:
-                        await in_tx(conn, chunk)
-                written.extend(chunk)
-            except asyncpg.CheckViolationError:
-                for r in chunk:
-                    try:
-                        async with conn.transaction():
-                            await conn.execute(_GAME_LINES_UPSERT, *_params(r))
-                            if _changed(r):
-                                await price_history.insert_game_line_history(conn, [_hist(r)])
-                            if in_tx is not None:
-                                await in_tx(conn, [r])
-                        written.append(r)
-                    except asyncpg.CheckViolationError as e:
-                        rejected.append(f"{r.sport}/{r.game_id}/{r.period}/{r.market}/{r.side}/{r.bookmaker}"
-                                        f" point={r.point} odds={r.american_odds} ({type(e).__name__})")
+            ok, bad = await _write_isolating(conn, batch[i:i + chunk_size], write_chunk)
+            written.extend(ok)
+            for r, e in bad:
+                rejected.append(f"{r.sport}/{r.game_id}/{r.period}/{r.market}/{r.side}/{r.bookmaker}"
+                                f" point={r.point} odds={r.american_odds} ({type(e).__name__})")
         fresh = [r for r in written if _game_line_key(r) not in prior]
 
         async with conn.transaction():
@@ -4690,6 +4736,26 @@ async def read_scraper_unmatched_keys(source_prefix: str) -> set[tuple[str, str]
     rows = await pool.fetch("SELECT source, scraper_key FROM scraper_unmatched_prices WHERE source LIKE $1",
                             source_prefix + "%")
     return {(r["source"], r["scraper_key"]) for r in rows}
+
+
+async def write_source_latency(rows: list[dict]) -> int:
+    """P7 (T0): upsert `source_latency` rows (scraper_timing.py). Each dict has
+    the table's columns; the key is (sport, measure, source, book,
+    market_group). Returns rows written."""
+    if not rows:
+        return 0
+    cols = ("sport", "measure", "source", "book", "market_group", "n", "hit_rate", "median_s", "p25_s", "p75_s",
+            "p90_s", "proven_fast", "window_start", "window_end")
+    types = ("text", "text", "text", "text", "text", "int", "float8", "float8", "float8", "float8", "float8",
+             "boolean", "timestamptz", "timestamptz")
+    pool = await get_pool()
+    res = await pool.execute(
+        f"""INSERT INTO source_latency ({', '.join(cols)}, computed_at)
+            SELECT *, now() FROM unnest({', '.join(f'${i + 1}::{t}[]' for i, t in enumerate(types))})
+            ON CONFLICT (sport, measure, source, book, market_group) DO UPDATE SET
+              {', '.join(f'{c} = excluded.{c}' for c in cols[5:])}, computed_at = excluded.computed_at""",
+        *[[r.get(c) for r in rows] for c in cols])
+    return int(res.split()[-1])
 
 
 async def read_bridge_brakes() -> dict:

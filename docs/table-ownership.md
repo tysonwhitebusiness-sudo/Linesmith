@@ -159,6 +159,12 @@ from `golfPredictionsJob`) as their sole writer.
 > | `scraper_checks` | Python — the scraper bridge (P6 §6); read by the P8/P9 odds readers |
 > | `scraper_unmatched_prices` | Python — the scraper bridge (P6 §6b) |
 >
+> **What odds-build P7 adds (migration `20260925064500`, RLS read-only):**
+>
+> | table | owner |
+> |---|---|
+> | `source_latency` | Python — `scraper_timing.py --write` (laptop, daily, run by the scraper bridge); read by P8's latency badges and P11's sharp-reference gate |
+>
 > **Closed in P5.1 (`docs/design/odds-build/P5.1-hardening.md`, migration `20260925040000`; RLS turned out to be off on 20 tables, now on for all):** `slate_rankings`, `model_status`
 > and `tennis_match_stats` have RLS **off** (measured `pg_class.relrowsecurity`
 > 2026-09-25). They are Python-written and read-only to the app, so they want
