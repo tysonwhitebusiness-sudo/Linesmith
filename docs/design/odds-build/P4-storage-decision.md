@@ -133,6 +133,12 @@ projection.
 
 ## Result
 
+> **CLOSED 2026-09-25 — the operator chose D24** (master plan §1):
+> everything, compact (117 B/row), 10 days hot, older rows to the corpus,
+> disk held at the provisioned 27 GB (~6.1 GB used) by our own guard at 85%,
+> and no corpus reader for now. Cost ceiling: D25. The measurements behind it
+> are in `results/P4-storage-audit.md`.
+>
 > **Superseded 2026-09-25 by `results/P4-storage-audit.md`.** The A–F
 > options and the recommendation below each dropped data from the app
 > (sources, relay copies, in-game changes or history days), which D14

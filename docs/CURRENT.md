@@ -51,8 +51,8 @@ Read it next. In short:
    | P1 fix what is broken | **DONE 21:55 UTC** — `4d64071`, deployed (see Deploys). Game line on every sport's player page, one market-label and one book registry, game-line history logs line moves (proved live). See P1 → Result |
    | P2 names | **DONE 22:25 UTC** — `08fa35e`. `scraper_markets.py` (scraper labels → app keys), verify list decided, 28 keys and 49 books in both alias maps; coverage 99.9% props / 96.5% game markets. See P2 → Result |
 | P3 matching | **DONE 23:15 UTC** — scraper games and players → app ids in `bridge.db`; zero wrong links in the 170-game / 215-player hand check; MLB 98.3% of player rows (after the StatsAPI roster fallback), NFL 99.6%, CFB 89.4%, MLS 95.8%. See P3 → Result |
-| P4 storage measurement | **AUDITED — waits for the operator's D24.** `docs/design/odds-build/results/P4-storage-audit.md`: every option keeps all the scraper's data. Option 1/1+ (everything in the DB, compact rows, disk grown; ~$0.74–0.94/month), or Option 2 (inside 8 GB: 1–3 days hot in the DB, all history as Parquet in Storage behind a read route). The first A–F options dropped data and are withdrawn |
-   | D24 (storage policy) | ⚑ operator — P4 writes options + a recommendation, then STOPS |
+| P4 storage decision | **CLOSED 2026-09-25 — D24:** everything reaches Supabase, compact (117 B/row), 10 days hot → corpus; disk held at 27 GB (~6.1 GB used) by our guard at 85%; no corpus reader for now. **D25:** $50/month all-in ceiling enforced by our own caps (audit + build before anything else that can raise a bill) |
+   | D24 (storage policy) | **decided 2026-09-25** (master plan §1) |
    | the six spec corrections (HANDOFF §"Known spec corrections") | **DONE** — P11 gate 2 = D13 (`3a1ac92`), P6 `scraper_unmatched_prices` (`9a1ec62`), P8 line movement + L5 dropping odds (`1680556`), P7 T0.4 (`ab73734`), S-G3 beyond 7 days (`eec6bba`). Each spec has a Changelog line |
 
    **Background checks running (never gate):**
