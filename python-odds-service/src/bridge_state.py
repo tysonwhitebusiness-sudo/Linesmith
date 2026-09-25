@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS player_link_misses (
 -- advanced only after that cycle's writes commit.
 CREATE TABLE IF NOT EXISTS cursors (
   name TEXT PRIMARY KEY, last_id INTEGER NOT NULL, updated_at TEXT NOT NULL);
+-- P6 (2026-09-25): games whose standing prices were backfilled (once each):
+-- the bridge forwards CHANGES, so a price unchanged since before a game was
+-- linked (or before the bridge first ran) would otherwise never arrive.
+CREATE TABLE IF NOT EXISTS backfilled (
+  game_key TEXT PRIMARY KEY, app_game_id TEXT, rows INTEGER, backfilled_at TEXT NOT NULL);
 -- P6 §7: games whose first_seen openers were seeded from scraper history (once each).
 CREATE TABLE IF NOT EXISTS opener_seeded (
   game_key TEXT PRIMARY KEY, app_game_id TEXT, rows INTEGER, seeded_at TEXT NOT NULL);

@@ -16,6 +16,7 @@ import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResear
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
 import { espnHeadshot } from '@/lib/sports/shared/identity';
+import { gameOddsCard } from '@/lib/sports/shared/oddsCard';
 
 type Payload = TennisGameResearchPayload;
 type Side = 'away' | 'home';
@@ -373,7 +374,7 @@ function tennisLinesSection(payload: Payload, state: GameState): ResearchSection
     })),
     caption: 'Aces settle only once the match reaches the archive; games won and to win a set settle from the score.',
   };
-  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: [[lines], [propsCard]], state: { kind: 'ready' } };
+  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: final ? [[gameOddsCard(payload, final)], [lines], [propsCard]] : [[gameOddsCard(payload, final)], [propsCard]], state: { kind: 'ready' } };
 }
 
 function tennisPlayersSection(payload: Payload, state: GameState): ResearchSection | null {

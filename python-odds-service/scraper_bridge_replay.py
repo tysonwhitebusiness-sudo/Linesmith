@@ -376,7 +376,7 @@ async def main() -> int:
         with open(bridge_log, "w", encoding="utf-8") as fh:
             proc = subprocess.run([sys.executable, "-u", os.path.join(HERE, "scraper_bridge_run.py"), "--replay-db",
                                    copy_path, "--state-db", state_path, "--provider-prefix", PREFIX, "--from-start",
-                                   "--until-idle", "--no-match", "--max-offers", str(a.max_offers), "--cycle-log",
+                                   "--until-idle", "--no-match", "--no-seed", "--max-offers", str(a.max_offers), "--cycle-log",
                                    cycle_log], cwd=HERE, stdout=fh, stderr=subprocess.STDOUT)
         report["run_seconds"] = round(time.time() - t)
         out = open(bridge_log, encoding="utf-8", errors="replace").read()

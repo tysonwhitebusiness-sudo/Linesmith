@@ -17,6 +17,7 @@ import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResear
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
 import { espnHeadshot } from '@/lib/sports/shared/identity';
+import { gameOddsCard } from '@/lib/sports/shared/oddsCard';
 
 type Payload = NbaGameResearchPayload;
 type Side = 'away' | 'home';
@@ -315,7 +316,7 @@ function nbaLinesSection(payload: Payload, state: GameState): ResearchSection {
     })),
     caption: 'Markets with one book quoting both sides are left out.',
   };
-  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: [[lines, series], [propsCard]], state: { kind: 'ready' } };
+  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: final ? [[gameOddsCard(payload, final)], [lines, series], [propsCard]] : [[gameOddsCard(payload, final)], [series], [propsCard]], state: { kind: 'ready' } };
 }
 
 function nbaPlaysSection(payload: Payload): ResearchSection | null {

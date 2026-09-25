@@ -77,6 +77,8 @@ EVENT_MISS_TTL_S = 120
 SEED_GAMES_PER_CYCLE = 5
 SEED_SECONDS_PER_CYCLE = 5.0
 SLOW_CYCLE_S = 180
+BACKFILL_HOURS = 48
+BACKFILL_SECONDS_PER_CYCLE = 8.0
 SEED_SINCE = "2026-09-22"
 TABLES = ("offers", "snapshots", "offer_events", "splits", "reference_data")
 RATING_KINDS = {"nfl_power_rating": "nfl", "cfb_power_rating": "cfb", "mlb_power_rating": "mlb",
@@ -267,6 +269,8 @@ class Bridge:
         self.outbox: list | None = None
         self.pending_cursor: dict[str, int] | None = None
         self.unsaved_cursor: dict[str, int] | None = None
+        self.backfill_queue: list[tuple] = []
+        self.backfill_rows: dict[str, int] = {}
         self.unmatched_counter: Counter = Counter()
         self.unresolved_day = None
         self.stats = Counter()
@@ -518,7 +522,7 @@ class Bridge:
                     checks.append((f"{self.prefix}:{source}", gid, at))
         if snaps:
             self.newest_bridged = parse_ts(snaps[-1][3])
-        confirmed = self.hold.confirm(self.latest_ok)
+        confirmed = self.hold.confirm(self.latest_ok) + self._backfill()
 
         prop_rows, game_rows, unmatched_rows, exchanges = [], [], [], []
         for m in confirmed:
@@ -670,6 +674,107 @@ class Bridge:
         refs = self._references(rows, openers)
         self.ref_dirty = True
         return openers + refs
+
+    def _backfill(self) -> list:
+        """Standing prices for newly linked games (P6, found live 2026-09-25).
+
+        The bridge forwards CHANGES read after its cursor, so a price that has
+        not moved since before its game was linked -- or before the bridge first
+        ran -- never arrives: Pinnacle's MLB run line, unchanged since the day
+        before, was missing from the game page. Once per linked game (bridge.db
+        `backfilled`), for games from 6 h ago to 36 h ahead: each source event's
+        latest offer per key over the last BACKFILL_HOURS, minus keys pulled
+        after it (compared on snapshot id, one sequence for both tables),
+        forwarded as established prices. Time-boxed per cycle; no openers (the
+        seed owns those)."""
+        if self.args.no_seed:
+            return []
+        now = now_utc()
+        if not self.backfill_queue:
+            done = {r[0] for r in self.state.execute("SELECT game_key FROM backfilled")}
+            for key, v in self.res.links.items():
+                st = parse_ts(v[3])
+                if key in done or st is None or not (now - timedelta(hours=6) <= st <= now + timedelta(hours=36)):
+                    continue
+                for src, ext in self.scraper.execute("SELECT source, external_id FROM game_links WHERE game_key = ?", (key,)):
+                    self.backfill_queue.append((key, src, ext))
+                self.backfill_queue.append((key, None, v[1]))
+        out: list = []
+        t = time.time()
+        since = sqlite_ts(now - timedelta(hours=BACKFILL_HOURS))
+        while self.backfill_queue and time.time() - t < BACKFILL_SECONDS_PER_CYCLE:
+            key, src, ext = self.backfill_queue.pop(0)
+            if src is None:
+                try:
+                    self.state.execute("INSERT OR REPLACE INTO backfilled VALUES (?, ?, ?, ?)",
+                                       (key, ext, self.backfill_rows.pop(key, 0), now.isoformat()))
+                    self.state.commit()
+                except sqlite3.OperationalError:
+                    pass                           # bridge.db busy: backfilled again later (idempotent)
+                continue
+            rows = self.scraper.execute(
+                "SELECT o.id, o.snapshot_id, o.source, s.endpoint, o.event_external_id, o.prop_market_external_id, "
+                "o.market, o.side, o.line, o.book, o.book_key, o.price, o.price_alt, o.source_ts_ms, o.depth, "
+                "s.fetched_at, s.cache_age_s FROM offers o INDEXED BY ix_offers_event_external_id "
+                "JOIN snapshots s ON s.id = o.snapshot_id "
+                "WHERE o.event_external_id = ? AND o.source = ? AND s.fetched_at >= ? ORDER BY o.id DESC LIMIT 60000",
+                (ext, src, since)).fetchall()
+            pulled = {}
+            for pm, market, side, book, line, snap in self.scraper.execute(
+                    "SELECT prop_market_external_id, market, side, book, line, max(snapshot_id) FROM offer_events "
+                    "WHERE event_external_id = ? AND source = ? AND event = 'pulled' AND at >= ? "
+                    "GROUP BY prop_market_external_id, market, side, book, line", (ext, src, since)):
+                pulled[(pm, market, side, book, line)] = snap or 0
+            latest = {}
+            for r in rows:
+                depth = None
+                if r[14] and r[14] != "null":
+                    try:
+                        depth = json.loads(r[14])
+                    except ValueError:
+                        depth = None
+                o = Offer(id=r[0], snapshot_id=r[1], source=r[2], endpoint=r[3], event_external_id=r[4],
+                          prop_market_external_id=r[5], market=r[6], side=r[7], line=r[8], book=r[9], book_key=r[10],
+                          price=r[11], price_alt=r[12], source_ts_ms=r[13], depth=depth, fetched_at=parse_ts(r[15]),
+                          cache_age_s=r[16])
+                k = o.scraper_key()
+                if k in latest:
+                    continue
+                if pulled.get((o.prop_market_external_id, o.market, o.side, o.book, o.line), -1) > o.snapshot_id:
+                    latest[k] = None               # pulled after its last price: not standing
+                    continue
+                latest[k] = o
+            offers = [o for o in latest.values() if o is not None]
+            self.res.prime_events({(src, ext)})
+            self.res.prime_props({(o.source, o.prop_market_external_id) for o in offers if o.prop_market_external_id})
+            n = 0
+            for o in offers:
+                try:
+                    game, miss = self.res.game(o.source, o.event_external_id)
+                    prop, _ = self.res.prop(o.source, o.prop_market_external_id)
+                    player = self.res.player(o.source, prop, game.app_game_id) if game else None
+                    m = map_offer(o, game=game, game_miss=miss, prop=prop, player=player, policy=self.policy,
+                                  provider_prefix=self.prefix)
+                except Exception:                  # noqa: BLE001 -- one bad row never stops the bridge
+                    continue
+                if m.kind not in ("prop", "game"):
+                    continue                       # unmatched rows arrive through the normal path
+                if m.key in self.hold.pending or m.key in self.hold.forwarded:
+                    continue                       # a newer reading is already on its way
+                m.row._sk = (f"{self.prefix}:{o.source}", m.scraper_key)
+                m.opener_ok = False
+                self.hold.forwarded[m.key] = m.value
+                self.endpoint_games[(o.source, o.endpoint)].add(m.row.game_id)
+                if m.kind == "game":
+                    r = m.row
+                    g = (r.sport, r.game_id, r.period, r.market, r.bookmaker, r.source)
+                    self.book_state[g][(r.side, r.point)] = r.american_odds
+                    self.group_keys[g].add(m.key)
+                out.append(m)
+                n += 1
+            self.backfill_rows[key] = self.backfill_rows.get(key, 0) + n
+        self.stats["backfilled"] += len(out)
+        return out
 
     def _seed_openers(self) -> list:
         """§7 seed: for linked games not started, the earliest main line per

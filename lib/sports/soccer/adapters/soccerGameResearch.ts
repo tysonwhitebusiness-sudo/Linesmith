@@ -15,6 +15,7 @@ import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
+import { gameOddsCard } from '@/lib/sports/shared/oddsCard';
 
 type Payload = SoccerGameResearchPayload;
 type Side = 'away' | 'home';
@@ -334,7 +335,7 @@ function soccerLinesSection(payload: Payload, state: GameState): ResearchSection
     })),
     caption: [s.propsAltOnly ? `${s.propsAltOnly} markets had only alternate lines quoted` : null, 'markets with one book are'].filter(Boolean).join(' and ').replace(/^./, (c) => c.toUpperCase()) + ' left out. First scorer counts the first goal a player scored; own goals count for nobody.',
   };
-  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: [[lines], [propsCard]], state: { kind: 'ready' } };
+  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: final ? [[gameOddsCard(payload, final)], [lines], [propsCard]] : [[gameOddsCard(payload, final)], [propsCard]], state: { kind: 'ready' } };
 }
 
 function soccerMatchupSection(payload: Payload, state: GameState): ResearchSection {

@@ -9,6 +9,7 @@ import { TeamLogo } from './SubjectAvatar';
 import { Avatar, Card, Chip, Collapse, cx, DisclosureBar, DataTable, ResultMark, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column, Tooltip } from './ui';
 import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
+import { GameOddsSection } from './odds/GameOddsSection';
 import {
   formatResearchValue,
   type PlayerBio,
@@ -784,6 +785,8 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
 /** One card of a sport section, by kind. Knows nothing about which sport built it. */
 export function ResearchCardView({ card }: { card: ResearchCard }) {
   switch (card.kind) {
+    case 'odds':
+      return <GameOddsSection sport={card.sport} gameId={card.gameId} teams={card.teams} final={card.scope === 'game-final'} />;
     case 'percentiles':
       return (
         <Card title={card.title} scope={card.scope} info={card.info} caption={card.caption}>

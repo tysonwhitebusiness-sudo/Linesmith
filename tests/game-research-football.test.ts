@@ -109,7 +109,10 @@ test('a final page: flow with the drive chart, leaders from the box, props only 
   const leaders = data.sections[1].rows[0][1];
   assert.ok(leaders.kind === 'table');
   assert.equal(leaders.rows.find((r) => r.key === 'Passing-away')?.values.line, '22/34, 175 yds, 2 TD, 1 INT');
-  const props = data.sections[3].rows[1][0];
+  // P8 O3: the lines section leads with exactly one odds card; a final keeps the open/close table under it.
+  assert.deepEqual(data.sections[3].rows.flat().filter((c) => c.kind === 'odds').length, 1);
+  assert.equal(data.sections[3].rows[0][0].kind, 'odds');
+  const props = data.sections[3].rows[2][0];
   assert.ok(props.kind === 'table');
   assert.deepEqual(props.rows.map((r) => [r.label, r.values.side]), [['Played', 'Over']]);
 });

@@ -20,6 +20,7 @@ import type { PregameStarter } from '@/lib/sports/mlb/statcastRollupShapes';
 import { pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import { TEAM_ABBR_BY_ID } from '@/lib/sports/mlb/teamAliases';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
+import { gameOddsCard } from '@/lib/sports/shared/oddsCard';
 
 const HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run']);
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
@@ -444,7 +445,7 @@ function mlbLinesSection(payload: MlbGameResearchPayload, state: GameState): Res
       .join(' and ')
       .replace(/^./, (c) => c.toUpperCase()) + ' are left out.',
   };
-  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: [[lines], [propsCard]], state: { kind: 'ready' } };
+  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: final ? [[gameOddsCard(payload, final)], [lines], [propsCard]] : [[gameOddsCard(payload, final)], [propsCard]], state: { kind: 'ready' } };
 }
 
 function mlbPlaysSection(payload: MlbGameResearchPayload): ResearchSection | null {

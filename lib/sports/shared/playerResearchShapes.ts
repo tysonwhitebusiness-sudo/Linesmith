@@ -458,6 +458,19 @@ export type ResearchCard =
     }
   | { kind: 'status'; key: string; title: string; headline: string; reason: string }
   | {
+      /**
+       * The odds section (odds build P8, O3): the renderer mounts
+       * `components/odds/GameOddsSection`, which reads `/api/odds/game` itself
+       * (hooks stay in components). A data-declared card, never a sport check.
+       */
+      kind: 'odds';
+      key: string;
+      scope: 'game' | 'game-final' | 'team';
+      sport: string;
+      gameId: string;
+      teams: { home: { abbr: string }; away: { abbr: string } };
+    }
+  | {
       /** A match on one axis of minutes, one lane per team: goals, cards, substitutions and shots (R8.3, soccer). */
       kind: 'timeline';
       key: string;

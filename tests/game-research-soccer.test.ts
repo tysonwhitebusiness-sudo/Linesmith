@@ -103,10 +103,13 @@ test('a final: the timeline, a shot map with the away side mirrored, lineups, li
   assert.equal(shots.points[goalAt][0], 'away');
   assert.ok(shots.points[goalAt][1] < 5, "Haaland's goal (x 97.5 attacking right in the feed) is mirrored to City's left-hand goal");
 
-  const lines = data.sections[3].rows[0][0];
+  // P8 O3: exactly one odds card leads the lines section; a final keeps the open/close table under it.
+  assert.equal(data.sections[3].rows.flat().filter((c) => c.kind === 'odds').length, 1);
+  assert.equal(data.sections[3].rows[0][0].kind, 'odds');
+  const lines = data.sections[3].rows[1][0];
   assert.ok(lines.kind === 'table');
   assert.equal(lines.rows.find((r) => r.key === 'ml-draw')?.values.close, '+275');
-  const props = data.sections[3].rows[1][0];
+  const props = data.sections[3].rows[2][0];
   assert.ok(props.kind === 'table');
   assert.deepEqual(props.rows.map((r) => [r.values.market, r.values.result, r.values.went]), [['Anytime scorer', 'Yes', 'Yes'], ['Shots', 2, 'Under']]);
 });

@@ -17,6 +17,7 @@ import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } 
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
 import type { TargetCell } from '@/lib/sports/nfl/teamTargetShapes';
 import { espnHeadshot } from '@/lib/sports/shared/identity';
+import { gameOddsCard } from '@/lib/sports/shared/oddsCard';
 
 /** ESPN's headshot path per league (R9a): college football has its own. */
 const faceOf = (league: string, id: string | null | undefined) => espnHeadshot(league === 'cfb' ? 'college-football' : 'nfl', id);
@@ -454,7 +455,7 @@ function footballLinesSection(payload: Payload, state: GameState): ResearchSecti
     })),
     caption: [f.propsAltOnly ? `${f.propsAltOnly} markets had only alternate lines quoted` : null, 'markets with one book quoting both sides'].filter(Boolean).join(' and ').replace(/^./, (c) => c.toUpperCase()) + ' are left out.',
   };
-  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', sub: final ? 'what the market expected, and what happened' : undefined, rows: [[lines], [propsCard]], state: { kind: 'ready' } };
+  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', sub: final ? 'what the market expected, and what happened' : undefined, rows: final ? [[gameOddsCard(payload, final)], [lines], [propsCard]] : [[gameOddsCard(payload, final)], [propsCard]], state: { kind: 'ready' } };
 }
 
 function footballPlaysSection(payload: Payload): ResearchSection | null {
