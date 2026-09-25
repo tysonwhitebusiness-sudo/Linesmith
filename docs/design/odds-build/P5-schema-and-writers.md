@@ -15,6 +15,183 @@ the operator's green light.
 
 ---
 
+## Amendments A1–A3 (operator, 2026-09-25) — these win where the text below differs
+
+Approved with D24/D25 (`HANDOFF-P5.md`). Every number here is measured
+against the live database on 2026-09-25 unless it says otherwise.
+
+### A1. Compact history, built properly (no compatibility view)
+
+**What the live table forced** (`prop_odds_history`, 7,051,336 rows,
+2026-09-11 → 09-25):
+
+| fact | measured | consequence |
+|---|---|---|
+| `american_odds` range | −1,000,000 … +300,000; 41,451 rows outside ±32,767 | the price is `integer`, not `smallint`. Ordered for alignment it costs no bytes: the row pads to 8 either way |
+| `decimal_odds` | NULL on 6,421,135; 118,360 of the rest ≠ the American conversion | stored as-is (nullable `double precision`); a NULL costs one bitmap bit |
+| `is_delayed`/`delay_seconds` | fixed per provider (sharpapi = true/60, the other three false/NULL) | carried by the **source** dictionary, not per row |
+| `line` as `real` | 0 rows change value | `real` |
+| `game_id` | all 709 numeric | a **games dictionary** anyway: tests write `test-game`, and an `int` code is smaller than a `bigint` |
+| `subject_id` | 226,750 rows non-numeric | subjects dictionary (`int`) |
+
+**Tables** (migration `<ts>_odds_bridge_schema.sql`, all Python-written, RLS
+read-only like their neighbours):
+
+- Dictionaries — append-only, a code never changes meaning:
+  `odds_games (id int, game_id text UNIQUE, sport text NULL)`,
+  `odds_subjects (id int, subject_id text UNIQUE)`,
+  `odds_markets (id smallint, name text UNIQUE)` (prop `market_key`s and game
+  market types), `odds_books (id smallint, name text UNIQUE)` (canonical
+  names), `odds_sources (id smallint, provider_id, is_delayed, delay_seconds,
+  UNIQUE NULLS NOT DISTINCT)`, `odds_sides (id smallint, name text UNIQUE)`,
+  `odds_periods (id smallint, name text UNIQUE)`.
+- **`prop_price_history`** replaces `prop_odds_history`:
+  `(id bigint, observed_at, recorded_at, decimal_odds float8 NULL, game int,
+  subject int, line real NULL, price int, market, book, source, side smallint)`.
+  - `id` is kept because the corpus's Parquet has it and its readers dedupe on
+    it. Converted rows keep their ids; new ids start at **13,500,001**, the
+    next 500k grid boundary above today's max (13,151,692), so the old
+    id-chunk corpus files close cleanly and never overlap a new file.
+  - **The two times.** `observed_at` = when the price changed at the source
+    ("since"; the P5 rule below, and today's column's meaning — paid feeds
+    pass no time, so it is the write time exactly as now). `recorded_at` = when
+    our writer stored the row. It is the partition key, because only a write
+    time is monotonic: a relay's change time can be 11+ hours old (D23), and
+    a partition that is closed and exported must never receive another row.
+    `CHECK (observed_at <= recorded_at)`; the writer takes the earlier of the
+    two (a source clock ahead of ours is a clock error, not a future price).
+  - Partitioned `BY RANGE (recorded_at)`, one partition per UTC day. The hot
+    window moves by `DROP` of a whole exported day — no row-by-row `DELETE`,
+    no bloat, next to no WAL. That matters at 8.1M rows/day.
+  - One index, for the chart: `(game, subject, market, observed_at)`.
+    Readers that bound `observed_at` below also bound `recorded_at` by the
+    same instant (exact, because `observed_at <= recorded_at`), so Postgres
+    skips the older days.
+- **`game_lines_history`** is compact from the start (it replaces the text
+  layout in §1 below): `(observed_at, recorded_at, game int, point real NULL,
+  price int, market, period, side, book, source smallint, is_main bool)`,
+  partitioned the same way, index `(game, period, market, observed_at)`. No
+  `id`: nothing reads its corpus by id, and a closed day is immutable.
+- **`odds_history_exports`**: the ledger — one row per (table, day): rows,
+  digest, object key, bytes, `verified_at`, `dropped_at`. Nothing is dropped
+  without a verified row here.
+- **`odds_history_ensure_partitions(days_ahead int)`**: creates any missing
+  daily partition from today through `days_ahead` for both tables and enables
+  RLS on each. The migration creates the range the conversion needs plus 14
+  days; the disk guard (A2) keeps 14 days ahead.
+
+**Conversion** — `python-odds-service/convert_prop_history.py`:
+1. fill the dictionaries from `DISTINCT` values;
+2. `INSERT … SELECT` in id chunks, server-side (no rows cross the wire),
+   `recorded_at = observed_at`; idempotent (a chunk already present is
+   skipped), so it can re-run and catch up;
+3. **verify row for row** in the database: every id decoded back through the
+   dictionaries must equal the source row in all 13 columns, and the counts
+   must match; any difference stops the cutover;
+4. after the deploy that moves the writer, catch up the rows written in the
+   meantime, verify again, then `DROP TABLE prop_odds_history`.
+
+**One shared reader per language**, and every reader moves onto it:
+- TypeScript: `lib/db/priceHistory.ts` — the only file that names
+  `prop_price_history`, `game_lines_history` or a dictionary table. It exposes
+  the decoded rows as typed functions (line history, the Movers source, the
+  pre-game latest-per-key read, accumulation counts). `lib/odds/props/lineHistory.ts`,
+  `lib/slate/marketMoves.ts`, `lib/db/client.ts` and `/diagnostics` call it;
+  `tests/price-history-reader.test.ts` fails if any other file names those
+  tables.
+- Python: `src/price_history.py` — the codes cache and the decode. `db.py`'s
+  writer and `read_prop_odds_history_for_key`, the corpus export, the guard
+  and `health_check` go through it.
+- Comments that only mention the old table are updated. The six
+  `scripts/probe-*.ts` were one-off measurements whose results are recorded
+  in their headers; they are rewritten onto the shared reader's decoded
+  source, or deleted if their question is closed (each named in the commit).
+
+**Timed before switching** — `python-odds-service/time_history_reads.py`
+runs the three real reads against both tables on the same data, 7 runs each,
+and reports the medians: the price chart (`readLineHistory`'s two queries),
+Movers' 7-day consensus query, and the game page's pre-game props
+(`readPreGamePropOddsForGame`). **Gate: new median ≤ old median × 1.2, or
+within 20 ms of it.** The results go in `results/P5-read-timings.md`. A read
+that fails the gate is fixed (index, query shape) and re-timed before the
+cutover; it is never waived.
+
+**The corpus's Parquet schema is unchanged.** Compact rows decode to exactly
+today's 13 columns (`id, provider_id, game_id, subject_id, market_key, line,
+side, bookmaker, american_odds, decimal_odds, observed_at, is_delayed,
+delay_seconds`) with today's Arrow types. `recorded_at` is not in the
+Parquet: for the paid feeds it equals `observed_at`; for bridge rows the
+scraper's own archive keeps its fetch times (D14 holds on the laptop and in
+its Storage backup).
+- Rows with id < 13,500,001 stay in the existing id-chunk files. Before the
+  old table is dropped, one final export takes every row (the 2-hour guard
+  lifted, since the writer has moved), and `prune_corpus`'s per-id check
+  proves every one of them is in the corpus; that proof is written to the
+  ledger as the `legacy` row.
+- Newer rows are exported one file per `recorded_at` day:
+  `prop_odds_history/prop_odds_history_d<YYYYMMDD>.parquet`. Same schema, so
+  one glob still reads the whole corpus.
+- `game_lines_history` gets its own corpus directory with the decoded
+  columns (`sport, game_id, period, market, side, point, is_main, bookmaker,
+  source, american_odds, observed_at, recorded_at`).
+
+**`game_odds_history`** (0.12 GB, never pruned) stays as it is. D24 does not
+cover it.
+
+### A2. The disk guard (D24)
+
+- **`diskGuardJob`** in `JOB_REGISTRY`, every 15 minutes, in the worker:
+  - measures `pg_database_size(current_database())` + WAL
+    (`sum(size) FROM pg_ls_waldir()`; 5,253 MB + 1,024 MB on 2026-09-25,
+    `max_wal_size` 4,096 MB);
+  - compares the total with `DISK_GUARD_PROVISIONED_GB` (config, 27: the
+    provisioned size cannot be read without a Management token) ×
+    `DISK_GUARD_LIMIT_PCT` (0.85);
+  - sets the hot window: normally `HISTORY_HOT_DAYS` (10). Over the limit,
+    it removes whole days from the window, oldest first, until the measured
+    per-day partition sizes bring the total under `DISK_GUARD_TARGET_PCT`
+    (0.80), and never below `HISTORY_MIN_HOT_DAYS` (3);
+  - if the floor is reached and the total is still over the limit, it sets
+    **`bridge_paused`**; the P6 bridge reads it before every write and holds
+    its rows on the laptop (nothing is dropped; they are sent when the flag
+    clears);
+  - keeps 14 days of partitions ahead;
+  - writes one row to `disk_guard_state` (single-row table: measured sizes,
+    limit, window, `bridge_paused`, reason, `measured_at`).
+- **The mover runs in the health-check cron, not the worker.** The worker's
+  memory, from Render's metrics API over three days, has a median of
+  335–350 MB and peaks at 477 of 512 MB. A corpus export was measured at
+  about 280 MB (`corpus_store`), so it cannot share that process. The cron
+  already runs every 15 minutes on its own 512 MB instance. After its checks,
+  `history_mover.py`:
+  - exports each closed day (before today, UTC) that has no ledger row;
+  - uploads it, reads the uploaded object back, and compares its row count
+    and digest with Postgres's before it writes `verified_at`;
+  - drops every partition older than the guard's window whose export is
+    verified. Legacy rows are covered by the `legacy` ledger row.
+
+  The cron gains `CORPUS_URI` and `CORPUS_S3_*`. Without them its existing
+  `corpusFreshness` check fails today with "CANNOT READ THE CORPUS", measured
+  2026-09-25. The mover's own peak memory and its time per day are measured
+  before it ships and written in `results/P5-read-timings.md`.
+- **Alerts:** `health_check` gains `diskGuard`. It is unhealthy when the total
+  is over the limit, when the window is shorter than `HISTORY_HOT_DAYS`, when
+  the bridge is paused, when the state is older than 45 minutes, when fewer
+  than 7 days of partitions are ready ahead, or when a closed day has gone
+  unexported for more than 36 hours.
+- `prune_corpus`/`refresh_corpus` stop handling `prop_odds_history` once
+  the legacy proof is written. The laptop task keeps the other corpus tables.
+
+### A3. The rest of P5 as specified below
+
+Two times per price, pulls, `game_lines` (current, text) with periods and
+alternates, openers, splits, exchange books, `game_reference`, RLS on every
+new table, the F6 reader rule (`lib/odds/sourcePrecedence.ts`), ownership
+rows, one worker deploy. `write_game_lines` writes history into the compact
+`game_lines_history` through `price_history.py`.
+
+---
+
 ## Design decisions (and why)
 
 1. **Additive only; no existing reader changes behaviour.**
@@ -404,3 +581,22 @@ None (P6's soak watches the new tables filling).
     `python-odds-service/src/corpus_store.py`;
   - `lib/db/client.ts`, `lib/odds/props/mainLine.ts`;
   - `docs/table-ownership.md`, `CLAUDE.md`, `docs/CURRENT.md`.
+
+## Changelog
+
+- **2026-09-25 — A1, compact history built properly** (operator, with D24).
+  `prop_odds_history` is converted into the dictionary-coded, day-partitioned
+  `prop_price_history`, verified row for row, then dropped. There is no
+  compatibility view: one shared reader per language
+  (`lib/db/priceHistory.ts`, `src/price_history.py`). Reads are timed against
+  today's before the switch (gate ×1.2 or +20 ms). The corpus Parquet schema
+  is unchanged. `game_lines_history` is compact from the start. Measured
+  departures from the 117 B/row layout: the price is `integer` (41,451 rows
+  exceed `smallint`), `decimal_odds` is kept, and `id` is kept for the corpus.
+- **2026-09-25 — A2, the disk guard** (operator, D24). `diskGuardJob` runs in
+  the worker every 15 min: DB + WAL under 85% of 27 GB, the window shrinks
+  oldest-first down to a 3-day floor, then the bridge pauses. The export and
+  partition drops run in the health-check cron's own instance, because the
+  worker peaks at 477 of 512 MB.
+- **2026-09-25 — A3, the rest as specified.** `game_lines_history`'s text
+  layout in §1 is replaced by A1's compact one.
