@@ -53,18 +53,14 @@ import { useGolfResearch } from './useGolfResearch';
 import type { GolfResearchInput } from '@/lib/sports/golf/playerResearchShapes';
 import { nflTargetRole, nflTargetRoleFromKind, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
 import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSpec';
-import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
-import { LineMovementCard } from './LineMovementCard';
 import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { marketText } from './MarketLabel';
 import { InsufficientMark, formatRate } from './StatCells';
-import { OddsChip, GetOddsButton, EdgeBadge } from './OddsChip';
-import { BookLogo } from './BookLogo';
+import { OddsChip, GetOddsButton } from './OddsChip';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
-import { PropOddsBoard } from './PropOddsPanel';
 import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
 import { GolfPlayerStatsCard } from './GolfPlayerStatsCard';
 import type { AdvancedStat, GolferStrokesGained } from '@/lib/sports/golf/pgatourStats';
@@ -1373,21 +1369,6 @@ export function PlayerDetail({
   // and `candidateCategoryToSide` are the existing translators — the same pair
   // the MLB adapter already uses to find a candidate's real prices.
   //
-  // PINNED TO THE LINE ON SCREEN (R2-F5, R6.1d): the stepper's opening line is
-  // R2's main line, and the chart names the same line rather than the
-  // most-observed rung. Cut at the start for a started game, like every other
-  // price on the page. After `data`, because the line is the adapter's.
-  const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
-  const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
-  const lineHistory = useLineHistory(
-    gamePkStr,
-    active?.subjectId,
-    lineHistoryMarketKey,
-    lineHistorySide,
-    data?.priceCandidate?.line ?? active?.line ?? null,
-    started ? startIso : null,
-  );
-
   // Combined readiness for `onReadyChange` — every hook on this page that
   // OWNS A VISIBLE CARD, not just the two that happen to drive an `lb-skel`
   // shimmer.
@@ -1421,7 +1402,6 @@ export function PlayerDetail({
     nbaShots.loading ||
     nhlShots.loading ||
     golfResearch.loading ||
-    lineHistory.loading ||
     cfbTeamDefense.loading ||
     nbaTeamDefense.loading ||
     nhlTeamDefense.loading ||
@@ -1478,12 +1458,11 @@ export function PlayerDetail({
     propBlock: React.ReactNode,
     propSub: React.ReactNode,
     next: HeroNext | null,
-    oddsCards: { movement: React.ReactNode; books: React.ReactNode; gameLine: React.ReactNode } | null,
     live: React.ReactNode,
   ) => {
     // P8 O2: the odds section is one component that reads /api/odds/player
-    // itself (the approved mockup's player surface); the old trio of cards the
-    // page built (`oddsCards`) is no longer mounted.
+    // itself (the approved mockup's player surface). The old trio of cards it
+    // replaced (LineMovementCard, PropOddsBoard, the game-line card) is deleted.
     const myAbbr = bioState.data?.team?.abbr ?? null;
     const oppAbbr = next?.opponent.abbr ?? null;
     const oddsTeams = myAbbr && oppAbbr
@@ -1604,7 +1583,6 @@ export function PlayerDetail({
         null,
         null,
         null,
-        null,
       );
     }
     const seasonStatus = snapshot?.seasonStatus;
@@ -1616,7 +1594,6 @@ export function PlayerDetail({
       <div className="rounded-card border border-line-soft bg-card shadow-card">
         <EmptyState title="No line posted for this player today" reason={reason} />
       </div>,
-      null,
       null,
       null,
       null,
@@ -1695,88 +1672,6 @@ export function PlayerDetail({
       {data.subject.rankDetail ? ` · ${data.subject.rankDetail}` : ''}
     </>
   );
-
-  const todays = data.model?.todaysLine ?? data.gameLine ?? null;
-  // Label each moneyline price by the player's real side (P1): the card used
-  // to assume the player's team was home. Unknown side -> Away / Home.
-  const mlAwayLabel = todays?.playerSide === 'home' ? data.subject.opponentAbbr : todays?.playerSide === 'away' ? data.subject.teamAbbr : undefined;
-  const mlHomeLabel = todays?.playerSide === 'home' ? data.subject.teamAbbr : todays?.playerSide === 'away' ? data.subject.opponentAbbr : undefined;
-  const oddsCards = {
-    movement: (
-      <LineMovementCard
-        data={lineHistory.data}
-        loading={lineHistory.loading}
-        userSportsbook={propOdds.userSportsbook}
-        marketLabel={activeMarketKey ? marketLabel(activeMarketKey) : marketText(active.sport, active.dimension, 'full')}
-      />
-    ),
-    books: (
-      <Card
-        title="All books"
-        scope={data.propOddsBoard ? [marketLabel(data.propOddsBoard.marketKey), data.propOddsBoard.line].filter((x) => x != null).join(' ') : undefined}
-        info="Every book's price at the line in view. Your book is starred."
-        dense
-        state={data.propOddsBoard ? { kind: 'ready' } : { kind: 'empty', title: 'No prices for this market', reason: 'This market has no book prices to compare.' }}
-      >
-        {data.propOddsBoard ? (
-          <PropOddsBoard
-            allRows={data.propOddsBoard.allRows}
-            subjectId={data.propOddsBoard.subjectId}
-            marketKey={data.propOddsBoard.marketKey}
-            line={data.propOddsBoard.line}
-            userSportsbook={data.propOddsBoard.userSportsbook}
-          />
-        ) : null}
-      </Card>
-    ),
-    gameLine: (
-      <Card
-        title="Game line"
-        scope={todays?.liveScore ? `${todays.liveScore.away}–${todays.liveScore.home} ${todays.livePeriod ?? ''}`.trim() : undefined}
-        dense
-        state={todays?.moneyline ? { kind: 'ready' } : { kind: 'empty', title: 'No game line yet', reason: 'No book has priced this matchup.' }}
-      >
-        {todays?.moneyline ? (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="rounded-ctl border border-line-soft p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-overline text-ink-muted">Moneyline</span>
-                <BookLogo bookId={todays.moneyline.book} size={13} withLabel />
-              </div>
-              <div className="flex gap-1.5">
-                <OddsChip price={todays.moneyline.away} source={todays.moneyline.source} side={mlAwayLabel ?? 'Away'} size="md" className="flex-1 justify-center" />
-                <OddsChip price={todays.moneyline.home} source={todays.moneyline.source} side={mlHomeLabel ?? 'Home'} size="md" className="flex-1 justify-center" />
-              </div>
-              {todays.moneylineEdge ? (
-                <div className="mt-1 flex gap-1.5">
-                  <EdgeBadge edge={todays.moneylineEdge.away} modelProb={todays.moneylineEdge.awayModelProb} marketProb={todays.moneylineEdge.awayMarketProb} label={mlAwayLabel ?? 'Away'} />
-                  <EdgeBadge edge={todays.moneylineEdge.home} modelProb={todays.moneylineEdge.homeModelProb} marketProb={todays.moneylineEdge.homeMarketProb} label={mlHomeLabel ?? 'Home'} />
-                </div>
-              ) : null}
-            </div>
-            {todays.total ? (
-              <div className="rounded-ctl border border-line-soft p-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-overline text-ink-muted">Total {todays.total.point}</span>
-                  <BookLogo bookId={todays.total.book} size={13} withLabel />
-                </div>
-                <div className="flex gap-1.5">
-                  <OddsChip price={todays.total.overPrice} source={todays.total.source} side={`O${todays.total.point}`} size="md" className="flex-1 justify-center" />
-                  <OddsChip price={todays.total.underPrice} source={todays.total.source} side={`U${todays.total.point}`} size="md" className="flex-1 justify-center" />
-                </div>
-                {todays.totalEdge ? (
-                  <div className="mt-1 flex gap-1.5">
-                    <EdgeBadge edge={todays.totalEdge.over} modelProb={todays.totalEdge.overModelProb} marketProb={todays.totalEdge.overMarketProb} label="Over" />
-                    <EdgeBadge edge={todays.totalEdge.under} modelProb={todays.totalEdge.underModelProb} marketProb={todays.totalEdge.underMarketProb} label="Under" />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </Card>
-    ),
-  };
 
   return renderPage(
     <div className="space-y-3">
@@ -2062,7 +1957,6 @@ export function PlayerDetail({
     </div>,
     propSub,
     next,
-    oddsCards,
     data.gameState ? <GameStateCard state={data.gameState} subjectName={active.subjectName} /> : null,
   );
 }

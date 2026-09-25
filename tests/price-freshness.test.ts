@@ -105,18 +105,9 @@ test('relative ages read naturally at every scale', () => {
   assert.equal(relativeAge(mins(60 * 24 * 3), T), '3d ago');
 });
 
-test('the board actually passes a capture time to every chip', () => {
-  // The whole defect was a working helper nothing reached. A test on the helper
-  // alone would have passed throughout.
-  const src = readFileSync('components/PropOddsPanel.tsx', 'utf8');
-  const chips = src.match(/<OddsChip[\s\S]*?\/>/g) ?? [];
-  // Two since R11a: the other three sat in `PropSideOdds` and
-  // `GamePropLineShoppingRail`, which nothing rendered.
-  assert.ok(chips.length >= 2, `expected the board's chips, found ${chips.length}`);
-  for (const chip of chips) {
-    assert.match(chip, /capturedAt=/, `an OddsChip on the board renders no age:\n${chip}`);
-  }
-});
+// The old PropOddsPanel board and its chip test went with it (odds build P8,
+// 2026-09-25): the new price board shows each book's checked time
+// (components/odds/PriceBoard.tsx, tests/odds-section-board.test.ts).
 
 test('OddsChip does not redeclare the threshold', () => {
   // Two copies drift, and then a chip shows a stale marker while the coverage

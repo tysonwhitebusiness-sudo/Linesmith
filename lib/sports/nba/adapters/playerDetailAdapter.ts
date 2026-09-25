@@ -5,7 +5,7 @@
  * L5/L10/L15/H2H/SZN windows, a real distribution chart, and a real
  * per-game gamelog, same windowed-stat engine every other sport's adapter
  * uses. `model`/`hitterStats`/`matchups` stay `null` — no grading model
- * for NBA yet. `propOddsBoard` is real and independent of history.
+ * for NBA yet.
  */
 
 import type { UnifiedGameLine } from '@/lib/odds/types';
@@ -25,7 +25,7 @@ import type { NbaLiveGameDetail } from '@/lib/sports/nba/liveGame';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
-import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
@@ -225,10 +225,6 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
           logoFor,
         };
 
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
   // ---- Real season totals (sportsdataverse.ts, summed across every real game — adapter.ts) ----
 
@@ -273,7 +269,6 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     chips,
     windows,
     chart,
-    propOddsBoard,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,

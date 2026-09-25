@@ -1,6 +1,4 @@
 import { test } from 'node:test';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { LineMovementCard } from '../components/LineMovementCard';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -50,98 +48,9 @@ test('PlayerDetail does not claim movement history is untracked', () => {
   }
 });
 
-test('PlayerDetail actually renders the movement card', () => {
-  // The claim being gone is not the same as the feature being there — deleting
-  // the paragraph alone would pass the test above and leave a blank rail.
-  assert.match(SRC, /<LineMovementCard/, 'the movement card is no longer rendered');
-  assert.match(SRC, /useLineHistory\(/, 'nothing fetches the movement data');
-});
-
-// ---------------------------------------------------------------------------
-// The card ALWAYS renders — operator decision, 2026-08-30, and a Phase 6 gate
-// requirement in its own right: "every sport's page renders every block or an
-// honest empty state. A blank card with no empty state is a failure."
-// ---------------------------------------------------------------------------
-
-test('the movement card renders an empty state instead of vanishing', () => {
-  // It used to `return null` when there were fewer than two buckets or no
-  // series — which is the ordinary state of every prop early in a game's life
-  // and every sport out of season. The `emptyMessage` written for exactly this
-  // case sat unreachable behind that early return, so the commonest outcome was
-  // a block that silently did not exist. Verified live on an NFL player page:
-  // no price on record, and no card at all.
-  for (const [label, data] of [
-    ['no data at all', null],
-    ['no series', { buckets: [], series: [], availableLines: [], resolvedLine: null }],
-    [
-      'a single bucket',
-      {
-        buckets: ['2026-08-30T12:00:00Z'],
-        series: [{ bookmaker: 'fanduel', points: [{ t: '2026-08-30T12:00:00Z', americanOdds: -110, line: 0.5 }] }],
-        availableLines: [0.5],
-        resolvedLine: 0.5,
-      },
-    ],
-  ] as const) {
-    const html = renderToStaticMarkup(
-      <LineMovementCard data={data as never} loading={false} userSportsbook="fanduel" marketLabel="hits" />,
-    );
-    assert.match(html, /Line movement/, `${label}: the card itself disappeared`);
-    assert.match(html, /No price history recorded|Only one price on record/, `${label}: no honest empty state`);
-  }
-});
-
-test('the empty state distinguishes "never recorded" from "has not moved yet"', () => {
-  // Two genuinely different situations a reader can act on differently. Folding
-  // them into one "no data" string would be the smaller lie, not the honest one.
-  const never = renderToStaticMarkup(
-    <LineMovementCard data={null} loading={false} userSportsbook="fanduel" marketLabel="hits" />,
-  );
-  const stable = renderToStaticMarkup(
-    <LineMovementCard
-      data={{
-        buckets: ['2026-08-30T12:00:00Z'],
-        series: [{ bookmaker: 'fanduel', points: [{ t: '2026-08-30T12:00:00Z', americanOdds: -110, line: 0.5 }] }],
-        availableLines: [0.5],
-        resolvedLine: 0.5,
-      } as never}
-      loading={false}
-      userSportsbook="fanduel"
-      marketLabel="hits"
-    />,
-  );
-  assert.match(never, /No price history recorded for this prop yet/);
-  assert.match(stable, /Only one price on record so far/);
-  assert.notEqual(
-    never.includes('No price history recorded'),
-    stable.includes('No price history recorded'),
-    'both states print the same message — the distinction is not reaching the page',
-  );
-});
-
-test('a real series still draws, and the empty state does not swallow it', () => {
-  // The guard above must not be satisfiable by always showing the empty state.
-  const html = renderToStaticMarkup(
-    <LineMovementCard
-      data={{
-        buckets: ['2026-08-30T12:00:00Z', '2026-08-30T13:00:00Z', '2026-08-30T14:00:00Z'],
-        series: [
-          {
-            bookmaker: 'fanduel',
-            points: [
-              { t: '2026-08-30T12:00:00Z', americanOdds: -110, line: 0.5 },
-              { t: '2026-08-30T14:00:00Z', americanOdds: -140, line: 0.5 },
-            ],
-          },
-        ],
-        availableLines: [0.5],
-        resolvedLine: 0.5,
-      } as never}
-      loading={false}
-      userSportsbook="fanduel"
-      marketLabel="hits"
-    />,
-  );
-  assert.doesNotMatch(html, /No price history recorded|Only one price on record/);
-  assert.match(html, /<path/, 'a drawable series produced no line');
+// The render tests of the old LineMovementCard went with it (odds build P8,
+// 2026-09-25): the player page's movement chart is `components/odds/LineMovement`,
+// on /kit and covered by tests/odds-ui.test.ts and the lib/odds/section tests.
+test('PlayerDetail mounts the odds section, whose Line movement replaced the old card', () => {
+  assert.match(SRC, /<PlayerOddsSection2/);
 });

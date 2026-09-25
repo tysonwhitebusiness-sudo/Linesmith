@@ -26,7 +26,7 @@ import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution
 import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
 import { tennisSurfaceSection, type TennisSurfaceInput } from '@/lib/sports/tennis/playerArchiveShapes';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toPredicateBinarySplit } from '@/lib/sports/shared/predicateSplit';
 import type { OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
@@ -244,10 +244,6 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
         ? { status: 'loading', away: { abbr: 'Player', score: null }, home: { abbr: 'Opponent', score: null }, periodLabel: null, subjectLine: null, lines: [], events: [], gameHref: null }
         : null;
 
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
 
 
@@ -275,7 +271,6 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     chips,
     windows,
     chart,
-    propOddsBoard,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,

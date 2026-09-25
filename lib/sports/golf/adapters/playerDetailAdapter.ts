@@ -22,7 +22,7 @@ import type { PropOddsRow } from '@/lib/db/client';
 import type { AdvancedStat, GolferStrokesGained } from '@/lib/sports/golf/pgatourStats';
 import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import type { GolfCategory, LiveRoundMatchup } from '@/lib/sports/golf/adapter';
-import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, RoundScoreEntry } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, RoundScoreEntry } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { BinarySplitRole } from '@/lib/sports/shared/playerRoles';
 import { toGolfResearch, type GolfResearchInput } from '@/lib/sports/golf/playerResearchShapes';
 import type { PlayerBio } from '@/lib/sports/shared/playerResearchShapes';
@@ -269,10 +269,6 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
 
   // ---- Prop odds board (PlayerDetail.tsx:1784-1817; universal, no branch) ----
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
   // ---- Live matchup, golf-only (PlayerDetail.tsx:1710-1720) ----
   const liveMatchup = (meta.liveRoundMatchup as LiveRoundMatchup | undefined) ?? null;
@@ -317,7 +313,6 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     chips,
     roundScores,
     chart,
-    propOddsBoard,
     // See GolfPlayerDetailInput.snapshot's comment — golf subjects carry no
     // team abbreviation, so the "Today's line" game-model lookup that powers
     // this field for MLB/NFL structurally never resolves for golf. Modeled

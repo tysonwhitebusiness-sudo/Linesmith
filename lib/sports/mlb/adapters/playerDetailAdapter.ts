@@ -123,14 +123,6 @@ export type PlayerDetailChart =
       data: Array<{ hole: number; par: number | null; value: number | null; strokes: number | null }>;
     };
 
-/** Matches `PropOddsBoard`'s real (inline, unexported) prop type at `components/PropOddsPanel.tsx:98-110` — reproduced here since that component doesn't export a named interface for it. */
-export interface PropOddsBoardProps {
-  allRows: PropOddsRow[];
-  subjectId: string;
-  marketKey: string;
-  line: number | null;
-  userSportsbook: string;
-}
 
 /** The "Today's line" context-rail card's data — moneyline/total plus edges, when a game model exists. Sport-agnostic in shape (same `EdgeBadge`/`OddsChip` consumers as Game Detail's picks panel use); `null` for a sport/subject with no game line today, `{}`-ish empty state otherwise. */
 export interface TodaysLineData {
@@ -244,7 +236,6 @@ export interface PlayerDetailData {
   windows?: WindowedStat5 | null;
   roundScores?: RoundScoreEntry[] | null;
   chart: PlayerDetailChart;
-  propOddsBoard: PropOddsBoardProps | null;
   model?: { todaysLine?: TodaysLineData | null } | null;
   /** P1 (odds workstream): the player's game's line for sports without a game model. Every
    *  non-MLB sport's player page showed "No game line yet" because only MLB filled
@@ -364,7 +355,7 @@ export interface MlbPlayerDetailInput {
   snapshot: SportSnapshot | null;
   odds: UnifiedLinesResult | null;
   scope: MlbPlayerDetailScope;
-  /** `usePropOdds()`'s resolved rows/sportsbook — a hook result, so the component still calls the hook; the adapter only repackages it into `PropOddsBoardProps`. */
+  /** `usePropOdds()`'s resolved rows/sportsbook — a hook result, so the component still calls the hook; the adapter reads it. */
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** `useTeamStatcast(opponentId)`'s result — only meaningful when the active subject is a pitcher. */
   opponentTeamStatcast?: TeamStatcastState;
@@ -534,10 +525,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
 
   // ---- Prop odds board (PlayerDetail.tsx:1784-1817; universal, no branch) ----
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
   // ---- Today's line model (PlayerDetail.tsx:1196-1203, 1998-2043) ----
   const projected = todaysGame?.line ? projectLine(todaysGame.line) : null;
@@ -756,7 +743,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     chips,
     windows,
     chart,
-    propOddsBoard,
     model: { todaysLine },
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver, model },

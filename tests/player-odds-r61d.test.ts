@@ -124,7 +124,6 @@ test('the MLB prop block opens on the main line, not the board line, and the mod
   assert.deepEqual(d.lineControl.model, { prob: 0.61, line: 4.5 }, 'the model probability keeps the board line it was computed at');
   assert.equal(d.priceCandidate?.line, 6.5);
   assert.equal((d.priceCandidate?.subjectMeta as Record<string, unknown>).modelProb, undefined, 'a board-line probability must not travel with a main-line bet');
-  assert.equal(d.propOddsBoard?.line, 6.5);
   // Hit rates are measured against the line on screen: of 5, 7, 8, 6, 9 only
   // 7, 8 and 9 clear 6.5 (all five cleared the board line's 4.5).
   assert.deepEqual(d.windows?.l5.status === 'ok' ? [d.windows.l5.hits, d.windows.l5.total] : null, [3, 5]);
@@ -251,7 +250,8 @@ test('the page prices, charts and slips the same candidate at the same line', ()
   assert.match(PD, /const priced = data\.priceCandidate \?\? active;/);
   assert.match(PD, /resolveCandidateEdge\(priced,/);
   assert.match(PD, /onAdd\(priced, addOdds\)/);
-  assert.match(PD, /data\?\.priceCandidate\?\.line \?\? active\?\.line \?\? null,\s*started \? startIso : null,/, 'line movement is pinned to the line on screen and cut at the start');
+  // The old line-history hook's pin went with LineMovementCard (odds build P8,
+  // 2026-09-25); the odds section's Line movement reads /api/odds/player.
   assert.match(PD, /usePropOdds\(gamePkStr, snapshot\?\.fetchedAt, true, startIso\)/, 'a started game reads the rows that stood at the start');
 });
 

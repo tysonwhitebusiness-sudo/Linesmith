@@ -10,8 +10,7 @@
  * way (opponent-only + lastN — no venue filter, matching soccer/NFL).
  *
  * `model`/`hitterStats`/`matchups` stay `null` — no grading/ranking model
- * or per-player season-stats source for CFB yet. `propOddsBoard` is real
- * and independent of history, same as every other sport's adapter.
+ * or per-player season-stats source for CFB yet.
  */
 
 import type { UnifiedGameLine } from '@/lib/odds/types';
@@ -31,7 +30,7 @@ import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
-import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 // Type-only import — `teamDefenseAllowed.ts` itself pulls in `lib/db/client`
 // (Postgres, server-only), so only its TYPE is safe to bring into this
 // client-bundled adapter; the matching logic below is a local pure copy,
@@ -253,10 +252,6 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
           logoFor,
         };
 
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
   // ---- Real season totals (CollegeFootballData.com, summed across every real game — adapter.ts) ----
 
@@ -300,7 +295,6 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     chips,
     windows,
     chart,
-    propOddsBoard,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,

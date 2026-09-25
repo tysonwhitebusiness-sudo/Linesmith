@@ -50,7 +50,6 @@ import type {
   ChipDef,
   PlayerDetailChart,
   PlayerDetailData,
-  PropOddsBoardProps,
   WindowedStat5,
 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 
@@ -247,10 +246,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   };
 
   // ---- Prop odds board (universal, no branch) ----
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
   // ---- Form (NflPlayerDetail.tsx:559-571 — same `active.supportingSplits`, already sport-agnostic) ----
   const formWindows = active.supportingSplits ?? null;
@@ -326,7 +321,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     chips,
     windows,
     chart,
-    propOddsBoard,
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,

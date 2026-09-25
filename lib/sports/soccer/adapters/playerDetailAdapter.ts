@@ -24,7 +24,7 @@
  * `subjectMeta.seasonStats`/`.seasonRank`/`.opponentDefense`) — EPL only for
  * now, MLS's equivalent needs ASA's own team-season endpoint wired in.
  * `model`/`hitterStats` stay `null` — no grading/ranking model for soccer yet.
- * `propOddsBoard` is real and independent of history, same as before.
+ *
  */
 
 import type { UnifiedGameLine } from '@/lib/odds/types';
@@ -42,7 +42,7 @@ import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
-import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
 interface SoccerOpponentDefense {
@@ -271,10 +271,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
         ? { status: 'loading', away: { abbr: 'Away', score: null }, home: { abbr: 'Home', score: null }, periodLabel: null, subjectLine: null, lines: [], events: [], gameHref: null }
         : null;
 
-  const propOddsBoard: PropOddsBoardProps | null =
-    activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
-      : null;
 
   // ---- Real season totals + opponent defense (Understat, EPL) ----
   const opponentDefense = meta.opponentDefense as SoccerOpponentDefense | undefined;
@@ -339,7 +335,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     chips,
     windows,
     chart,
-    propOddsBoard,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
