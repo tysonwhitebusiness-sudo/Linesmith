@@ -416,6 +416,16 @@ async def read_recent_changes(pool, game_ids: list[str], books: list[str], since
     return props, lines
 
 
+async def read_prop_changes_for_games(conn, game_ids: list[str], since) -> list:
+    """P12 §3 (odds research flags): every over/under prop price change on these
+    games since `since`, oldest first — the input to a book's main-line series
+    (steam, first mover, a pulled main line). One read per sport-day."""
+    where = ("h.game IN (SELECT id FROM odds_games WHERE game_id = ANY($1::text[])) "
+             "AND h.side IN (SELECT id FROM odds_sides WHERE name IN ('over', 'under')) "
+             "AND h.observed_at >= $2 AND h.recorded_at >= $2")
+    return await conn.fetch(decoded_select(PROP_TABLE, where, "h.observed_at"), game_ids, since)
+
+
 async def partition_days(conn, table: str) -> list[dict]:
     """Every daily partition of `table`: its day, name and total size in bytes."""
     rows = await conn.fetch(

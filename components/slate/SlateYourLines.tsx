@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, Chip, DataTable, type Column, type ChipTone, SectionBand } from '@/components/ui';
+import { Button, Card, Chip, DataTable, type Column, type ChipTone, SectionBand } from '@/components/ui';
+import { AlertList } from '../AlertsBell';
+import { useTrackedAlerts } from '../useTrackedAlerts';
 import { createClient } from '@/lib/supabase/client';
 import type { BetLeg, TrackedLeg, YourLineRow } from '@/lib/slate/yourLines';
 
@@ -63,14 +65,28 @@ const COLUMNS: Column<YourLineRow>[] = [
   },
 ];
 
-export function SlateYourLines({ rows }: { rows: YourLineRow[] | null }) {
-  if (!rows || rows.length === 0) return null;
+export function SlateYourLines({ rows, signedIn = null }: { rows: YourLineRow[] | null; signedIn?: boolean | null }) {
+  const { alerts, unread, isSeen, markSeen } = useTrackedAlerts(signedIn);
+  if ((!rows || rows.length === 0) && alerts.length === 0) return null;
   return (
     <section id="slate-your-lines" className="mb-6 scroll-mt-[150px]">
       <SectionBand title="Your lines" />
-      <Card title="On today's slate" count={rows.length} flush>
-        <DataTable caption="Your lines on today's slate" columns={COLUMNS} rows={rows} rowKey={(r) => r.key} />
-      </Card>
+      {alerts.length ? (
+        <Card title="Alerts" count={unread || undefined} scope={unread ? `${unread} unread` : 'all read'} className="mb-3"
+          info="On your tracked lines: the line moved, a book beats yours by 5¢ or more, your book pulled it, or steam hit it.">
+          {unread ? (
+            <div className="-mt-1 mb-1 flex justify-end">
+              <Button size="sm" variant="tertiary" onPress={() => markSeen(alerts.map((a) => a.id))}>Mark all read</Button>
+            </div>
+          ) : null}
+          <AlertList alerts={alerts} isSeen={isSeen} />
+        </Card>
+      ) : null}
+      {rows && rows.length ? (
+        <Card title="On today's slate" count={rows.length} flush>
+          <DataTable caption="Your lines on today's slate" columns={COLUMNS} rows={rows} rowKey={(r) => r.key} />
+        </Card>
+      ) : null}
     </section>
   );
 }

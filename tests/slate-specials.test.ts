@@ -41,7 +41,7 @@ function pyRankings() {
 
 test('every Python ranking is mirrored, with the same title, promo and not-held note', () => {
   const py = pyRankings();
-  assert.equal(py.length, 44, "the parser found every RankingDef (8 specials + 36 spotlights)");
+  assert.equal(py.length, 48, "the parser found every RankingDef (8 specials + 40 spotlights; P12 added the four odds flags)");
   assert.deepEqual(py.map((r) => r.id).sort(), Object.keys(SPECIAL_RANKINGS).sort());
   for (const r of py) {
     const ts = SPECIAL_RANKINGS[r.id];
@@ -139,8 +139,8 @@ test('PY-A: the leader row is never a subject, and `_` factor keys are never val
  */
 test('F0: every ranking is the same KIND in both languages', () => {
   const py = pyRankings();
-  assert.equal(py.filter((r) => r.kind === 'spotlight').length, 36, 'the Python file declares 36 spotlights');
-  assert.equal(Object.keys(SPOTLIGHT_RANKINGS).length, 36, 'the registry mirrors 36 spotlights');
+  assert.equal(py.filter((r) => r.kind === 'spotlight').length, 40, 'the Python file declares 40 spotlights');
+  assert.equal(Object.keys(SPOTLIGHT_RANKINGS).length, 40, 'the registry mirrors 40 spotlights');
   for (const r of py) assert.equal(rankingKind(r.id), r.kind, `${r.id} kind`);
   // The two halves are disjoint and together they are the whole registry.
   assert.equal(Object.keys(SPECIAL_ONLY_RANKINGS).length + Object.keys(SPOTLIGHT_RANKINGS).length, Object.keys(SPECIAL_RANKINGS).length);

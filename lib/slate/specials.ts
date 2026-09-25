@@ -152,6 +152,30 @@ export const SPECIAL_ONLY_RANKINGS: Record<string, SpecialRankingDef> = {
  * an id is from the registry itself rather than from a comment.
  */
 export const SPOTLIGHT_RANKINGS: Record<string, SpecialRankingDef> = {
+  // P12 §3 — odds research flags (python-odds-service/src/odds_flags.py). Facts
+  // about how the market moved, every sport; never graded, never a pick.
+  'odds-steam': {
+    id: 'odds-steam', title: 'Steam', promo: 'Three or more books moved the line together',
+    factors: [
+      { key: 'steam_books', label: 'Books', info: "Books that moved this player's main line the same way within 30 minutes, the first mover included." },
+      { key: 'steam_minutes', label: 'Minutes', info: 'Minutes from the first move to the last book in the run.' },
+    ],
+  },
+  'odds-pulled': {
+    id: 'odds-pulled', title: 'Pulled and reposted', promo: 'A book took its line down and put up a new one',
+    factors: [{ key: 'repost_move', label: 'Moved', info: 'How far the book reposted the line from the main line it pulled.' }],
+  },
+  'odds-money-split': {
+    id: 'odds-money-split', title: 'Money vs bets', promo: "DraftKings customers' money and bets 15+ points apart",
+    factors: [{ key: 'money_gap', label: 'Gap', info: "DraftKings customers' money share against their bets share on one side, in points." }],
+  },
+  'odds-first-mover': {
+    id: 'odds-first-mover', title: 'Pinnacle moved first', promo: 'Pinnacle led a move the market followed',
+    factors: [
+      { key: 'followers', label: 'Followed', info: 'Books that moved the same way after Pinnacle.' },
+      { key: 'lead_min', label: 'Lead', info: 'Minutes Pinnacle moved before the first book followed.' },
+    ],
+  },
   'nfl-targets-vs-weak-pass-d': {
     id: 'nfl-targets-vs-weak-pass-d',
     title: 'Targets vs weak pass defences',

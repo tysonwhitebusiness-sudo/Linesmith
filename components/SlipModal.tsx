@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PickCandidate, Sport, SubjectSummary } from '@/lib/core/types';
 import { SPORT_LABEL } from '@/lib/core/types';
@@ -9,6 +9,10 @@ import { SubjectAvatar } from './SubjectAvatar';
 import { Button, CloseButton, FileTrigger, Input, Modal, Select } from './ui';
 import { MarketLabel } from './MarketLabel';
 import { BookLogo, bookLabel } from './BookLogo';
+import { SlipLegPrice } from './odds/SlipLegPrice';
+import { usePlayerOdds } from './odds/useOdds';
+import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { bookLinkFor, slipBest } from '@/lib/odds/slipBest';
 
 /**
  * Popup replacement for the old bottom `SlipDrawer` — a centered modal
@@ -40,6 +44,39 @@ export interface SlipModalProps {
   onSetOdds: (id: number, odds: string, source?: string) => void;
   onAdd: (candidate: PickCandidate, odds?: { americanOdds: string; source: string }) => void;
   onSubmit: (ids: number[]) => Promise<unknown>;
+  /** P12: the reader's book, for "your {book} is N¢ worse". Unset: read from /api/props/user-sportsbook. */
+  userBook?: string | null;
+}
+
+/**
+ * P12 §2: one leg's price check — the leg's market from `/api/odds/player` (P8),
+ * the best book now, the reader's book against it, and "Open at {book}" from a
+ * stored book link. A leg with no game, market or side draws nothing.
+ */
+function LegPrice({ sport, pick, userBook }: { sport: string; pick: PickRow; userBook: string | null }) {
+  const marketKey = candidateDimensionToMarketKey(pick.dimension);
+  const side = candidateCategoryToSide(pick.category);
+  const ok = !!(marketKey && side && pick.gameId);
+  const odds = usePlayerOdds(ok ? sport : null, pick.gameId, pick.subjectId);
+  if (!ok || !odds.data) return null;
+  const market = odds.data.markets.find((m) => m.key === marketKey) ?? null;
+  const check = slipBest(market, side!, pick.line, userBook);
+  return <SlipLegPrice check={check} link={bookLinkFor(odds.data.links, check.best?.book)} now={Date.parse(odds.data.asOf)} />;
+}
+
+function useUserBook(given: string | null | undefined, open: boolean): string | null {
+  const [book, setBook] = useState<string | null>(given ?? null);
+  useEffect(() => {
+    if (given !== undefined) { setBook(given); return; }
+    if (!open) return;
+    let live = true;
+    fetch('/api/props/user-sportsbook', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && d?.userSportsbook) setBook(d.userSportsbook); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [given, open]);
+  return book;
 }
 
 function collisions(picks: PickRow[]): Map<string, number> {
@@ -160,8 +197,10 @@ export function SlipModal({
   onSetOdds,
   onAdd,
   onSubmit,
+  userBook,
 }: SlipModalProps) {
   const router = useRouter();
+  const legBook = useUserBook(userBook, open);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [copied, setCopied] = useState(false);
@@ -385,6 +424,7 @@ export function SlipModal({
                       )}
                     </div>
                   </div>
+                  {open ? <LegPrice sport={sport} pick={pick} userBook={legBook} /> : null}
                 </li>
               ))}
             </ul>

@@ -123,6 +123,8 @@ export interface PlayerOddsPayload {
   money?: MoneyPayload;
   /** P11: market edges passing every gate (Python, `market_edges`); absent while the kill switch or the self-check hides them. */
   edges?: MarketEdge[];
+  /** P12: the game's links to each book's event page (`game_reference` kind `book_link`, via the bridge), by book. */
+  links?: Record<string, string>;
 }
 
 export interface GameOddsPayload {

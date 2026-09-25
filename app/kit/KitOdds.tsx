@@ -6,6 +6,8 @@ import { Depth } from '@/components/odds/Depth';
 import { EdgeCard } from '@/components/odds/EdgeCard';
 import { ScanEdgeCell } from '@/components/odds/ScanEdgeCell';
 import { SlateEdges } from '@/components/odds/SlateEdges';
+import { SlipLegPrice } from '@/components/odds/SlipLegPrice';
+import { slipBest } from '@/lib/odds/slipBest';
 import { GameLineCompact } from '@/components/odds/GameLineCompact';
 import { GameFinalOddsSection } from '@/components/odds/GameFinalOddsSection';
 import { GameOddsSection } from '@/components/odds/GameOddsSection';
@@ -108,6 +110,11 @@ export function KitOdds() {
         <EdgeCard edges={[]} marketKey="receiving-yards" spec={sp} line={69.5} sideLabels={['Over 69.5', 'Under 69.5']} sharpAtLine={false} sharpMainLine={65.5} onGoToLine={() => undefined} now={KIT_NOW} />
         <Card title="Scan edge cell" scope="P11">
           <div className="flex gap-6 text-label"><ScanEdgeCell edge={{ book: 'underdog', side: 'over', price: 110, ev: 0.016 }} /><ScanEdgeCell edge={null} /></div>
+        </Card>
+        <Card title="Slip leg · best right now" scope="P12">
+          <SlipLegPrice check={slipBest(m, 'over', 65.5, 'fanduel')} link="https://example.com/event" now={KIT_NOW} />
+          <SlipLegPrice check={slipBest(m, 'over', 65.5, 'fanduel')} link={null} now={KIT_NOW} />
+          <SlipLegPrice check={slipBest(m, 'over', 99.5, 'fanduel')} link={null} now={KIT_NOW} />
         </Card>
         <Card title="Market hub · Edges" flush>
           <SlateEdges edges={kitEdges()} refs={new Map([['kit-2', { label: 'ATL @ GB', href: null, home: 'GB' }]])} />

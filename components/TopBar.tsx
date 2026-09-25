@@ -6,6 +6,7 @@ import type { Sport, SoccerLeague, TennisTour } from '@/lib/core/types';
 import { SPORTS, SPORT_LABEL, SOCCER_LEAGUES, SOCCER_LEAGUE_LABEL, TENNIS_TOURS, TENNIS_TOUR_LABEL } from '@/lib/core/types';
 import { BrandedLoader } from './BrandedLoader';
 import { AccountMenu } from './AccountMenu';
+import { AlertsBell } from './AlertsBell';
 import { Button, IconButton, Select, cx } from './ui';
 
 /** The header's selects: one 28px row, `body-sm`, muted until opened. */
@@ -264,6 +265,8 @@ export function TopBar({
           <span className="rounded-xs bg-white/20 px-1 tabular-nums">{slipCount}</span>
         </Button>
 
+        {/* P12: alerts on the reader's tracked lines (signed in only). */}
+        <AlertsBell />
         <AccountMenu />
       </div>
     </div>

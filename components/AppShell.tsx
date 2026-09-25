@@ -45,6 +45,7 @@ import { useEdges, useScanExtras, useSlateOdds } from './odds/useOdds';
 import { LiveProvider } from './odds/live';
 import { SlateModel, useSlateModel } from './slate/SlateModel';
 import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
+import { useTrackedAlerts } from './useTrackedAlerts';
 import { toYourLines } from '@/lib/slate/yourLines';
 import { buildSpotlights, flagSpotlightCards, weatherSpotlight } from '@/lib/slate/spotlights';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
@@ -211,6 +212,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // S5 — Your lines. Signed out, nothing is fetched and nothing renders.
   const signedIn = useSignedIn();
   const yourLineSources = useYourLineSources(sport, signedIn);
+  // P12 — alerts on the reader's tracked lines (the same store the header bell reads).
+  const trackedAlerts = useTrackedAlerts(signedIn);
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
   // Round Score (one row per golfer, betting on the round total). Filters
   // the base candidate list itself, so every existing tab/filter (Good Bets,
@@ -824,7 +827,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 spotlights.reduce((n, c) => n + c.rows.length, 0) || null,
                 specialsRead.data?.rankings.length || null,
                 modelRead.data?.rows.length || null,
-                yourLines?.length || null,
+                yourLines?.length || trackedAlerts.alerts.length || null,
                 moversShown(moversRead.data) + (slateOdds.data?.games.some((g) => g.books > 0) ? 1 : 0) || null,
               )}
             />
@@ -862,7 +865,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
               <SlateModel data={modelRead.data} note={slateRead.data.modelPicks.note} loading={modelRead.loading} />
             ) : null}
 
-            <SlateYourLines rows={yourLines} />
+            <SlateYourLines rows={yourLines} signedIn={signedIn} />
 
             {golfFieldPending ? (
               <TournamentNotStartedNotice eventName={snapshot?.eventName} />
@@ -1047,6 +1050,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
         onSetOdds={slip.setOdds}
         onAdd={(c, odds) => slip.addPick(c, eventContext, odds)}
         onSubmit={slip.submitPicks}
+        userBook={effectiveSportsbook}
       />
 
       <PlayerFilterDrawer

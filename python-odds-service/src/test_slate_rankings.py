@@ -276,11 +276,92 @@ async def spotlight_builders_on_real_rows() -> None:
             sr._sport_games_today = real
 
 
+print("odds flags (P12 §3)")
+import odds_flags as of
+from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+_T0 = _dt(2026, 9, 27, 12, 0, tzinfo=_tz.utc)
+
+
+def _moves_to(book, at_min, frm=5.5, to=6.5):
+    """A book two-sided at `frm`, then at `to` from minute `at_min` (its old line gone quiet)."""
+    return [
+        {"observed_at": _T0, "bookmaker": book, "side": "over", "line": frm, "american_odds": -110},
+        {"observed_at": _T0, "bookmaker": book, "side": "under", "line": frm, "american_odds": -110},
+        {"observed_at": _T0 + _td(minutes=at_min), "bookmaker": book, "side": "over", "line": to, "american_odds": -110},
+        {"observed_at": _T0 + _td(minutes=at_min), "bookmaker": book, "side": "under", "line": to, "american_odds": -110},
+        {"observed_at": _T0 + _td(minutes=at_min), "bookmaker": book, "side": "over", "line": frm, "american_odds": -190},
+        {"observed_at": _T0 + _td(minutes=at_min), "bookmaker": book, "side": "under", "line": frm, "american_odds": 150},
+    ]
+
+
+def _runs(rows):
+    return of.steam_runs(of.line_moves(of.main_line_series(rows)))
+
+
+three = _moves_to("draftkings", 10) + _moves_to("fanduel", 20) + _moves_to("betmgm", 35)
+ok("steam: 3 books within 30 minutes is steam", len(_runs(three)) == 1 and len(_runs(three)[0]) == 3, _runs(three))
+ok("steam: 2 books is not", _runs(_moves_to("draftkings", 10) + _moves_to("fanduel", 20)) == [])
+slow = _moves_to("draftkings", 10) + _moves_to("fanduel", 30) + _moves_to("betmgm", 45)
+ok("steam: 3 books over 35 minutes is not", _runs(slow) == [])
+_batch = [dict(r, provider_id="scraper:comparenbet", observed_at=_T0 + _td(minutes=10) if r["observed_at"] != _T0 else _T0)
+          for b in ("draftkings", "fanduel", "betmgm") for r in _moves_to(b, 10)]
+ok("steam: one relay snapshot moving 3 books at one instant is not", _runs(_batch) == [], _runs(_batch))
+ok("steam: an exchange's ladder is no main line", _runs(_moves_to("kalshi", 10) + _moves_to("fanduel", 20) + _moves_to("betmgm", 25)) == [])
+pin = _moves_to("pinnacle", 0) + _moves_to("draftkings", 12) + _moves_to("fanduel", 15) + _moves_to("betmgm", 20)
+fm = of.first_mover_runs(of.line_moves(of.main_line_series(pin)))
+ok("first mover: Pinnacle 12 minutes ahead, 3 books followed", len(fm) == 1 and len(fm[0][1]) == 3, fm)
+quick = _moves_to("pinnacle", 0) + _moves_to("draftkings", 5) + _moves_to("fanduel", 8) + _moves_to("betmgm", 9)
+ok("first mover: 5 minutes ahead is not a lead", of.first_mover_runs(of.line_moves(of.main_line_series(quick))) == [])
+ok("the player id the pages use", of.bare_subject("espn:football:3117256") == "3117256" and of.bare_subject("650490") == "650490")
+
+
+class _G:
+    def __init__(self, gid):
+        self.game_id, self.home_abbr, self.away_abbr, self.home_team_id, self.away_team_id = gid, "GB", "ATL", "9", "1"
+
+
+_rows = [{"game_id": "g15", "market": "ml", "side": "home", "pct_money": 70.0, "pct_bets": 55.0},
+         {"game_id": "g14", "market": "tot", "side": "over", "pct_money": 60.0, "pct_bets": 46.0}]
+_ms = sr.money_split_candidates([_G("g15"), _G("g14")], _rows)
+ok("money split: 15 points is flagged, 14 is not", [c.subject_id for c in _ms] == ["g15"], [c.subject_id for c in _ms])
+ok("money split: the GAME is the subject (subjectKind game)", _ms[0].subject_id == _ms[0].game_id and _ms[0].subject_name == "ATL @ GB")
+
+import re as _re
+_PRONOUN = _re.compile(r"\b(he|she|him|his|her|hers|they|them|their|theirs|it|its)\b", _re.I)
+_reads = [
+    sr.read_line(sr.ODDS_STEAM_FACTORS, {"steam_books": 4.0, "steam_minutes": 12.0, "_market": "receptions", "_dir": "up",
+                                          "_first": "FanDuel", "_pct": {"steam_books": 90, "steam_minutes": 80}}),
+    sr.read_line(sr.ODDS_FIRST_MOVER_FACTORS, {"followers": 3.0, "lead_min": 12.0, "_market": "receptions",
+                                                "_pct": {"followers": 90, "lead_min": 70}}),
+    sr.read_line(sr.ODDS_PULLED_FACTORS, {"repost_move": 1.0, "_book": "DraftKings", "_market": "receptions",
+                                           "_from": "5.5", "_to": "6.5", "_pct": {"repost_move": 90}}),
+    sr.read_line(sr.ODDS_MONEY_SPLIT_FACTORS, {"money_gap": 15.0, "_side": "GB", "_market": "moneyline", "_money_more": True,
+                                                "_pct": {"money_gap": 90}}),
+]
+ok("odds flag reads say something", all(r and r != sr.NO_STANDOUT for r in _reads), _reads)
+ok("odds flag reads take no pronoun", not any(_PRONOUN.search(r) for r in _reads), _reads)
+ok("the four odds flags are spotlights (never graded) that freeze",
+   all(r.kind == "spotlight" and not r.grade_stat and r.freezes for r in sr.RANKINGS if r.id.startswith("odds-"))
+   and len([r for r in sr.RANKINGS if r.id.startswith("odds-")]) == 4)
+ok("odds-money-split covers nfl, cfb, mlb, nba, nhl only",
+   next(r for r in sr.RANKINGS if r.id == "odds-money-split").sports == ("nfl", "cfb", "mlb", "nba", "nhl"))
+
+
+async def odds_flags_on_real_rows() -> None:
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        for build in (sr.build_odds_steam, sr.build_odds_pulled, sr.build_odds_money_split, sr.build_odds_first_mover):
+            got = await build(conn, date.today(), "mlb")
+            ok(f"{build.__name__} builds on real rows", isinstance(got, list), got)
+
+
 async def db_checks() -> None:
     # One event loop: the pool is bound to the loop that created it.
     await freeze_rules()
     await builders_on_real_rows()
     await spotlight_builders_on_real_rows()
+    await odds_flags_on_real_rows()
 
 
 asyncio.run(db_checks())

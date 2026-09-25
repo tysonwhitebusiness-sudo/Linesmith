@@ -43,6 +43,7 @@ import httpx
 
 import db
 import game_context as gc
+import odds_flags
 
 ET = ZoneInfo("America/New_York")
 
@@ -163,6 +164,21 @@ def _pl(n: float, one: str, many: str) -> str:
 
 
 READS: dict[str, Callable[[float, dict], str | None]] = {
+    # P12 §3 — odds research flags (odds_flags.py). No pronouns: the subject is the card's.
+    "steam_books": lambda v, c: (f"saw {v:.0f} books move the {c.get('_market', 'prop')} line {c.get('_dir', '')} "
+                                 f"within {c.get('steam_minutes') or 0:.0f} minutes, {c.get('_first', 'one book')} first"),
+    "steam_minutes": lambda v, c: None,
+    # SP-TEN's surface record gained `games_rate` without a template (found by
+    # this file's own "the read" test, which raised on it).
+    "games_rate": lambda v, c: f"wins {v:.0f}% of games on the surface",
+    "surface_matches": lambda v, c: None,   # a sample size, not a reason
+    "followers": lambda v, c: f"saw Pinnacle move the {c.get('_market', 'prop')} line first and {v:.0f} books follow",
+    "lead_min": lambda v, c: f"had Pinnacle {v:.0f} minutes ahead of the next book",
+    "repost_move": lambda v, c: (f"had {c.get('_book', 'a book')} pull the {c.get('_market', 'prop')} line at "
+                                 f"{c.get('_from')} and repost at {c.get('_to')}"),
+    "money_gap": lambda v, c: " ".join((f"draws {v:.0f} points more of DraftKings customers'",
+                                        "money than bets" if c.get("_money_more") else "bets than money",
+                                        f"on the {c.get('_side', '')} {c.get('_market', '')}")).replace("  ", " "),
     # MLB — home runs
     "hr_per_pa": lambda v, c: f"homers on {v:.1f}% of plate appearances",
     "vs_hand_hr_pa": lambda v, c: f"homers on {v:.1f}% against {'left' if c.get('_hand') == 'L' else 'right'}-handed pitching",
@@ -2063,6 +2079,177 @@ async def build_golf_course_history(conn, slate: date) -> list[Candidate]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# P12 §3 — odds research flags. The rules and the pure functions are in
+# odds_flags.py; these read Supabase and shape the candidates.
+# ---------------------------------------------------------------------------
+
+ODDS_FLAG_SPORTS = ("mlb", "nfl", "cfb", "nba", "nhl", "soccer_epl", "soccer_mls")
+ODDS_STEAM_FACTORS = (
+    Factor("steam_books", "Books", info="Books that moved this player's main line the same way within 30 minutes, the first mover included."),
+    Factor("steam_minutes", "Minutes", info="Minutes from the first move to the last book in the run.", higher_better=False),
+)
+ODDS_PULLED_FACTORS = (
+    Factor("repost_move", "Moved", info="How far the book reposted the line from the main line it pulled."),
+)
+ODDS_MONEY_SPLIT_FACTORS = (
+    Factor("money_gap", "Gap", info="DraftKings customers' money share against their bets share on one side, in points."),
+)
+ODDS_FIRST_MOVER_FACTORS = (
+    Factor("followers", "Followed", info="Books that moved the same way after Pinnacle."),
+    Factor("lead_min", "Lead", info="Minutes Pinnacle moved before the first book followed."),
+)
+_BOOK_WORDS = {"draftkings": "DraftKings", "fanduel": "FanDuel", "betmgm": "BetMGM", "betrivers": "BetRivers",
+               "pinnacle": "Pinnacle", "circa": "Circa", "caesars": "Caesars", "fanatics": "Fanatics", "bet365": "bet365"}
+_series_cache: dict[tuple, tuple] = {}
+
+
+def _book_word(book: str | None) -> str:
+    return _BOOK_WORDS.get(book or "", (book or "a book").capitalize())
+
+
+async def _games_for(sport: str, slate: date) -> list:
+    return await (_mlb_games_today(slate) if sport == "mlb" else _sport_games_today(sport, slate))
+
+
+async def _prop_changes(conn, sport: str, slate: date):
+    """(games, {(game, subject, market): change rows}, {subject: name}); one
+    read per sport per two minutes, shared by the steam, first-mover and
+    pulled flags."""
+    import price_history
+
+    now = datetime.now(timezone.utc)
+    hit = _series_cache.get((sport, slate))
+    if hit and (now - hit[0]).total_seconds() < 120:
+        return hit[1]
+    games = await _games_for(sport, slate)
+    ids = [str(g.game_id) for g in games]
+    by: dict[tuple, list] = {}
+    names: dict[str, str] = {}
+    if ids:
+        # Twice the flag window: a book's main line at the window's start needs the prices before it.
+        for r in await price_history.read_prop_changes_for_games(conn, ids, now - odds_flags.FLAG_WINDOW * 2):
+            by.setdefault((r["game_id"], r["subject_id"], r["market_key"]), []).append(r)
+        for r in await conn.fetch("""SELECT DISTINCT ON (subject_id) subject_id, subject_name FROM prop_odds
+                                      WHERE game_id = ANY($1::text[]) AND subject_name IS NOT NULL""", ids):
+            names[r["subject_id"]] = r["subject_name"]
+    out = (games, by, names)
+    _series_cache[(sport, slate)] = (now, out)
+    return out
+
+
+async def build_odds_steam(conn, slate: date, sport: str) -> list[Candidate]:
+    _, by, names = await _prop_changes(conn, sport, slate)
+    cutoff = datetime.now(timezone.utc) - odds_flags.FLAG_WINDOW
+    best: dict[str, tuple] = {}
+    for (gid, sid, mk), rows in by.items():
+        for run in odds_flags.steam_runs(odds_flags.line_moves(odds_flags.main_line_series(rows))):
+            if run[0].at < cutoff:
+                continue
+            mins = (run[-1].at - run[0].at).total_seconds() / 60
+            if sid not in best or len(run) > best[sid][0]:
+                best[sid] = (len(run), mins, gid, mk, run)
+    return [Candidate(subject_id=odds_flags.bare_subject(sid), subject_name=names.get(sid, ""), team=None, opponent=None,
+                      game_id=gid, values={"steam_books": float(n), "steam_minutes": round(mins, 1),
+                                           "_market": odds_flags.market_word(mk), "_first": _book_word(run[0].book),
+                                           "_dir": "up" if run[0].dir > 0 else "down"})
+            for sid, (n, mins, gid, mk, run) in best.items()]
+
+
+async def build_odds_first_mover(conn, slate: date, sport: str) -> list[Candidate]:
+    _, by, names = await _prop_changes(conn, sport, slate)
+    cutoff = datetime.now(timezone.utc) - odds_flags.FLAG_WINDOW
+    best: dict[str, tuple] = {}
+    for (gid, sid, mk), rows in by.items():
+        for lead, followers in odds_flags.first_mover_runs(odds_flags.line_moves(odds_flags.main_line_series(rows))):
+            if lead.at < cutoff:
+                continue
+            lead_min = (followers[0].at - lead.at).total_seconds() / 60
+            if sid not in best or len(followers) > best[sid][0]:
+                best[sid] = (len(followers), lead_min, gid, mk)
+    return [Candidate(subject_id=odds_flags.bare_subject(sid), subject_name=names.get(sid, ""), team=None, opponent=None,
+                      game_id=gid, values={"followers": float(n), "lead_min": round(lead, 1),
+                                           "_market": odds_flags.market_word(mk)})
+            for sid, (n, lead, gid, mk) in best.items()]
+
+
+async def build_odds_pulled(conn, slate: date, sport: str) -> list[Candidate]:
+    games, by, names = await _prop_changes(conn, sport, slate)
+    ids = [str(g.game_id) for g in games]
+    if not ids:
+        return []
+    since = datetime.now(timezone.utc) - odds_flags.FLAG_WINDOW
+    first_hand = sorted(odds_flags.FIRST_HAND_PROVIDERS)
+    pulls = await conn.fetch("""SELECT game_id, subject_id, market_key, line, bookmaker, pulled_at FROM prop_odds_pulls
+                                 WHERE game_id = ANY($1::text[]) AND pulled_at >= $2 AND side = 'over'
+                                   AND provider_id = ANY($3::text[])""", ids, since, first_hand)
+    if not pulls:
+        return []
+    cur = await conn.fetch("""SELECT game_id, subject_id, market_key, line, side, bookmaker, american_odds,
+                                     fetched_at AS observed_at FROM prop_odds
+                               WHERE game_id = ANY($1::text[]) AND provider_id = ANY($2::text[])""", ids, first_hand)
+    now_rows: dict[tuple, list] = {}
+    for r in cur:
+        now_rows.setdefault((r["game_id"], r["subject_id"], r["market_key"], r["bookmaker"]), []).append(r)
+    best: dict[str, tuple] = {}
+    for p in pulls:
+        key = (p["game_id"], p["subject_id"], p["market_key"])
+        series = odds_flags.main_line_series(by.get(key, [])).get(p["bookmaker"], [])
+        before = [pt[1] for pt in series if pt[0] <= p["pulled_at"]]
+        if not before or before[-1] != p["line"]:
+            continue                               # not the book's main line when it was pulled
+        now_main = odds_flags.main_line_series(now_rows.get(key + (p["bookmaker"],), [])).get(p["bookmaker"], [])
+        if not now_main or now_main[-1][1] == p["line"]:
+            continue                               # not reposted at a new number
+        move = abs(now_main[-1][1] - p["line"])
+        sid = p["subject_id"]
+        if sid not in best or move > best[sid][0]:
+            best[sid] = (move, p, now_main[-1][1])
+    return [Candidate(subject_id=odds_flags.bare_subject(sid), subject_name=names.get(sid, ""), team=None, opponent=None,
+                      game_id=p["game_id"], values={"repost_move": float(move), "_book": _book_word(p["bookmaker"]),
+                                                    "_market": odds_flags.market_word(p["market_key"]),
+                                                    "_from": f"{p['line']:g}", "_to": f"{to:g}"})
+            for sid, (move, p, to) in best.items()]
+
+
+def money_split_candidates(games, rows) -> list[Candidate]:
+    """Pure: one candidate per game whose DraftKings money and bets sit 15+
+    points apart on some side (the largest gap names it). The game is the subject."""
+    by_id = {str(g.game_id): g for g in games}
+    best: dict[str, tuple] = {}
+    for r in rows:
+        gap = odds_flags.money_split_gap(r["pct_money"], r["pct_bets"])
+        if gap is None or gap < odds_flags.MONEY_SPLIT_GAP or r["game_id"] not in by_id:
+            continue
+        if r["game_id"] not in best or gap > best[r["game_id"]][0]:
+            best[r["game_id"]] = (gap, r)
+    out = []
+    for gid, (gap, r) in best.items():
+        g = by_id[gid]
+        side = {"home": g.home_abbr, "away": g.away_abbr}.get(r["side"], r["side"])
+        out.append(Candidate(subject_id=gid, subject_name=f"{g.away_abbr} @ {g.home_abbr}", team=g.away_abbr,
+                             opponent=g.home_abbr, game_id=gid,
+                             team_id=str(g.away_team_id) if g.away_team_id else None,
+                             opponent_id=str(g.home_team_id) if g.home_team_id else None,
+                             values={"money_gap": round(gap, 1), "_side": side,
+                                     "_market": odds_flags.market_word(r["market"]),
+                                     "_money_more": float(r["pct_money"]) > float(r["pct_bets"])}))
+    return out
+
+
+async def build_odds_money_split(conn, slate: date, sport: str) -> list[Candidate]:
+    games = await _games_for(sport, slate)
+    ids = [str(g.game_id) for g in games]
+    if not ids:
+        return []
+    rows = await conn.fetch("""SELECT DISTINCT ON (game_id, market, side) game_id, market, side, pct_money, pct_bets
+                                 FROM market_splits
+                                WHERE game_id = ANY($1::text[]) AND subject_id = '' AND kind = 'bets_money'
+                                  AND book = 'draftkings' AND market IN ('ml', 'sp', 'tot')
+                                ORDER BY game_id, market, side, observed_at DESC""", ids)
+    return money_split_candidates(games, rows)
+
+
 RANKINGS: tuple[RankingDef, ...] = (
     RankingDef("mlb-hr-of-the-day", ("mlb",), "HR of the day", "Player to hit a home run",
                MLB_HR_FACTORS, build_mlb_hr, grade_stat="bat_homeRuns",
@@ -2174,6 +2361,16 @@ RANKINGS: tuple[RankingDef, ...] = (
     RankingDef("tennis-surface-record", ("tennis_atp",), "Surface record", "Records on the surface of the current swing",
                TENNIS_SURFACE_FACTORS, lambda c, d: build_tennis_surface(c, d, "tennis_atp"), kind="spotlight",
                not_held="WTA surface records are not held: the match table behind them is ATP-only."),
+
+    RankingDef("odds-steam", ("mlb", "nfl", "cfb", "nba", "nhl", "soccer_epl", "soccer_mls"), "Steam", "Three or more books moved the line together",
+               ODDS_STEAM_FACTORS, lambda c, d, s: build_odds_steam(c, d, s), kind="spotlight"),
+    RankingDef("odds-pulled", ("mlb", "nfl", "cfb", "nba", "nhl", "soccer_epl", "soccer_mls"), "Pulled and reposted", "A book took its line down and put up a new one",
+               ODDS_PULLED_FACTORS, lambda c, d, s: build_odds_pulled(c, d, s), kind="spotlight"),
+    RankingDef("odds-money-split", ("nfl", "cfb", "mlb", "nba", "nhl"), "Money vs bets",
+               "DraftKings customers' money and bets 15+ points apart", ODDS_MONEY_SPLIT_FACTORS,
+               lambda c, d, s: build_odds_money_split(c, d, s), kind="spotlight"),
+    RankingDef("odds-first-mover", ("mlb", "nfl", "cfb", "nba", "nhl", "soccer_epl", "soccer_mls"), "Pinnacle moved first", "Pinnacle led a move the market followed",
+               ODDS_FIRST_MOVER_FACTORS, lambda c, d, s: build_odds_first_mover(c, d, s), kind="spotlight"),
 
     RankingDef("golf-course-history", ("golf",), "Course history", "Who has played this course well before",
                GOLF_COURSE_FACTORS, lambda c, d: build_golf_course_history(c, d), kind="spotlight",

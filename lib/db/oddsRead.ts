@@ -152,7 +152,7 @@ export async function readMoney(gameId: string, subjectId = ''): Promise<MoneyPa
 export async function readPlayerOdds(sport: string, gameId: string, subjectId: string): Promise<PlayerOddsPayload> {
   const now = new Date();
   const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
-  const [rows, checks, changes, openers, pulls, lat, money, edges] = await Promise.all([
+  const [rows, checks, changes, openers, pulls, lat, money, edges, linkRows] = await Promise.all([
     pgAll<{ provider_id: string; market_key: string; line: number | null; side: string; bookmaker: string;
       american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT provider_id, market_key, line, side, bookmaker, american_odds, fetched_at, changed_at, extra
@@ -171,6 +171,8 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     latency(sport),
     readMoney(gameId, subjectId),
     readEdges({ gameIds: [gameId], subjectId }),
+    pgAll<{ subject: string; data: Record<string, unknown> }>(
+      `SELECT subject, data FROM game_reference WHERE game_id = ? AND kind = 'book_link'`, [gameId]),
   ]);
   const sp = marketSpec('prop');
   const byMarket = new Map<string, OddsMarket>();
@@ -205,8 +207,13 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     market(p.market_key).pulls!.push({ book: p.bookmaker, side: p.side, line: p.line, lastPrice: p.last_american_odds,
       pulledAt: iso(p.pulled_at), returnedAt: p.returned_at ? iso(p.returned_at) : null } satisfies PullRow);
   }
+  const links: Record<string, string> = {};
+  for (const l of linkRows) {
+    const d = typeof l.data === 'string' ? JSON.parse(l.data) : l.data;
+    if (typeof d?.url === 'string') links[l.subject] = d.url;
+  }
   return { sport, gameId, subjectId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat, money,
-    ...(edges ? { edges } : {}) };
+    ...(edges ? { edges } : {}), links };
 }
 
 // ---------------------------------------------------------------------------

@@ -179,3 +179,22 @@ test('the browser never imports the query', () => {
   assert.doesNotMatch(pure, /from '\.\.\/db\/pgClient'/);
   assert.match(pure, /import type \{ SpecialFactorDef \}/);
 });
+
+test('P12: the four odds flags render through the flags path; the money split is a GAME', () => {
+  const { SPOTLIGHT_RANKINGS } = require('../lib/slate/specials') as typeof import('../lib/slate/specials');
+  for (const id of ['odds-steam', 'odds-pulled', 'odds-money-split', 'odds-first-mover']) {
+    const def = SPOTLIGHT_RANKINGS[id];
+    assert.ok(def, `${id} has words (flagsRead drops a ranking it cannot label)`);
+    const [card] = flagSpotlightCards([flag({ rankingId: id, title: def.title, promo: def.promo })], { sport: 'nfl' });
+    assert.equal(card.title, def.title);
+    assert.equal(card.rows.length, 1);
+  }
+  const split = flag({
+    rankingId: 'odds-money-split', title: 'Money vs bets', subjectId: '401872954', subjectName: 'MIN @ TB',
+    subjectKind: 'game', gameId: '401872954', read: "Draws 50 points more of DraftKings customers' bets than money on the MIN moneyline.",
+  });
+  const [card] = flagSpotlightCards([split], { sport: 'nfl' });
+  assert.equal(card.subjectLabel, 'Game');
+  assert.equal(card.rows[0].href, '/nfl/game/401872954');
+  assert.equal(card.rows[0].headshotUrl, null);
+});

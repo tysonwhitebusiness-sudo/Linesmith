@@ -206,5 +206,9 @@ test('signed out, Your lines fetches nothing and renders nothing', () => {
   // ...and the shell hands the section `null` rather than an empty list.
   const shell = code(readFileSync('components/AppShell.tsx', 'utf8'));
   assert.match(shell, /signedIn\s*\?\s*toYourLines\(/);
-  assert.match(src, /if \(!rows \|\| rows\.length === 0\) return null;/);
+  // P12: the section also draws the reader's alerts, and the alerts store fetches only when signed in.
+  assert.match(src, /if \(\(!rows \|\| rows\.length === 0\) && alerts\.length === 0\) return null;/);
+  const store = code(readFileSync('components/useTrackedAlerts.ts', 'utf8'));
+  assert.match(store, /if \(!signedIn\) return;/);
+  assert.match(store, /const list = signedIn \? alerts : \[\];/);
 });
