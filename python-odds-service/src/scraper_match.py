@@ -382,6 +382,12 @@ async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None 
             "SELECT game_key, app_sport, app_game_id, reversed, method FROM game_links")}
         app_games: dict[str, list] = {}
         linked_keys: dict[str, tuple[str, str]] = {}   # game_key -> (app_sport, app_game_id)
+        # Every network load BEFORE the first bridge.db write (P6, 2026-09-25):
+        # a write opens SQLite's write transaction, and holding it across the
+        # roster fetches (MLB + NHL, minutes) locked the live bridge out of its
+        # own state DB ("database is locked" every cycle).
+        for app_sport in sorted({SCRAPER_TO_APP_SPORT.get((c.sport, c.league_key)) for c in canon} - {None}):
+            app_games[app_sport] = await load_app_games(app_sport)
 
         for c in canon:
             app_sport = SCRAPER_TO_APP_SPORT.get((c.sport, c.league_key))
@@ -391,8 +397,6 @@ async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None 
             stats = summary.games.setdefault(app_sport, {"canon": 0, "linked": 0, "ambiguous": 0,
                                                          "no-game-in-window": 0, "other": 0})
             stats["canon"] += 1
-            if app_sport not in app_games:
-                app_games[app_sport] = await load_app_games(app_sport)
             result = link_game(c, names.get(c.game_key, []), app_games[app_sport])
             old = existing.get(c.game_key)
             if isinstance(result, GameLink):

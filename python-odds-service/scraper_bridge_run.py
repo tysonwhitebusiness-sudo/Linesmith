@@ -76,6 +76,7 @@ LAG_PRUNE_ALERT_S = 6 * 3600      # the scraper prunes after 3 days; alert long 
 EVENT_MISS_TTL_S = 120
 SEED_GAMES_PER_CYCLE = 5
 SEED_SECONDS_PER_CYCLE = 5.0
+SLOW_CYCLE_S = 180
 SEED_SINCE = "2026-09-22"
 TABLES = ("offers", "snapshots", "offer_events", "splits", "reference_data")
 RATING_KINDS = {"nfl_power_rating": "nfl", "cfb_power_rating": "cfb", "mlb_power_rating": "mlb",
@@ -258,6 +259,7 @@ class Bridge:
         self.ref_dirty = True
         self.outbox: list | None = None
         self.pending_cursor: dict[str, int] | None = None
+        self.unsaved_cursor: dict[str, int] | None = None
         self.unmatched_counter: Counter = Counter()
         self.unresolved_day = None
         self.stats = Counter()
@@ -309,10 +311,20 @@ class Bridge:
         print(f"[bridge] cursors {self.cursor} (saved {saved})", flush=True)
 
     def save_cursors(self, pos: dict[str, int]) -> None:
+        """Persist the read positions. If bridge.db is locked, keep them and try
+        again next cycle: the writes they cover are committed, and a crash in
+        between only re-reads rows the writers treat as no-ops."""
         stamp = now_utc().isoformat()
-        self.state.executemany("INSERT OR REPLACE INTO cursors (name, last_id, updated_at) VALUES (?, ?, ?)",
-                               [(t, int(v), stamp) for t, v in pos.items()])
-        self.state.commit()
+        try:
+            self.state.executemany("INSERT OR REPLACE INTO cursors (name, last_id, updated_at) VALUES (?, ?, ?)",
+                                   [(t, int(v), stamp) for t, v in pos.items()])
+            self.state.commit()
+        except sqlite3.OperationalError as e:
+            self.state.rollback()
+            self.skips[f"cursor-save:{e}"] += 1
+            self.unsaved_cursor = dict(pos)
+            return
+        self.unsaved_cursor = None
         self.cursor = dict(pos)
 
     # --- reading -------------------------------------------------------------
@@ -376,6 +388,8 @@ class Bridge:
 
     # --- one cycle -----------------------------------------------------------
     async def cycle(self) -> None:
+        if self.unsaved_cursor is not None:
+            self.save_cursors(self.unsaved_cursor)
         if self.outbox:
             await self.flush()
             if self.outbox:
@@ -725,10 +739,14 @@ class Bridge:
                         self.opened.add(opener_key(op))
                         out.append(op)
                         n += 1
-            self.state.execute("INSERT OR REPLACE INTO opener_seeded VALUES (?, ?, ?, ?)",
-                               (key, app_game_id, n, now.isoformat()))
+            try:
+                self.state.execute("INSERT OR REPLACE INTO opener_seeded VALUES (?, ?, ?, ?)",
+                                   (key, app_game_id, n, now.isoformat()))
+                self.state.commit()
+            except sqlite3.OperationalError as e:        # the matcher holds bridge.db: seed it again later
+                self.skips[f"seed-state:{e}"] += 1
+                break
             self.stats["openers_seeded"] += n
-        self.state.commit()
         return out
 
     def _check_openers(self, openers: list) -> None:
@@ -989,8 +1007,16 @@ class Bridge:
             self.outbox = self._plan([], [], [], [], [], [], ops, refs, [], [])
             await self.flush()
         idle = 0
+        import faulthandler
+        stacks = None if self.test else open(os.path.join(SCRAPER_DATA, "bridge_stacks.log"), "a", encoding="utf-8")
         while True:
             t0 = time.time()
+            if stacks is not None:
+                # A cycle that runs past SLOW_CYCLE_S writes every thread's stack
+                # to bridge_stacks.log, so a slow cycle names its own cause.
+                stacks.write(f"---- cycle armed {now_utc().isoformat()}\n")
+                stacks.flush()
+                faulthandler.dump_traceback_later(SLOW_CYCLE_S, repeat=False, file=stacks)
             try:
                 await self.maybe_match()
                 await self.maybe_timing()
@@ -1008,6 +1034,8 @@ class Bridge:
                 self.cycle_ok = False
                 self.last_error = f"cycle: {type(e).__name__}: {e}"[:500]
                 traceback.print_exc()
+            if stacks is not None:
+                faulthandler.cancel_dump_traceback_later()
             if self.args.once or (self.args.until_idle and idle >= 2 and not self.outbox and not self.hold.pending):
                 break
             if self.args.until_idle and idle >= 4:
