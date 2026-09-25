@@ -11,6 +11,37 @@ D24 policy, with a heartbeat the health check reads.
 
 ---
 
+## Amendments (2026-09-25) — these win where the text below differs
+
+- **P6.0 — D25 comes first.** Before the bridge writes to Supabase for
+  real, the cost audit (`results/P6-cost-audit.md`) and its meters, alerts
+  and brakes are built:
+  - `cost_prices.json`;
+  - the bridge's own egress meter;
+  - the cron's run-time log;
+  - `costGuardJob` and `cost_guard_state`;
+  - `health_check.check_cost_guard`;
+  - the brake the bridge reads beside `disk_guard_state.bridge_paused`.
+
+  The replay test (a bounded, cleaned-up write) may run before that; go-live
+  may not.
+- **D24 sets the policy (§5): everything.**
+  - Every class is on, pre-game and in-game: first-hand, relay-only, and relay
+    duplicates of first-hand books.
+  - `unmatched_prices` is on.
+  - The hot window is 10 days, and the disk guard owns it (P5 A2).
+- **History goes to the compact tables (P5 A1).** The replay test's
+  "`prop_odds_history.observed_at` equals the source times" check reads
+  `prop_price_history` through `price_history`.
+- **Two brakes, both read before every write cycle:**
+  - `disk_guard_state.bridge_paused`;
+  - `cost_guard_state.brake`.
+
+  Either one holds the rows on the laptop. Nothing is dropped; the rows are
+  sent when both clear.
+
+---
+
 ## Facts this is built on (read 2026-09-24)
 
 - **Scraper rows:**
@@ -334,3 +365,5 @@ section.
   wrote a daily top-200 summary. New §6b adds `scraper_unmatched_prices`
   (current state, one row per scraper key), subject to D24's budget, plus its
   tests and ownership row.
+- **2026-09-25 — amendments:** P6.0 (the D25 audit, meters and brakes first),
+  D24's policy (everything), the compact history, and the two brakes.
