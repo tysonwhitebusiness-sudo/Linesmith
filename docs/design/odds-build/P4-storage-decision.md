@@ -133,6 +133,12 @@ projection.
 
 ## Result
 
+> **Superseded 2026-09-25 by `results/P4-storage-audit.md`.** The A–F
+> options and the recommendation below each dropped data from the app
+> (sources, relay copies, in-game changes or history days), which D14
+> forbids. The audit lists only options that keep everything, with measured
+> costs. The volume measurements below stand.
+
 **Measured 2026-09-24 23:55 UTC. Waiting on the operator's D24.**
 Raw output: `results/p4-volume-2026-09-24.json`.
 
