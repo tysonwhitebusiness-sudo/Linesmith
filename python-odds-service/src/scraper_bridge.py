@@ -108,6 +108,57 @@ def since_time(source_ts_ms: int | None, fetched_at: datetime, cache_age_s: int 
     return fetched_at
 
 
+def _http_date(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        from email.utils import parsedate_to_datetime
+        t = parsedate_to_datetime(s)
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def price_asof(fetched_at: datetime, cache_age_s: int | None, last_modified: str | None,
+               http_meta: str | list | None) -> tuple[datetime, int | None]:
+    """D13, exact: the moment a snapshot's PRICES represent, and that copy's age.
+
+    A CDN copy fetched at `fetched_at` with `Age: a` was taken from the origin
+    `a` seconds earlier, so it is known true at `fetched_at - a`. Pinnacle's
+    league snapshot is two requests — `/matchups` (who plays) and
+    `/markets/straight` (the prices) — each with its own Age (measured
+    2026-09-25: the prices' copy median 636 s old, p90 856 s, max 904 s against
+    `max-age=905`). So the time comes from the request that carried the prices
+    (a URL with `/markets`), not the snapshot's largest Age or its first
+    Last-Modified (the matchups', which the snapshot row happens to keep).
+    `Last-Modified` is used only when a price request sent no Age: it is when
+    the content last CHANGED, which is at or before the copy time, so it is
+    the conservative reading. With no header at all, the fetch time.
+    """
+    meta = http_meta
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except ValueError:
+            meta = None
+    reqs = [m for m in (meta or []) if isinstance(m, dict) and (m.get("status") or 200) < 400]
+    priced = [m for m in reqs if "/markets" in str(m.get("url") or "")] or reqs
+    times: list[datetime] = []
+    for m in priced:
+        age = m.get("age")
+        if isinstance(age, (int, float)) and age >= 0:
+            times.append(fetched_at - timedelta(seconds=age))
+        elif (lm := _http_date(m.get("last_modified"))) is not None:
+            times.append(lm)
+    if not times:
+        if cache_age_s:
+            times.append(fetched_at - timedelta(seconds=cache_age_s))
+        elif (lm := _http_date(last_modified)) is not None:
+            times.append(lm)
+    t = min(min(times), fetched_at) if times else fetched_at
+    return t, int(round((fetched_at - t).total_seconds())) if times else None
+
+
 def extra_from(depth: dict | None, price_alt: float | None, source: str) -> dict | None:
     if not isinstance(depth, dict):          # some sources store a list there
         depth = None

@@ -4660,27 +4660,32 @@ async def write_game_reference(rows: list[GameReferenceInput]) -> int:
 # ---------------------------------------------------------------------------
 
 
-async def write_scraper_checks(rows: list[tuple[str, str, datetime]]) -> int:
-    """(source, game_id, last_ok_at): the last ok/unchanged poll that confirmed
-    a source's prices for a game (P6 §6). `source` is the provider id the
-    rows carry (`scraper:<source>`), so a reader joins on it directly. A time
-    only ever moves forward. Returns rows written."""
+async def write_scraper_checks(rows: list[tuple]) -> int:
+    """(source, game_id, last_ok_at[, price_asof]): the last ok/unchanged poll
+    that confirmed a source's prices for a game (P6 §6), and the moment that
+    poll's price copy represents (D13: the price request's CDN Age; P11
+    follow-up). `source` is the provider id the rows carry (`scraper:<source>`),
+    so a reader joins on it directly. A time only ever moves forward, and
+    `price_asof` moves with the poll that confirmed it. Returns rows written."""
     if not rows:
         return 0
-    latest: dict[tuple[str, str], datetime] = {}
-    for source, game_id, at in rows:
+    latest: dict[tuple[str, str], tuple[datetime, datetime | None]] = {}
+    for r in rows:
+        source, game_id, at = r[0], r[1], r[2]
+        asof = r[3] if len(r) > 3 else None
         k = (source, game_id)
-        if k not in latest or latest[k] < at:
-            latest[k] = at
+        if k not in latest or latest[k][0] < at:
+            latest[k] = (at, asof)
     pool = await get_pool()
     res = await pool.execute(
         """
-        INSERT INTO scraper_checks (source, game_id, last_ok_at)
-        SELECT * FROM unnest($1::text[], $2::text[], $3::timestamptz[])
-        ON CONFLICT (source, game_id) DO UPDATE SET last_ok_at = excluded.last_ok_at
+        INSERT INTO scraper_checks (source, game_id, last_ok_at, price_asof)
+        SELECT * FROM unnest($1::text[], $2::text[], $3::timestamptz[], $4::timestamptz[])
+        ON CONFLICT (source, game_id) DO UPDATE SET last_ok_at = excluded.last_ok_at,
+               price_asof = COALESCE(excluded.price_asof, scraper_checks.price_asof)
         WHERE scraper_checks.last_ok_at < excluded.last_ok_at
         """,
-        [k[0] for k in latest], [k[1] for k in latest], list(latest.values()),
+        [k[0] for k in latest], [k[1] for k in latest], [v[0] for v in latest.values()], [v[1] for v in latest.values()],
     )
     return int(res.split()[-1])
 

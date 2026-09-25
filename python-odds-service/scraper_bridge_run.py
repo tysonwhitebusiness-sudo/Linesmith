@@ -55,7 +55,7 @@ from odds_checks import opener_sanity  # noqa: E402
 from scraper_bridge import (  # noqa: E402
     GameRef, HoldBuffer, Mapped, Offer, PlayerRef, Policy, PropRef, an_open_opener, book_links, choose_main,
     line_id, map_offer, map_split, match_ratings, opener_from_row, opener_key, parse_ts,
-    parse_vsin_opener, source_rank,
+    parse_vsin_opener, price_asof, source_rank,
 )
 from scraper_match import SCRAPER_TO_APP_SPORT  # noqa: E402
 
@@ -355,6 +355,10 @@ class Bridge:
                 rows, bound = cut, last_snap - 1
             else:
                 bound = last_snap
+        snaps = q("SELECT id, source, endpoint, fetched_at, status FROM snapshots WHERE id > ? AND id <= ? ORDER BY id",
+                  (self.read_pos["snapshots"], bound)).fetchall()
+        # D13, exact (P11 follow-up): each snapshot's price time from the request that carried the prices.
+        asof = self._price_asof({r[1] for r in rows} | {sn[0] for sn in snaps})
         offers = []
         for r in rows:
             depth = None
@@ -366,9 +370,8 @@ class Bridge:
             offers.append(Offer(id=r[0], snapshot_id=r[1], source=r[2], endpoint=r[3], event_external_id=r[4],
                                 prop_market_external_id=r[5], market=r[6], side=r[7], line=r[8], book=r[9],
                                 book_key=r[10], price=r[11], price_alt=r[12], source_ts_ms=r[13], depth=depth,
-                                fetched_at=parse_ts(r[15]), cache_age_s=r[16]))
-        snaps = q("SELECT id, source, endpoint, fetched_at, status FROM snapshots WHERE id > ? AND id <= ? ORDER BY id",
-                  (self.read_pos["snapshots"], bound)).fetchall()
+                                fetched_at=parse_ts(r[15]),
+                                cache_age_s=asof[r[1]][1] if r[1] in asof else r[16]))
 
         def by_snapshot(table, cols):
             out = q(f"SELECT {cols} FROM {table} WHERE id > ? ORDER BY id LIMIT 200000",
@@ -395,7 +398,19 @@ class Bridge:
             if got:
                 pos[name] = got[-1][0]
         return {"offers": offers, "snaps": snaps, "events": events, "splits": splits, "refs": refs, "pos": pos,
-                "bound": bound}
+                "bound": bound, "asof": asof}
+
+    def _price_asof(self, snapshot_ids: set) -> dict:
+        """{snapshot id: (price time, age s)} — `scraper_bridge.price_asof` per snapshot."""
+        out: dict = {}
+        ids = sorted(i for i in snapshot_ids if i is not None)
+        for i in range(0, len(ids), 900):
+            chunk = ids[i:i + 900]
+            for sid, fetched, age, lm, meta in self.scraper.execute(
+                    f"SELECT id, fetched_at, cache_age_s, last_modified, http_meta FROM snapshots "
+                    f"WHERE id IN ({','.join('?' * len(chunk))})", chunk).fetchall():
+                out[sid] = price_asof(parse_ts(fetched), age, lm, meta)
+        return out
 
     # --- one cycle -----------------------------------------------------------
     async def cycle(self) -> None:
@@ -518,8 +533,9 @@ class Bridge:
             if status in ("ok", "unchanged"):
                 at = parse_ts(fetched)
                 self.latest_ok[(source, endpoint)] = (sid, at)
+                pa = batch.get("asof", {}).get(sid, (at, None))[0]
                 for gid in self.endpoint_games.get((source, endpoint), ()):
-                    checks.append((f"{self.prefix}:{source}", gid, at))
+                    checks.append((f"{self.prefix}:{source}", gid, at, pa))
         if snaps:
             self.newest_bridged = parse_ts(snaps[-1][3])
         confirmed = self.hold.confirm(self.latest_ok) + self._backfill()

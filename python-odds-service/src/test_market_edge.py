@@ -101,6 +101,19 @@ ok("... so a soft change 10 min ago fails (it is inside the bound)", failing(r) 
 lm = replace(base, quotes=[replace(x, extra={"limit": 2500, "last_modified": ago(300).isoformat()})
                            if x.book == "pinnacle" else x for x in base.quotes])
 ok("Last-Modified wins over Age", price_time(lm.quotes[0]) == (ago(300), "last_modified"))
+exact = replace(base, quotes=[replace(x, extra={"limit": 2500}, price_asof=ago(636)) if x.book == "pinnacle" else x
+                              for x in base.quotes])
+ok("exact copy time: the confirming poll's price_asof (median Pinnacle copy, 636 s)",
+   price_time(exact.quotes[0]) == (ago(636), "copy_age"), price_time(exact.quotes[0]))
+ok("... a soft book unchanged for 12 minutes passes (the 15-minute bound would have failed it)",
+   result(swap(exact, "betmgm", "home", since=ago(720))).passed
+   and failing(result(swap(no_age, "betmgm", "home", since=ago(720)))) == ["g2_time"])
+ok("... and one that moved 8 minutes ago (after the copy) does not",
+   failing(result(swap(exact, "betmgm", "home", since=ago(480)))) == ["g2_time"])
+newer = replace(exact.quotes[0], since=ago(300))
+ok("... the row's own since wins when it is later than the check's copy", price_time(newer) == (ago(300), "copy_age"))
+bounded = replace(no_age.quotes[0], since=ago(400))
+ok("no copy time recorded: the row's since beats the 15-minute bound when later", price_time(bounded) == (ago(400), "since"))
 stale_sharp = replace(base, quotes=[replace(x, checked_at=ago(1300)) if x.book == "pinnacle" else x for x in base.quotes])
 ok("sharp checked 21+ min ago fails gate 2", failing(result(stale_sharp)) == ["g2_time"])
 ok("soft checked 4 min ago fails gate 2", failing(result(swap(base, "betmgm", "home", checked_at=ago(240)))) == ["g2_time"])

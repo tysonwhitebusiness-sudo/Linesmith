@@ -107,6 +107,7 @@ class Quote:
     since: datetime | None               # changed_at; None = unknown (fails gate 2)
     extra: dict = field(default_factory=dict)
     pulled: bool = False                 # an open prop_odds_pulls / game_line_pulls row
+    price_asof: datetime | None = None   # D13: the confirming poll's price copy time (scraper_checks.price_asof)
     history: list[tuple[datetime, int]] = field(default_factory=list)   # (observed_at, american), oldest first
 
     @property
@@ -253,13 +254,22 @@ def _fair(pair: dict[str, Quote], sides: tuple[str, str], methods=LOGGED_METHODS
 
 
 def price_time(q: Quote) -> tuple[datetime, str]:
-    """D13: the moment our copy of the sharp price represents.
+    """D13, exact: the latest moment our copy of the sharp price is known true.
 
-    `Last-Modified` when the response carried one, else the fetch less the
-    CDN's Age. With neither recorded, D13's own bound: the copy may be up to
-    15 minutes old, so the price is known true at `checked - 15 min`. That is
-    the conservative end — the soft book must then have held its price since.
+    1. `price_asof` — the latest confirming poll's price copy time (fetch less
+       the CDN Age of the request that carried the prices; the bridge writes
+       it to `scraper_checks.price_asof`), or the row's own since if later.
+       Pinnacle's copies measured median 636 s old (p90 856 s), so this is
+       usually ~10 minutes before the fetch, and it is the real number.
+    2. A header on the row (`extra.last_modified` / `extra.cache_age_s`).
+    3. A first-hand source with no CDN (Circa via VSiN): its check time.
+    4. Nothing recorded (a bridge not yet on the new code): the latest of the
+       row's own since and D13's bound (checked - 15 min). This is the ONLY
+       place the 15-minute assumption survives.
     """
+    if q.price_asof is not None:
+        t = max(q.price_asof, q.since) if q.since else q.price_asof
+        return min(t, q.checked_at), "copy_age"
     ex = q.extra or {}
     lm = ex.get("last_modified")
     if lm:
@@ -273,7 +283,10 @@ def price_time(q: Quote) -> tuple[datetime, str]:
         return q.checked_at - timedelta(seconds=age), "cache_age"
     if is_first_hand(q.provider, q.book) and q.book != "pinnacle":
         return q.checked_at, "checked"            # a first-hand non-CDN source (Circa via VSiN)
-    return q.checked_at - timedelta(seconds=ASSUMED_CDN_AGE_S), "assumed_max_cdn_age"
+    bound = q.checked_at - timedelta(seconds=ASSUMED_CDN_AGE_S)
+    if q.since and q.since > bound:
+        return q.since, "since"
+    return bound, "assumed_max_cdn_age"
 
 
 def price_at(q: Quote, t: datetime) -> int | None:
@@ -646,7 +659,8 @@ def _quote(r) -> Quote:
     if isinstance(extra, str):
         extra = json.loads(extra)
     return Quote(book=r["bookmaker"], provider=r["provider"], side=r["side"], american=int(r["american_odds"]),
-                 checked_at=r["checked_at"], since=r["changed_at"], extra=extra or {}, pulled=bool(r["pulled"]))
+                 checked_at=r["checked_at"], since=r["changed_at"], extra=extra or {}, pulled=bool(r["pulled"]),
+                 price_asof=r["price_asof"])
 
 
 def build_markets(game_rows, prop_rows, starts) -> list[Market]:
@@ -694,7 +708,7 @@ async def _read(pool, game_ids: list[str]):
         WITH ref AS (SELECT DISTINCT r.game_id, r.period, r.market, {lk.format(t='r')} AS lk FROM game_lines r
                       WHERE r.game_id = ANY($1::text[]) AND r.bookmaker = ANY($2::text[]))
         SELECT x.sport, x.game_id, x.period, x.market, x.side, x.point, x.bookmaker, x.source AS provider,
-               x.american_odds, x.changed_at, x.extra, {checked} AS checked_at,
+               x.american_odds, x.changed_at, x.extra, {checked} AS checked_at, c.price_asof,
                EXISTS (SELECT 1 FROM game_line_pulls p WHERE p.returned_at IS NULL AND p.sport = x.sport
                          AND p.game_id = x.game_id AND p.period = x.period AND p.market = x.market AND p.side = x.side
                          AND p.bookmaker = x.bookmaker AND p.source = x.source
@@ -713,7 +727,7 @@ async def _read(pool, game_ids: list[str]):
                       WHERE game_id = ANY($1::text[])
                         AND (bookmaker = 'pinnacle' OR provider_id IN ('scraper:kalshi', 'scraper:polymarket')))
         SELECT x.game_id, x.subject_id, x.subject_name, x.market_key, x.line, x.side, x.bookmaker, x.provider_id AS provider,
-               x.american_odds, x.changed_at, x.extra, {checked} AS checked_at,
+               x.american_odds, x.changed_at, x.extra, {checked} AS checked_at, c.price_asof,
                EXISTS (SELECT 1 FROM prop_odds_pulls p WHERE p.returned_at IS NULL AND p.provider_id = x.provider_id
                          AND p.game_id = x.game_id AND p.subject_id = x.subject_id AND p.market_key = x.market_key
                          AND p.side = x.side AND p.bookmaker = x.bookmaker

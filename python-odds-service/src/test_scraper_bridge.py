@@ -284,11 +284,36 @@ def openers_and_more():
                                                                     "nfl") == {"Washington Commanders": "Wash Commanders"})
 
 
+def copy_age():
+    print("D13 exact: the price copy's time")
+    # The real shape (Pinnacle lg246, 2026-09-25): matchups Age 122, markets/straight Age 594.
+    meta = json.dumps([
+        {"url": "https://guest.api.arcadia.pinnacle.com/0.1/leagues/246/matchups", "status": 200, "age": 122,
+         "last_modified": "Fri, 25 Sep 2026 17:58:00 GMT"},
+        {"url": "https://guest.api.arcadia.pinnacle.com/0.1/leagues/246/markets/straight", "status": 200, "age": 594,
+         "last_modified": "Fri, 25 Sep 2026 17:50:03 GMT"},
+    ])
+    t, age = sb.price_asof(T0, 594, "Fri, 25 Sep 2026 17:58:00 GMT", meta)
+    check("the PRICE request's Age, not the matchups'", t == T0 - timedelta(seconds=594) and age == 594, (t, age))
+    no_age = json.dumps([{"url": "https://x/0.1/leagues/1/markets/straight", "status": 200, "age": None,
+                          "last_modified": "Fri, 25 Sep 2026 17:52:00 GMT"}])
+    t, _ = sb.price_asof(T0, None, None, no_age)
+    check("no Age -> the price request's Last-Modified", t == datetime(2026, 9, 25, 17, 52, tzinfo=timezone.utc), t)
+    t, age = sb.price_asof(T0, 30, None, None)
+    check("no per-request meta -> the snapshot's Age", t == T0 - timedelta(seconds=30) and age == 30, (t, age))
+    t, age = sb.price_asof(T0, None, None, "[]")
+    check("no header at all -> the fetch time, age unknown", t == T0 and age is None, (t, age))
+    t, _ = sb.price_asof(T0, None, None, json.dumps([{"url": "https://x/markets", "status": 200,
+                                                      "last_modified": "Fri, 25 Sep 2026 18:05:00 GMT"}]))
+    check("a clock ahead of ours never dates the copy after the fetch", t == T0, t)
+
+
 def main():
     mapping()
     hold()
     policy()
     openers_and_more()
+    copy_age()
     print(f"\n{'FAILED: ' + ', '.join(FAILS) if FAILS else 'all passed'}")
     sys.exit(1 if FAILS else 0)
 
