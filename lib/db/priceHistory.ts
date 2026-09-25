@@ -284,3 +284,68 @@ export async function propHistoryRowCount(): Promise<number> {
   const rows = await pgAll<{ n: string }>(`SELECT count(*) AS n FROM prop_price_history`);
   return Number(rows[0]?.n ?? 0);
 }
+
+// ---------------------------------------------------------------------------
+// P8 (odds build, 2026-09-25): the odds section's history reads.
+// ---------------------------------------------------------------------------
+
+/** One prop price change for one player (the odds section's Line movement). */
+export interface PropChangeRow {
+  providerId: string;
+  marketKey: string;
+  line: number | null;
+  side: string;
+  bookmaker: string;
+  americanOdds: number;
+  observedAt: string;
+}
+
+/** Every prop price change for one player in one game since `sinceIso`, oldest first. */
+export async function propChangesForSubject(gameId: string, subjectId: string, sinceIso: string): Promise<PropChangeRow[]> {
+  return pgAll(
+    `SELECT s.provider_id AS "providerId", m.name AS "marketKey", h.line::numeric::float8 AS line,
+            sd.name AS side, b.name AS bookmaker, h.price AS "americanOdds", h.observed_at AS "observedAt"
+       FROM prop_price_history h
+       JOIN odds_sources s ON s.id = h.source
+       JOIN odds_markets m ON m.id = h.market
+       JOIN odds_books b   ON b.id = h.book
+       JOIN odds_sides sd  ON sd.id = h.side
+      WHERE h.game = (SELECT id FROM odds_games WHERE game_id = ?)
+        AND h.subject = (SELECT id FROM odds_subjects WHERE subject_id = ?)
+        AND h.observed_at >= ?::timestamptz AND h.recorded_at >= ?::timestamptz
+      ORDER BY h.observed_at`,
+    [gameId, subjectId, sinceIso, sinceIso],
+  );
+}
+
+/** One game-line price change (the game page's Line movement). */
+export interface GameLineChangeRow {
+  source: string;
+  period: string;
+  market: string;
+  side: string;
+  point: number | null;
+  bookmaker: string;
+  americanOdds: number;
+  isMain: boolean;
+  observedAt: string;
+}
+
+/** Every game-line price change for one game since `sinceIso`, oldest first. */
+export async function gameLineChangesForGame(gameId: string, sinceIso: string): Promise<GameLineChangeRow[]> {
+  return pgAll(
+    `SELECT s.provider_id AS source, pe.name AS period, m.name AS market, sd.name AS side,
+            h.point::numeric::float8 AS point, b.name AS bookmaker, h.price AS "americanOdds",
+            h.is_main AS "isMain", h.observed_at AS "observedAt"
+       FROM game_lines_history h
+       JOIN odds_sources s  ON s.id = h.source
+       JOIN odds_markets m  ON m.id = h.market
+       JOIN odds_periods pe ON pe.id = h.period
+       JOIN odds_books b    ON b.id = h.book
+       JOIN odds_sides sd   ON sd.id = h.side
+      WHERE h.game = (SELECT id FROM odds_games WHERE game_id = ?)
+        AND h.observed_at >= ?::timestamptz AND h.recorded_at >= ?::timestamptz
+      ORDER BY h.observed_at`,
+    [gameId, sinceIso, sinceIso],
+  );
+}
