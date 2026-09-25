@@ -6,6 +6,7 @@
  * best prices that cross (negative hold). Not real data, and never shown
  * outside `/kit` and tests.
  */
+import type { MarketEdge } from './types';
 import type { SlateOddsGame } from './slate';
 import type { OddsMarket, OddsQuote } from './types';
 
@@ -81,5 +82,25 @@ export function kitSlateGames(): SlateOddsGame[] {
       board: { draftkings: { home: 150, away: -180 }, fanduel: { home: 145, away: -170 } },
       totalLines: [], steam: [], dropping: [], pulls: [],
     },
+  ];
+}
+
+/**
+ * P11: the two market edges the approved mockup found by hand, as the payload
+ * carries them (GB -4.5 at BetMGM; Drake London receptions 5.5 over at
+ * Underdog). Static numbers from the mockup, for /kit only.
+ */
+export function kitEdges(): MarketEdge[] {
+  const at = (minAgo: number) => new Date(KIT_NOW - minAgo * 60e3).toISOString();
+  const base = { sport: 'nfl', gameId: 'kit-2', singleSource: false, sharpCheckedAt: at(0.5), softCheckedAt: at(0.3) };
+  return [
+    { ...base, kind: 'prop', subjectId: 'london', subjectName: 'Drake London', marketKey: 'receiving-yards', side: 'over', line: 65.5,
+      book: 'underdog', source: 'scraper:underdog', price: 110, fair: 0.485, fairPrice: 106, implied: 0.4762, edgePts: 0.0088, ev: 0.016,
+      softSince: at(180), passingSince: at(7),
+      reference: { book: 'pinnacle', prices: { over: -103, under: -117 }, limit: 500, priceTime: at(1.5), second: { book: 'novig', fair: 0.49 } } },
+    { ...base, kind: 'game', subjectId: '', subjectName: null, marketKey: 'fg_sp', side: 'home', line: -4.5,
+      book: 'betmgm', source: 'scraper:betmgm', price: -105, fair: 0.517, fairPrice: -107, implied: 0.5122, edgePts: 0.0051, ev: 0.0095,
+      softSince: at(120), passingSince: at(12),
+      reference: { book: 'pinnacle', prices: { home: -113, away: 102 }, limit: 2500, priceTime: at(1.5), second: null } },
   ];
 }

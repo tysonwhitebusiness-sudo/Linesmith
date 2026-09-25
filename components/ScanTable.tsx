@@ -23,7 +23,8 @@ import { BookLogo } from './BookLogo';
 import { resolveCandidateEdge, type PropOddsRow } from './usePropOdds';
 import { rowsFor } from '@/lib/odds/props/liveEdge';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
-import { scanKey, scanOddsCells, shortAge, type ScanExtras, type ScanOddsCells } from '@/lib/odds/section/scanCells';
+import { scanKey, scanOddsCells, shortAge, type ScanEdge, type ScanExtras, type ScanOddsCells } from '@/lib/odds/section/scanCells';
+import { ScanEdgeCell } from './odds/ScanEdgeCell';
 import { fmtAmerican, fmtLine } from '@/lib/odds/section/format';
 import type { MarketTrust } from '@/lib/odds/props/marketTrust';
 
@@ -45,6 +46,7 @@ import type { MarketTrust } from '@/lib/odds/props/marketTrust';
 
 type SortColumn =
   | 'player'
+  | 'mkt'
   | 'odds'
   | 'ip'
   | 'sharp'
@@ -81,6 +83,8 @@ interface Column {
   /** Long form for the header's accessible name. */
   title: string;
   numeric: boolean;
+  /** P11: false for Scan's market-edge column — the board is never ordered by an edge. */
+  sortable?: false;
 }
 
 /**
@@ -108,6 +112,8 @@ const COLUMNS: Column[] = [
   { key: 'books', label: 'Books', title: 'Books quoting this line (and how many have pulled it)', numeric: true },
   { key: 'checked', label: 'Checked', title: 'When a source last confirmed a price on this line', numeric: true },
   { key: 'open', label: 'Open → now', title: 'The line most books opened at, and the line now', numeric: true },
+  // P11: a MARKET edge (sharp vs soft book, no model), shown only where every gate passed.
+  { key: 'mkt', label: 'Edge', title: "A book's price against Pinnacle's no-vig price, where every edge gate passes (no model)", numeric: false, sortable: false },
   { key: 'model', label: 'Model %', title: "Our model's probability of going over this line", numeric: true },
   { key: 'dvp', label: 'DVP', title: "Opponent's rank in this row's matchup stat", numeric: true },
   { key: 'proj', label: 'Proj', title: 'What the model projects for this market', numeric: true },
@@ -277,6 +283,8 @@ interface Row {
   /** D22: the line most books opened at, and how many books have pulled this line. */
   openLine: number | null;
   pulled: number;
+  /** P11: the market edge at this row's line, as Python stored it. */
+  marketEdge: ScanEdge | null;
 }
 
 /**
@@ -410,6 +418,7 @@ function buildRow(
     oddsCells,
     openLine: marketKey ? (extras?.open[scanKey(candidate.subjectId, marketKey)] ?? null) : null,
     pulled: marketKey ? (extras?.pulled[scanKey(candidate.subjectId, marketKey, candidate.line ?? null)] ?? 0) : 0,
+    marketEdge: marketKey ? (extras?.edges?.[scanKey(candidate.subjectId, marketKey, candidate.line ?? null)] ?? null) : null,
   };
 }
 
@@ -691,11 +700,11 @@ export function ScanTable({
                   key={column.key}
                   scope="col"
                   title={column.title}
-                  onClick={() => handleSort(column.key)}
-                  aria-sort={sortCol === column.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                  className="sticky top-0 z-20 cursor-pointer whitespace-nowrap border-b border-line bg-paper px-2 py-1.5 text-center font-semibold text-ink-muted"
+                  onClick={column.sortable === false ? undefined : () => handleSort(column.key)}
+                  aria-sort={column.sortable === false ? undefined : sortCol === column.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  className={`sticky top-0 z-20 ${column.sortable === false ? '' : 'cursor-pointer '}whitespace-nowrap border-b border-line bg-paper px-2 py-1.5 text-center font-semibold text-ink-muted`}
                 >
-                  {column.label} <SortMark active={sortCol === column.key} dir={sortDir} />
+                  {column.label} {column.sortable === false ? null : <SortMark active={sortCol === column.key} dir={sortDir} />}
                 </th>
               ))}
               {onAdd ? (
@@ -873,6 +882,9 @@ export function ScanTable({
                         {row.openLine != null && candidate.line != null && row.openLine !== candidate.line
                           ? `${fmtLine(row.openLine)} → ${fmtLine(candidate.line)}`
                           : '—'}
+                      </td>
+                      <td className="px-2 py-1 text-center tabular-nums text-[11px]">
+                        <ScanEdgeCell edge={row.marketEdge} />
                       </td>
 
                       {/* 4 — Model %. Sits directly beside IP by operator

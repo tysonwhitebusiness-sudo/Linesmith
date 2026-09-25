@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BookLogo } from '../BookLogo';
 import { Button, Card, DataTable, SegmentedToggle, Tabs, Tooltip } from '../ui';
 import { BestPrice } from './BestPrice';
+import { EdgeCard, EdgeDot, edgeMarketKeys } from './EdgeCard';
 import { Depth } from './Depth';
 import { Ladder } from './Ladder';
 import { LineMovement } from './LineMovement';
@@ -18,7 +19,7 @@ import { bookGroup } from '@/lib/odds/books/registry';
 import { boardRows, consensusLine, pricedLines } from '@/lib/odds/section/board';
 import { freshness } from '@/lib/odds/section/freshness';
 import { fmtAgo, fmtAmerican, fmtLine, secondsSince } from '@/lib/odds/section/format';
-import { pinnacleMain } from '@/lib/odds/section/sharp';
+import { pinnacleAt, pinnacleMain } from '@/lib/odds/section/sharp';
 import { marketSpec, type MarketSpec, type OddsMarket } from '@/lib/odds/section/types';
 
 const PERIOD_LABEL: Record<string, string> = { fg: 'Full game', '1h': '1st half', '2h': '2nd half', '1q': '1st quarter', '2q': '2nd quarter',
@@ -57,12 +58,14 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
   const [period, setPeriod] = useState<string | null>(null);
   const per = period && periods.includes(period) ? period : periods[0] ?? 'fg';
   const [kind, setKind] = useState<string>('sp');
+  const edgeKeys = edgeMarketKeys(odds.data?.edges);
   const kinds = [
     { value: 'sp', label: 'Spread' }, { value: 'tot', label: 'Total' }, { value: 'ml', label: 'Moneyline' },
     ...(per === 'fg' ? [{ value: 'tt_home', label: `${teams.home.abbr} team total` }, { value: 'tt_away', label: `${teams.away.abbr} team total` }] : []),
   ].filter(k => byKey.has(`${per}_${k.value}`)).map(k => {
     const n = k.value === kind ? 0 : live.newIn(`${per}|${k.value}`);
-    return n ? { ...k, label: <span>{k.label} <span className="text-label font-semibold text-good-ink" data-tab-new>{n} new</span></span> } : k;
+    const dot = edgeKeys.has(`${per}_${k.value}`);
+    return n || dot ? { ...k, label: <span className="inline-flex items-center gap-1.5">{k.label}{dot ? <EdgeDot /> : null}{n ? <span className="text-label font-semibold text-good-ink" data-tab-new>{n} new</span> : null}</span> } : k;
   });
   const mk = kinds.some(k => k.value === kind) ? kind : kinds[0]?.value ?? 'sp';
   const market = byKey.get(`${per}_${mk}`) ?? null;
@@ -110,7 +113,12 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
         </div>
       )}
       <SharpPrices market={market} spec={spec} line={L} sideLabels={labels} now={now} onGoToLine={setL} />
-      <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
+        {final ? null : <EdgeCard edges={odds.data?.edges} marketKey={market.key} spec={spec} line={L} sideLabels={labels}
+          sharpAtLine={!!pinnacleAt(market, spec, L)} sharpMainLine={spec.noLine ? null : pinnacleMain(market, spec)}
+          onGoToLine={setL} now={now} />}
+      </div>
       <Card title="Every book" scope={spec.noLine ? 'Moneyline' : `at ${fmtLine(L, spec.signed)}`} flush>
         {spec.noLine ? null : (
           <div className="px-3 pt-2">

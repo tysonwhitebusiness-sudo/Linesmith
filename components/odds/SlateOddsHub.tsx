@@ -7,19 +7,21 @@ import type { SlateGameRef } from './SlateOddsMovers';
 import { boardBooks, holdList, type SlateOddsGame } from '@/lib/odds/section/slate';
 import { fmtAmerican, fmtLine, fmtPct } from '@/lib/odds/section/format';
 import { slateMoneyGaps } from '@/lib/odds/section/money';
+import type { MarketEdge } from '@/lib/odds/section/types';
+import { SlateEdges } from './SlateEdges';
 
-type Hub = 'board' | 'openers' | 'hold' | 'lines' | 'money';
+type Hub = 'edges' | 'board' | 'openers' | 'hold' | 'lines' | 'money';
 
 /**
  * The Slate's Market hub (odds build P8, O4; the mockup's `slateMarket`): the
  * odds hub, with no separate odds page. Best prices (games × books, the best
  * per side filled), Openers vs now, Lowest hold at the best prices (a negative
- * hold is a fact, D20) and Line disagreements on the total. Edges arrive in
- * P11; Where the money is (P10) sorts the games by the gap between
+ * hold is a fact, D20) and Line disagreements on the total. Edges (P11): only
+ * the markets where every gate passes, as Python stored them. Where the money is (P10) sorts the games by the gap between
  * DraftKings customers' money and bets on the home moneyline. A price gap,
  * not a model edge.
  */
-export function SlateOddsHub({ games, refs }: { games: SlateOddsGame[]; refs: Map<string, SlateGameRef> }) {
+export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; refs: Map<string, SlateGameRef>; edges?: MarketEdge[] }) {
   const [hub, setHub] = useState<Hub>('board');
   const priced = games.filter(g => g.books > 0);
   const cols = boardBooks(priced);
@@ -33,7 +35,8 @@ export function SlateOddsHub({ games, refs }: { games: SlateOddsGame[]; refs: Ma
         ? "DraftKings customers only (DK Network / VSiN). A gap is a fact about DK's customers, not a signal."
         : 'Best prices across every book the app reads. A price gap between books, not a model edge.'}>
       <div className="px-4 pt-1">
-        <Tabs<Hub> label="Market hub" value={hub} onChange={setHub} items={[
+        <Tabs<Hub> label="Market hub" value={hub === 'edges' && !edges ? 'board' : hub} onChange={setHub} items={[
+          ...(edges ? [{ value: 'edges' as Hub, label: 'Edges', count: edges.length || undefined }] : []),
           { value: 'board', label: 'Best prices' },
           { value: 'openers', label: 'Openers vs now' },
           { value: 'hold', label: 'Lowest hold' },
@@ -41,7 +44,9 @@ export function SlateOddsHub({ games, refs }: { games: SlateOddsGame[]; refs: Ma
           { value: 'money', label: 'Where the money is', count: gaps.filter(g => g.split).length || undefined },
         ]} />
       </div>
-      {hub === 'money' ? (
+      {hub === 'edges' && edges ? (
+        <SlateEdges edges={edges} refs={refs} />
+      ) : hub === 'money' ? (
         gaps.length ? (
           <DataTable<(typeof gaps)[number]>
             caption="DraftKings customers on the home moneyline, largest money/bets gap first"
@@ -129,3 +134,4 @@ export function SlateOddsHub({ games, refs }: { games: SlateOddsGame[]; refs: Ma
     </Card>
   );
 }
+

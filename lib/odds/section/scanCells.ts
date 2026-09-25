@@ -37,6 +37,16 @@ export interface ScanExtras {
   open: Record<string, number>;
   /** How many books have pulled the row's line and not put it back, by player, market and line. */
   pulled: Record<string, number>;
+  /** P11: the best market edge passing every gate at the row's player, market and line (Python's
+   *  `market_edges`, read as stored). Absent while the kill switch or the self-check hides edges. */
+  edges?: Record<string, ScanEdge>;
+}
+
+export interface ScanEdge {
+  book: string;
+  side: string;
+  price: number;
+  ev: number;
 }
 
 /** Seconds since `iso`, as the Checked cell prints it ("40s", "12m", "3h"). */

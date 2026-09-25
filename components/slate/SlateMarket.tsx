@@ -1,6 +1,7 @@
 'use client';
 
 import { SlateOddsHub } from '../odds/SlateOddsHub';
+import type { MarketEdge } from '@/lib/odds/section/types';
 import type { SlateGameRef } from '../odds/SlateOddsMovers';
 import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useState } from 'react';
@@ -141,7 +142,7 @@ const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id
   },
 ];
 
-export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, refs }: {
+export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, refs, edges }: {
   data: SlateMarketData | null;
   loading: boolean;
   sport: string;
@@ -149,6 +150,8 @@ export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, ref
   /** O4: the slate's game-line odds, for the Market hub under the prop cards. */
   odds?: SlateOddsGame[];
   refs?: Map<string, SlateGameRef>;
+  /** P11: the market edges passing every gate, for the hub's Edges tab. */
+  edges?: MarketEdge[];
 }) {
   const outliers = data?.outliers ?? [];
   const splits = data?.disagreements ?? [];
@@ -191,7 +194,7 @@ export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, ref
           )}
         </Card>
       </div>
-      {hasOdds ? <SlateOddsHub games={odds!} refs={refs ?? new Map()} /> : null}
+      {hasOdds ? <SlateOddsHub games={odds!} refs={refs ?? new Map()} edges={edges} /> : null}
     </section>
   );
 }

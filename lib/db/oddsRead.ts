@@ -18,6 +18,7 @@ import { gameLineChangesForGame, gameLineChangesForGames, gameLineClosesForGames
 import { bookGroup } from '@/lib/odds/books/registry';
 import type {
   GameOddsPayload, HistPoint, MarketSpec, OddsMarket, OddsQuote, OpenerRow, PlayerOddsPayload, PullRow, SourceLatencyRow,
+  MarketEdge,
 } from '@/lib/odds/section/types';
 import { marketSpec } from '@/lib/odds/section/types';
 import { detectSteam, lineMoves } from '@/lib/odds/section/steam';
@@ -151,7 +152,7 @@ export async function readMoney(gameId: string, subjectId = ''): Promise<MoneyPa
 export async function readPlayerOdds(sport: string, gameId: string, subjectId: string): Promise<PlayerOddsPayload> {
   const now = new Date();
   const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
-  const [rows, checks, changes, openers, pulls, lat, money] = await Promise.all([
+  const [rows, checks, changes, openers, pulls, lat, money, edges] = await Promise.all([
     pgAll<{ provider_id: string; market_key: string; line: number | null; side: string; bookmaker: string;
       american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT provider_id, market_key, line, side, bookmaker, american_odds, fetched_at, changed_at, extra
@@ -169,6 +170,7 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
       [gameId, subjectId, since]),
     latency(sport),
     readMoney(gameId, subjectId),
+    readEdges({ gameIds: [gameId], subjectId }),
   ]);
   const sp = marketSpec('prop');
   const byMarket = new Map<string, OddsMarket>();
@@ -203,7 +205,8 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     market(p.market_key).pulls!.push({ book: p.bookmaker, side: p.side, line: p.line, lastPrice: p.last_american_odds,
       pulledAt: iso(p.pulled_at), returnedAt: p.returned_at ? iso(p.returned_at) : null } satisfies PullRow);
   }
-  return { sport, gameId, subjectId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat, money };
+  return { sport, gameId, subjectId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat, money,
+    ...(edges ? { edges } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +301,7 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
   const pullsSince = live ? new Date(now.getTime() - 3600e3).toISOString() : since;
   const none = Promise.resolve([] as never[]);
   const g = genericSport(sport);
-  const [lines, legacy, checks, changes, openers, pulls, power, lat, money] = await Promise.all([
+  const [lines, legacy, checks, changes, openers, pulls, power, lat, money, edges] = await Promise.all([
     pgAll<{ period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
       source: string; american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT period, market, side, point, is_main, bookmaker, source, american_odds, fetched_at, changed_at, extra
@@ -325,10 +328,11 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
       `SELECT subject, data FROM game_reference WHERE sport = ? AND game_id = ? AND kind = 'power_rating'`, [g, gameId]),
     live ? none : latency(sport),
     readMoney(gameId),
+    readEdges({ gameIds: [gameId], kind: 'game' }),
   ]);
   const byMarket = assembleGameMarkets(lines, legacy, checks, changes, openers, pulls);
   return { sport, gameId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat,
-    powerRatings: power.map(p => ({ subject: p.subject, data: p.data })), money };
+    powerRatings: power.map(p => ({ subject: p.subject, data: p.data })), money, ...(edges ? { edges } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -471,7 +475,7 @@ export async function readSlateOdds(sport: string, date: string, gameIds: string
 // ---------------------------------------------------------------------------
 export async function readScanExtras(gameIds: string[]): Promise<ScanExtras> {
   if (!gameIds.length) return { open: {}, pulled: {} };
-  const [openers, pulls] = await Promise.all([
+  const [openers, pulls, edgeRows] = await Promise.all([
     pgAll<{ subject_id: string; market: string; point: number | null; n: string }>(
       `SELECT subject_id, market, point, count(DISTINCT bookmaker) AS n
          FROM market_openers
@@ -481,6 +485,7 @@ export async function readScanExtras(gameIds: string[]): Promise<ScanExtras> {
       `SELECT subject_id, market_key, line, count(DISTINCT bookmaker) AS n
          FROM prop_odds_pulls WHERE game_id = ANY(?) AND returned_at IS NULL
         GROUP BY subject_id, market_key, line`, [gameIds]),
+    readEdges({ gameIds, kind: 'prop' }),
   ]);
   // The opening line is the one most books opened at (ties: the lower line).
   const best = new Map<string, { line: number; n: number }>();
@@ -494,5 +499,76 @@ export async function readScanExtras(gameIds: string[]): Promise<ScanExtras> {
   for (const [k, v] of best) open[k] = v.line;
   const pulled: Record<string, number> = {};
   for (const r of pulls) pulled[scanKey(r.subject_id, r.market_key, r.line)] = Number(r.n);
-  return { open, pulled };
+  if (!edgeRows) return { open, pulled };
+  // P11: the best edge per row (readEdges orders by EV, so the first seen wins).
+  const edges: NonNullable<ScanExtras['edges']> = {};
+  for (const e of edgeRows) {
+    const k = scanKey(e.subjectId, e.marketKey, e.line);
+    if (!edges[k]) edges[k] = { book: e.book, side: e.side, price: e.price, ev: e.ev };
+  }
+  return { open, pulled, edges };
+}
+
+// ---------------------------------------------------------------------------
+// Edges (P11, E1 + O6): read only. Python's marketEdgeJob computes every gate
+// and writes `market_edges`; nothing here computes an edge.
+// ---------------------------------------------------------------------------
+const FLAG_TTL_MS = 30_000;
+let flagCache: { at: number; flags: Record<string, Record<string, unknown>> } | null = null;
+
+/** `app_flags`, cached 30 s in-process: the kill switch reaches every page within that. */
+export async function readFlags(): Promise<Record<string, Record<string, unknown>>> {
+  if (flagCache && Date.now() - flagCache.at < FLAG_TTL_MS) return flagCache.flags;
+  const rows = await pgAll<{ key: string; value: Record<string, unknown> }>(
+    `SELECT key, value FROM app_flags WHERE key IN ('edge_display', 'edge_auto_off')`);
+  const flags = Object.fromEntries(rows.map(r => [r.key, typeof r.value === 'string' ? JSON.parse(r.value) : r.value]));
+  flagCache = { at: Date.now(), flags };
+  return flags;
+}
+
+/** Edges may show only while the operator's switch is on and the gate-9 self-check is not. */
+export async function edgesVisible(): Promise<boolean> {
+  const f = await readFlags();
+  return f.edge_display?.enabled !== false && f.edge_auto_off?.on !== true;
+}
+
+/** American price of a probability — restating the stored fair probability, not computing an edge. */
+function americanOf(p: number): number {
+  return p >= 0.5 ? -Math.round((100 * p) / (1 - p)) : Math.round((100 * (1 - p)) / p);
+}
+
+/**
+ * The passing edges for some games (and one player), or `null` while edges are
+ * hidden — callers then leave `edges` off the payload entirely.
+ */
+export async function readEdges(scope: { gameIds: string[]; subjectId?: string; kind?: 'prop' | 'game' }): Promise<MarketEdge[] | null> {
+  if (!scope.gameIds.length || !(await edgesVisible())) return null;
+  const rows = await pgAll<{ kind: 'prop' | 'game'; sport: string; game_id: string; subject_id: string; period: string;
+    market: string; side: string; line: number | null; bookmaker: string; provider: string; soft_american: number;
+    fair_prob: number; edge_pts: number; ev: number; reference: Record<string, any>; soft_checked_at: unknown;
+    soft_since: unknown; sharp_checked_at: unknown; passing_since: unknown; single_source: boolean }>(
+    `SELECT kind, sport, game_id, subject_id, period, market, side, line, bookmaker, provider, soft_american, fair_prob,
+            edge_pts, ev, reference, soft_checked_at, soft_since, sharp_checked_at, passing_since, single_source
+       FROM market_edges
+      WHERE game_id = ANY(?) AND (?::text IS NULL OR subject_id = ?) AND (?::text IS NULL OR kind = ?)
+        -- Fail safe: marketEdgeJob rewrites this table every 2 minutes. If it
+        -- stops, its last edges must not stay on the pages as if current.
+        AND computed_at > now() - interval '5 minutes'
+      ORDER BY ev DESC`,
+    [scope.gameIds, scope.subjectId ?? null, scope.subjectId ?? null, scope.kind ?? null, scope.kind ?? null]);
+  return rows.map(r => {
+    const ref = typeof r.reference === 'string' ? JSON.parse(r.reference) : r.reference ?? {};
+    return {
+      kind: r.kind, sport: r.sport, gameId: r.game_id, subjectId: r.subject_id, subjectName: ref.subject_name ?? null,
+      marketKey: r.kind === 'game' ? `${r.period}_${r.market}` : r.market,
+      side: r.side, line: r.line, book: r.bookmaker, source: r.provider, price: r.soft_american,
+      fair: r.fair_prob, fairPrice: americanOf(r.fair_prob), implied: r.fair_prob - r.edge_pts, edgePts: r.edge_pts, ev: r.ev,
+      softCheckedAt: iso(r.soft_checked_at), softSince: iso(r.soft_since), sharpCheckedAt: iso(r.sharp_checked_at),
+      passingSince: iso(r.passing_since), singleSource: r.single_source,
+      reference: {
+        book: ref.book ?? 'pinnacle', prices: ref.prices ?? {}, limit: ref.limit ?? null, priceTime: ref.price_time ?? null,
+        second: ref.second ? { book: ref.second.book, fair: ref.second.fair } : null,
+      },
+    } satisfies MarketEdge;
+  });
 }

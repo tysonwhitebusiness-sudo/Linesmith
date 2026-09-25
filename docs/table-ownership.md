@@ -165,6 +165,14 @@ from `golfPredictionsJob`) as their sole writer.
 > |---|---|
 > | `source_latency` | Python — `scraper_timing.py --write` (laptop, daily, run by the scraper bridge); read by P8's latency badges and P11's sharp-reference gate |
 >
+> **What odds-build P11 adds (migration `20260925202000`, RLS read-only):**
+>
+> | table | owner |
+> |---|---|
+> | `market_edges` | Python — `predict/market_edge.py` via `db.write_market_edges` (`marketEdgeJob`, every 2 min); TypeScript reads it (`lib/db/oddsRead.ts` `readEdges`) and never computes an edge |
+> | `market_edge_log` | Python — the same writer: a row when a market-side first passes, `ended_at`/`end_reason` when a gate first fails; P13's `edge_clv_report.py` reads it |
+> | `app_flags` | **two writers, named (deliberate exception):** the operator by hand (`edge_display`: `UPDATE app_flags SET value = '{"enabled": false}', updated_by = 'operator' WHERE key = 'edge_display'`), and Python (`edge_auto_off` only, `db.write_app_flag` refuses any other key) |
+>
 > **Closed in P5.1 (`docs/design/odds-build/P5.1-hardening.md`, migration `20260925040000`; RLS turned out to be off on 20 tables, now on for all):** `slate_rankings`, `model_status`
 > and `tennis_match_stats` have RLS **off** (measured `pg_class.relrowsecurity`
 > 2026-09-25). They are Python-written and read-only to the app, so they want

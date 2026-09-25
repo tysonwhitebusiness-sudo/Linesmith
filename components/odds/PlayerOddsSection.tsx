@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, SegmentedToggle, Tabs } from '../ui';
 import { BestPrice } from './BestPrice';
+import { EdgeCard, EdgeDot, edgeMarketKeys } from './EdgeCard';
 import { Coverage } from './Coverage';
 import { Depth } from './Depth';
 import { GameLineCompact, type TeamsRef } from './GameLineCompact';
@@ -25,7 +26,7 @@ import { bookLabel } from '@/lib/odds/books/registry';
 /**
  * The player page's "Odds & prices" (odds build P8, O2) — the approved
  * mockup's player surface, in its order: market tabs · line stepper · Sharp
- * prices · Best price (the Edge slot stays empty until P11) · Every book (This
+ * prices · Best price + Edge (P11) · Every book (This
  * line / All lines) · Line movement + Where the money is (P10) ·
  * Opening → now + Depth · Coverage · Game line. Sport-agnostic: every number
  * comes from `/api/odds/player` through `lib/odds/section/*`.
@@ -75,6 +76,7 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
   const rows = boardRows(market, spec, L, userBook);
   const fr = freshness(market, rows, now);
   const labels: [string, string] = [`Over ${fmtLine(L)}`, `Under ${fmtLine(L)}`];
+  const edgeKeys = edgeMarketKeys(odds.data?.edges);
   const tab = (m: OddsMarket) => {
     const ml = consensusLine(m, spec).modal;
     const rr = boardRows(m, spec, ml, userBook);
@@ -85,7 +87,7 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
       value: m.key,
       label: (
         <span className="block min-w-36">
-          <span className="flex items-baseline justify-between gap-2 text-body-sm font-semibold text-ink">{marketLabel(m.key)}
+          <span className="flex items-baseline justify-between gap-2 text-body-sm font-semibold text-ink"><span className="inline-flex items-center gap-1.5">{marketLabel(m.key)}{edgeKeys.has(m.key) ? <EdgeDot /> : null}</span>
             {fresh ? <span className="text-label font-semibold text-good-ink" data-tab-new>{fresh} new</span> : null}</span>
           <span className="block text-label text-ink-secondary tabular-nums">{fmtLine(ml)} · O {fmtAmerican(b0?.quote.price)} / U {fmtAmerican(b1?.quote.price)}</span>
           <span className="block text-label text-ink-muted">{new Set(m.cur.map(q => q.book)).size} books · {pin ? `Pin ${fmtAmerican(pin.a.price)}/${fmtAmerican(pin.b.price)}` : 'no sharp'}</span>
@@ -111,7 +113,11 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
         <span className="text-label text-ink-muted">{lines.length} lines priced · consensus {fmtLine(modal)} · Pinnacle {fmtLine(pinnacleMain(market, spec)) || '—'}</span>
       </div>
       <SharpPrices market={market} spec={spec} line={L} sideLabels={labels} now={now} onGoToLine={setL} />
-      <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
+        <EdgeCard edges={odds.data?.edges} marketKey={market.key} spec={spec} line={L} sideLabels={labels}
+          sharpAtLine={!!pinnacleAt(market, spec, L)} sharpMainLine={pinnacleMain(market, spec)} onGoToLine={setL} now={now} />
+      </div>
       <Card title="Every book" scope={`at ${fmtLine(L)}`} flush
         info="Every book's price at the line in view; a book not at this line shows its own, greyed. Filled = best. Checked = when a source last confirmed the price; since = when it last changed.">
         <div className="px-3 pt-2">

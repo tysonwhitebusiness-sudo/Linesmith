@@ -3,6 +3,9 @@
 import { BestPrice } from '@/components/odds/BestPrice';
 import { Coverage } from '@/components/odds/Coverage';
 import { Depth } from '@/components/odds/Depth';
+import { EdgeCard } from '@/components/odds/EdgeCard';
+import { ScanEdgeCell } from '@/components/odds/ScanEdgeCell';
+import { SlateEdges } from '@/components/odds/SlateEdges';
 import { GameLineCompact } from '@/components/odds/GameLineCompact';
 import { GameFinalOddsSection } from '@/components/odds/GameFinalOddsSection';
 import { GameOddsSection } from '@/components/odds/GameOddsSection';
@@ -22,7 +25,7 @@ import { LiveProvider, STILL } from '@/components/odds/live';
 import { Card, DataTable, FlashValue, LiveDot } from '@/components/ui';
 import { boardRows } from '@/lib/odds/section/board';
 import { fmtAmerican } from '@/lib/odds/section/format';
-import { KIT_NOW, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
+import { KIT_NOW, kitEdges, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
 import { marketSpec } from '@/lib/odds/section/types';
 
 /**
@@ -99,6 +102,17 @@ export function KitOdds() {
         <SharpPrices market={m} spec={sp} line={69.5} sideLabels={['Over 69.5', 'Under 69.5']} now={KIT_NOW} onGoToLine={() => undefined} />
         <BestPrice rows={rows} spec={sp} line={65.5} sideLabels={labels} userBook="fanduel" now={KIT_NOW} />
         <BestPrice rows={boardRows(one, sp, 5.5)} spec={sp} line={5.5} sideLabels={['Over 5.5', 'Under 5.5']} now={KIT_NOW} />
+        {/* P11: the Edge card — passing (the mockup's London edge), the honest empty state, and no sharp at this line. */}
+        <EdgeCard edges={kitEdges()} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
+        <EdgeCard edges={[]} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
+        <EdgeCard edges={[]} marketKey="receiving-yards" spec={sp} line={69.5} sideLabels={['Over 69.5', 'Under 69.5']} sharpAtLine={false} sharpMainLine={65.5} onGoToLine={() => undefined} now={KIT_NOW} />
+        <Card title="Scan edge cell" scope="P11">
+          <div className="flex gap-6 text-label"><ScanEdgeCell edge={{ book: 'underdog', side: 'over', price: 110, ev: 0.016 }} /><ScanEdgeCell edge={null} /></div>
+        </Card>
+        <Card title="Market hub · Edges" flush>
+          <SlateEdges edges={kitEdges()} refs={new Map([['kit-2', { label: 'ATL @ GB', href: null, home: 'GB' }]])} />
+          <SlateEdges edges={[]} refs={new Map()} />
+        </Card>
         <Card title="Every book" scope="at 65.5" flush>
           <PriceBoard market={m} spec={sp} line={65.5} rows={rows} sideLabels={labels} userBook="fanduel" latency={[]} now={KIT_NOW} />
         </Card>
@@ -123,7 +137,7 @@ export function KitOdds() {
           ))}
         </div>
         <SlateOddsMovers games={kitSlateGames()} refs={new Map([['kit-1', { label: 'CHC @ BOS' }], ['kit-2', { label: 'ATL @ GB' }]])} now={KIT_NOW} />
-        <SlateOddsHub games={kitSlateGames()} refs={new Map([['kit-1', { label: 'CHC @ BOS' }], ['kit-2', { label: 'ATL @ GB' }]])} />
+        <SlateOddsHub games={kitSlateGames()} refs={new Map([['kit-1', { label: 'CHC @ BOS' }], ['kit-2', { label: 'ATL @ GB' }]])} edges={kitEdges()} />
         <PlayerOddsSection sport="mlb" gameId={null} subjectId={null} teams={null} marketLabel={label} />
       </div>
     </section>

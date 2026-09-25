@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { GameOddsPayload, PlayerOddsPayload } from '@/lib/odds/section/types';
+import type { GameOddsPayload, MarketEdge, PlayerOddsPayload } from '@/lib/odds/section/types';
 import type { SlateOddsPayload } from '@/lib/odds/section/slate';
 import type { ScanExtras } from '@/lib/odds/section/scanCells';
 import { REFRESH_MS } from '@/lib/odds/section/cadence';
@@ -153,6 +153,33 @@ export function useSlateOdds(sport: string | null, date: string | null, gameIds:
   const ids = [...new Set(gameIds)].sort().slice(0, 60).join(',');
   const url = sport && date && ids ? `/api/odds/slate?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(date)}&ids=${encodeURIComponent(ids)}` : null;
   return useLiveJson<SlateOddsPayload>(url, REFRESH_MS.slate, true, refreshKey);
+}
+
+/**
+ * P11: the market edges for the Slate's games (the game cards' dot, the Market
+ * hub's Edges tab). Polled with the Slate, visible tab only; `edges` absent
+ * while the kill switch or the self-check hides them.
+ */
+export function useEdges(gameIds: string[], refreshKey?: unknown): { edges?: MarketEdge[] } | null {
+  const ids = [...new Set(gameIds)].sort().slice(0, 80).join(',');
+  const [data, setData] = useState<{ edges?: MarketEdge[] } | null>(null);
+  useEffect(() => {
+    if (!ids) { setData(null); return; }
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const run = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const r = await fetch(`/api/odds/edges?ids=${encodeURIComponent(ids)}`);
+          if (r.ok && !stopped) setData(await r.json());
+        } catch { /* the next poll retries */ }
+      }
+      if (!stopped) timer = setTimeout(run, REFRESH_MS.slate);
+    };
+    void run();
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, [ids, refreshKey]);
+  return data;
 }
 
 export function useScanExtras(gameIds: string[], refreshKey?: unknown) {

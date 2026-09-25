@@ -1,5 +1,6 @@
 'use client';
 
+import type { MarketEdge } from '@/lib/odds/section/types';
 import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useState } from 'react';
 import { EmptyState, FeaturedIcon, SegmentedToggle, Skeleton, cx, SectionBand } from '@/components/ui';
@@ -99,7 +100,7 @@ const FILTERS: Array<{ value: SlateStatus | 'all'; label: string }> = [
   { value: 'done', label: 'Final' },
 ];
 
-export function SlateGames({ data, loading, odds }: { data: SlateData | null; loading: boolean; odds?: Map<string, SlateOddsGame> }) {
+export function SlateGames({ data, loading, odds, edges }: { data: SlateData | null; loading: boolean; odds?: Map<string, SlateOddsGame>; edges?: MarketEdge[] }) {
   const [filter, setFilter] = useState<SlateStatus | 'all'>('all');
   const games = data?.games;
 
@@ -162,7 +163,7 @@ export function SlateGames({ data, loading, odds }: { data: SlateData | null; lo
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-3">
           {shown.map((c) => (
-            <GameCard key={c.id} card={c} sport={data.sport} odds={odds?.get(c.id)} />
+            <GameCard key={c.id} card={c} sport={data.sport} odds={odds?.get(c.id)} edgeCount={edges?.filter((e) => e.gameId === c.id).length ?? 0} />
           ))}
         </div>
       )}

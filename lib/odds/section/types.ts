@@ -121,6 +121,8 @@ export interface PlayerOddsPayload {
   latency: SourceLatencyRow[];
   /** P10: Sleeper pick counts and Kalshi contracts for this player (the "Where the money is" card). */
   money?: MoneyPayload;
+  /** P11: market edges passing every gate (Python, `market_edges`); absent while the kill switch or the self-check hides them. */
+  edges?: MarketEdge[];
 }
 
 export interface GameOddsPayload {
@@ -133,6 +135,46 @@ export interface GameOddsPayload {
   powerRatings: { subject: string; data: Record<string, unknown> }[];
   /** P10: the game's splits by source, DraftKings' split history and its exchange contracts. */
   money?: MoneyPayload;
+  /** P11: market edges passing every gate; absent while hidden. */
+  edges?: MarketEdge[];
+}
+
+/**
+ * One market edge (P11, E1): a soft book's price against a sharp reference's
+ * fair price, as `predict/market_edge.py` computed and stored it. Every number
+ * here is read, never computed on the page (O6, tests/scan-no-edge.test.ts):
+ * `implied` and `fairPrice` are the stored fair probability and gap restated.
+ */
+export interface MarketEdge {
+  kind: 'prop' | 'game';
+  sport: string;
+  gameId: string;
+  subjectId: string;
+  subjectName: string | null;
+  /** The odds section's market key: `${period}_${market}` for a game line, the prop market key for a prop. */
+  marketKey: string;
+  side: string;
+  line: number | null;       // the side's own line
+  book: string;
+  source: string;
+  price: number;             // the soft book's American price
+  fair: number;              // fair probability (the minimum across the de-vig methods)
+  fairPrice: number;         // the same, as an American price
+  implied: number;           // the soft price's implied probability
+  edgePts: number;           // fair - implied
+  ev: number;                // fair x decimal - 1
+  softCheckedAt: string;
+  softSince: string;
+  sharpCheckedAt: string;
+  passingSince: string;
+  singleSource: boolean;
+  reference: {
+    book: string;
+    prices: Record<string, number>;
+    limit: number | null;
+    priceTime: string | null;
+    second: { book: string; fair: number } | null;
+  };
 }
 
 export interface SourceLatencyRow {

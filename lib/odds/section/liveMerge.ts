@@ -63,5 +63,6 @@ export function mergeLiveGame(full: GameOddsPayload, live: GameOddsPayload): Gam
   }
   // A market every book has left keeps its history (the board shows them pulled).
   for (const m of full.markets) if (!seen.has(m.key)) out.push({ ...m, cur: [] });
-  return { ...full, asOf: live.asOf, markets: out, money: live.money ?? full.money };
+  // Edges (P11) come whole from the newest read, absent when hidden: the kill switch applies at once.
+  return { ...full, asOf: live.asOf, markets: out, money: live.money ?? full.money, edges: live.edges };
 }

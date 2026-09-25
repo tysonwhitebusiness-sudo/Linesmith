@@ -132,7 +132,9 @@ export const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: nu
       p.startsWith('/api/odds/game') ||
       p.startsWith('/api/odds/slate') ||
       p.startsWith('/api/odds/closes') ||
-      p.startsWith('/api/odds/scan'),
+      p.startsWith('/api/odds/scan') ||
+      // P11: the Slate's and Scan's edges, polled with the Slate (60 s).
+      p.startsWith('/api/odds/edges'),
     limit: 60,
     windowMs: 60_000,
     label: 'page-read',

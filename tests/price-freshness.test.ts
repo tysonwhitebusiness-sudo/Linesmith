@@ -171,6 +171,8 @@ test('every route a page load fires is classed page-read, not provider', () => {
     '/api/odds/slate?sport=mlb&date=2026-09-25&ids=1',
     '/api/odds/closes?sport=mlb&games=1@2026-09-25T00:00:00Z',
     '/api/odds/scan?ids=1',
+    // P11's edges for the Slate and Scan.
+    '/api/odds/edges?ids=1',
   ];
   for (const path of pageLoadReads) {
     assert.equal(classify(path), 'page-read', `${path} is fetched on page load and must not sit in the provider budget`);

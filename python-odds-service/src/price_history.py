@@ -402,6 +402,20 @@ async def read_prop_history_for_key(pool, game_id: str, subject_id: str, market_
         game_id, subject_id, market_key, line)
 
 
+async def read_recent_changes(pool, game_ids: list[str], books: list[str], since) -> tuple[list, list]:
+    """P11 gate 2 (D13): every price change for these books on these games since
+    `since` — (prop rows, game-line rows). The edge job asks only for the fast
+    sharp sources that moved after a sharp price time, so the set is small.
+    `recorded_at >= since` holds whenever `observed_at >= since` (the history
+    CHECK), and lets the planner skip the older day partitions."""
+    games = "h.game IN (SELECT id FROM odds_games WHERE game_id = ANY($1::text[]))"
+    where = f"{games} AND h.book IN (SELECT id FROM odds_books WHERE name = ANY($2::text[])) " \
+            "AND h.observed_at >= $3 AND h.recorded_at >= $3"
+    props = await pool.fetch(decoded_select(PROP_TABLE, where, "h.observed_at"), game_ids, books, since)
+    lines = await pool.fetch(decoded_select(GAME_TABLE, where, "h.observed_at"), game_ids, books, since)
+    return props, lines
+
+
 async def partition_days(conn, table: str) -> list[dict]:
     """Every daily partition of `table`: its day, name and total size in bytes."""
     rows = await conn.fetch(

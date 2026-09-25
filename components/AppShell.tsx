@@ -41,7 +41,7 @@ import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
 import { SlateSpotlights, useSlateFlags } from './slate/SlateSpotlights';
 import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
 import { SlateMovers, moversShown, useSlateMovers } from './slate/SlateMovers';
-import { useScanExtras, useSlateOdds } from './odds/useOdds';
+import { useEdges, useScanExtras, useSlateOdds } from './odds/useOdds';
 import { LiveProvider } from './odds/live';
 import { SlateModel, useSlateModel } from './slate/SlateModel';
 import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
@@ -198,6 +198,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   );
   // D22 — Scan's Open → now and pulled marker, for the same games.
   const scanExtras = useScanExtras(sport === 'golf' ? [] : slateCards.map((c) => c.id), snapshot?.fetchedAt ?? null);
+  // P11 — the market edges passing every gate, for the game cards and the Market hub.
+  const slateEdges = useEdges(sport === 'golf' ? [] : slateCards.map((c) => c.id), snapshot?.fetchedAt ?? null);
   const moversRead = useSlateMovers(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S4 — the Specials, from `slate_rankings` (the table M3 actually wrote).
   const specialsRead = useSlateSpecials(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
@@ -841,7 +843,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 />
               </section>
             ) : (
-              <SlateGames data={slateRead.data} loading={slateRead.loading} odds={slateOddsById} />
+              <SlateGames data={slateRead.data} loading={slateRead.loading} odds={slateOddsById} edges={slateEdges?.edges} />
             )}
 
             <SlateMovers data={moversRead.data} loading={moversRead.loading} sport={sport} odds={slateOdds.data?.games} refs={slateRefs} />
@@ -849,7 +851,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             {/* Golf has no prop-market cards: its winner prices are cached,
                 not stored per book, so there is no book-by-book spread to
                 compare (slate-sheet-cards.md §4.8). */}
-            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} sport={sport} teamLogoBySubject={teamLogoBySubject} odds={slateOdds.data?.games} refs={slateRefs} />}
+            {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} sport={sport} teamLogoBySubject={teamLogoBySubject} odds={slateOdds.data?.games} refs={slateRefs} edges={slateEdges?.edges} />}
             </LiveProvider>
 
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />

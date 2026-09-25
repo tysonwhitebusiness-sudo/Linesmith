@@ -193,12 +193,17 @@ test('no Slate section subtracts the market from the model', () => {
 test('no Slate copy names an edge, value or the model tiers', () => {
   // The model vocabulary is internal (M1): baseline, gated, simple, advanced,
   // "not validated" decide what renders and never appear on a customer surface.
-  const BANNED = [/\bedges?\b/i, /\+EV\b/, /\bexpected value\b/i, /\bvalue bets?\b/i, /\bbaseline\b/i, /\bgated\b/i, /\bnot validated\b/i, /\bsharp (play|side|money)\b/i, /\block of the day\b/i];
+  // P11: the MARKET edge (sharp vs soft, Python's `market_edges`) may be named
+  // in the allowlisted edge components (MARKET_EDGE_ALLOWLIST, below) — and
+  // nowhere else on the Slate.
+  const EDGE_WORDS = [/\bedges?\b/i, /\+EV\b/];
+  const BANNED = [...EDGE_WORDS, /\bexpected value\b/i, /\bvalue bets?\b/i, /\bbaseline\b/i, /\bgated\b/i, /\bnot validated\b/i, /\bsharp (play|side|money)\b/i, /\block of the day\b/i];
   for (const file of SLATE) {
+    const banned = MARKET_EDGE_ALLOWLIST.includes(file) ? BANNED.filter((re) => !EDGE_WORDS.includes(re)) : BANNED;
     for (const s of visibleStrings(read(file))) {
       // Identifiers and class lists are not copy.
       if (!/\s/.test(s) || isClassList(s)) continue;
-      for (const re of BANNED) {
+      for (const re of banned) {
         // "not a model edge" / "not an edge" is the copy SAYING there is none.
         if (/not (a |an )?(model )?edge/i.test(s)) continue;
         assert.doesNotMatch(s, re, `${file}: "${s.slice(0, 80)}"`);
@@ -213,4 +218,69 @@ test('no Slate section sorts or tints by a model-vs-price difference', () => {
     const code = stripComments(read(file)).replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''");
     assert.doesNotMatch(code, /\b(edge|evPct|expectedValue|valueScore|gapToModel|modelGap)\b/, file);
   }
+});
+
+/* ------------------------------------------------------------------ P11: the market edge */
+
+/**
+ * P11 lifted D6 for ONE thing: the MARKET edge — a soft book's price against a
+ * sharp book's no-vig price, no model — computed in Python
+ * (`predict/market_edge.py`, `market_edges`) and shown only where every gate
+ * passed. It may appear in these files and nowhere else, and only as fields of
+ * a payload: none of them may import a de-vig or probability helper, so the
+ * edge is never computed on a page. Model-vs-market stays banned everywhere
+ * (every test above still runs over every file it names).
+ */
+const MARKET_EDGE_ALLOWLIST = [
+  'components/odds/EdgeCard.tsx',
+  'components/odds/ScanEdgeCell.tsx',
+  'components/odds/SlateEdges.tsx',
+  'components/slate/GameCard.tsx',
+];
+
+test('the allowlisted edge files import no de-vig or probability helper', () => {
+  const BANNED_MODULES = /(devig|odds_math|\/sharp'|\/hold'|probab|\/board'|priceResolution|section\/slate'|section\/money')/i;
+  const BANNED_NAMES = /\b(devig\w*|noVig\w*|impliedProb\w*|toAmerican|americanTo\w*|decimalTo\w*|fairProb\w*|hold\w*|decimal)\b/;
+  for (const file of MARKET_EDGE_ALLOWLIST) {
+    for (const m of read(file).matchAll(/^import\s+(type\s+)?([\s\S]*?)\s+from\s+'([^']+)'/gm)) {
+      if (m[1]) continue; // a type-only import brings no code
+      assert.doesNotMatch(`${m[3]}'`, BANNED_MODULES, `${file} imports from ${m[3]}`);
+      assert.doesNotMatch(m[2], BANNED_NAMES, `${file} imports ${m[2].trim()}`);
+    }
+  }
+});
+
+test('the allowlisted edge files only READ an edge — they never compute one', () => {
+  for (const file of MARKET_EDGE_ALLOWLIST) {
+    const code = stripComments(read(file));
+    // No edge, EV, fair or implied value is bound from arithmetic…
+    assert.doesNotMatch(code, /\b(const|let|var)\s+(ev|edge|edgePts|fair|fairPrice|implied|gap)\s*=/, `${file} binds an edge quantity`);
+    // …no price becomes a probability (1 / decimal), and no two probabilities are subtracted.
+    assert.doesNotMatch(code, /\b1\s*\/\s*\(?\s*(dec|decimal|price|odds)/i, `${file} converts a price to a probability`);
+    assert.doesNotMatch(code, /\b(fair|implied)\s*-\s*\w+\.(implied|fair)\b/, `${file} subtracts probabilities`);
+  }
+});
+
+test("an edge's numbers are read nowhere outside the allowlist", () => {
+  // The sections that MOUNT the card pass the payload through; they never read
+  // an edge's EV, gap or fair price themselves.
+  const MOUNTS = ['components/odds/PlayerOddsSection.tsx', 'components/odds/GameOddsSection.tsx',
+    'components/odds/SlateOddsHub.tsx', 'components/slate/SlateMarket.tsx', 'components/slate/SlateSections.tsx',
+    'components/ScanTable.tsx', 'components/AppShell.tsx'];
+  for (const file of MOUNTS) {
+    const code = stripComments(read(file));
+    assert.doesNotMatch(code, /\.(ev|edgePts|fairPrice|implied)\b/, `${file} reads an edge's numbers; only the edge components may`);
+  }
+});
+
+test('Scan cannot be sorted by the market edge', () => {
+  const code = stripComments(read('components/ScanTable.tsx'));
+  assert.match(code, /key: 'mkt'[^\n]*sortable: false/, "Scan's Edge column must be declared sortable: false");
+  assert.ok(!/case 'mkt':/.test(code), 'ScanTable has a sort case for the edge column');
+});
+
+test('edges reach a page only while the kill switch and the self-check allow', () => {
+  const code = stripComments(read('lib/db/oddsRead.ts'));
+  assert.match(code, /edge_display\?\.enabled !== false && f\.edge_auto_off\?\.on !== true/);
+  assert.match(code, /if \(!scope\.gameIds\.length \|\| !\(await edgesVisible\(\)\)\) return null;/);
 });

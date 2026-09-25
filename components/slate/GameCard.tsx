@@ -6,6 +6,7 @@ import { teamColor } from '@/lib/sports/shared/teamColors';
 import { BookLogo, bookLabel } from '../BookLogo';
 import type { SlateGameCard, SlateMarket, SlateTeam } from '@/lib/sports/shared/slateShapes';
 import { SlateGameOdds } from '../odds/SlateGameOdds';
+import { EdgeDot } from '../odds/EdgeCard';
 import type { SlateOddsGame } from '@/lib/odds/section/slate';
 
 /**
@@ -73,7 +74,13 @@ function MarketCell({ label, market }: { label: string; market: SlateMarket | nu
   );
 }
 
-export function GameCard({ card, sport, odds }: { card: SlateGameCard; sport: string; odds?: SlateOddsGame | null }) {
+export function GameCard({ card, sport, odds, edgeCount = 0 }: {
+  card: SlateGameCard;
+  sport: string;
+  odds?: SlateOddsGame | null;
+  /** P11: market edges passing every gate on this game (Python's `market_edges`): a dot, nothing computed here. */
+  edgeCount?: number;
+}) {
   const live = card.status === 'live';
   const colors = useTeamColors(sport, null);
   const awayColor = teamColor(colors, { abbr: card.away.abbr ?? card.away.name })?.primary;
@@ -98,7 +105,12 @@ export function GameCard({ card, sport, odds }: { card: SlateGameCard; sport: st
             {card.statusText}
           </Chip>
         )}
-        {card.venue ? <span className="truncate text-label text-ink-muted">{card.venue}</span> : null}
+        {card.venue || edgeCount ? (
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-label text-ink-muted">
+            {card.venue ? <span className="truncate">{card.venue}</span> : null}
+            {edgeCount ? <EdgeDot title={`${edgeCount} market ${edgeCount === 1 ? 'edge passes' : 'edges pass'} every gate`} /> : null}
+          </span>
+        ) : null}
       </header>
 
       <div className="space-y-2 px-4 pb-3">

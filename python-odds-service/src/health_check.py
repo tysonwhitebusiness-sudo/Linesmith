@@ -1383,6 +1383,24 @@ async def check_cost_guard() -> dict:
             "status": ("PROBLEM: " + "; ".join(problems) + " — " + status) if problems else status}
 
 
+async def check_edge_self_check() -> dict:
+    """P11 gate 9: `app_flags('edge_auto_off')` is on while more than 5% of the
+    passing edges sit above 5% EV — a probable data error, so every page shows
+    none. Unhealthy while it is on; it clears itself after 3 clean runs.
+    Also reports the operator's kill switch, which is not a fault."""
+    pool = await db.get_pool()
+    rows = await pool.fetch("SELECT key, value FROM app_flags WHERE key IN ('edge_display', 'edge_auto_off')")
+    flags = {r["key"]: (json.loads(r["value"]) if isinstance(r["value"], str) else r["value"]) for r in rows}
+    off = flags.get("edge_auto_off") or {}
+    shown = (flags.get("edge_display") or {}).get("enabled", True)
+    live = await pool.fetchval("SELECT count(*) FROM market_edges")
+    status = f"{live} edge(s) passing; display {'on' if shown else 'OFF (kill switch)'}"
+    if off.get("on"):
+        return {"name": "edgeSelfCheck", "healthy": False,
+                "status": f"PROBLEM: edge auto-off since {off.get('at')}: {off.get('reason')} — {status}"}
+    return {"name": "edgeSelfCheck", "healthy": True, "status": status}
+
+
 async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
     results = [
@@ -1405,6 +1423,7 @@ async def main() -> int:
         await check_database_growth(),
         await check_disk_guard(),
         await check_cost_guard(),
+        await check_edge_self_check(),
         await check_worker_memory(),
     ]
 

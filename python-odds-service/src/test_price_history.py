@@ -69,7 +69,10 @@ OWNERS = {
     "price_history.py", "history_mover.py", "disk_guard.py", "health_check.py",
     "test_price_history.py", "test_write_prop_odds.py", "test_write_game_lines.py",
 }
-OWNER_SCRIPTS = {"convert_prop_history.py"}
+# scraper_bridge_replay.py is P6's replay test: it compares the bridge's history
+# rows against the scraper's, row for row, and cleans its test rows up — a
+# verification harness like test_write_*.py, not a reader of the app's history.
+OWNER_SCRIPTS = {"convert_prop_history.py", "scraper_bridge_replay.py"}
 # SQL use, not prose: a docstring may say where the history lives.
 PATTERN = re.compile(r"\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+(prop_price_history|game_lines_history|"
                      r"odds_(games|subjects|markets|books|sources|sides|periods))\b", re.IGNORECASE)

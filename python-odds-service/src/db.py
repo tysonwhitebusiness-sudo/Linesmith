@@ -5764,3 +5764,106 @@ async def upsert_live_prop_capture(rows: list[dict], batch: int = 500) -> int:
         async with pool.acquire(timeout=30.0) as conn:
             await conn.executemany(sql, payload[i:i + batch])
     return len(payload)
+
+
+# ---------------------------------------------------------------------------
+# P11 (E1): the market edge. predict/market_edge.py computes; these write.
+# ---------------------------------------------------------------------------
+
+async def read_app_flags(keys: list[str]) -> dict:
+    """app_flags values by key; a missing key is simply absent."""
+    pool = await get_pool()
+    rows = await pool.fetch("SELECT key, value FROM app_flags WHERE key = ANY($1::text[])", keys)
+    return {r["key"]: (json.loads(r["value"]) if isinstance(r["value"], str) else r["value"]) for r in rows}
+
+
+async def write_app_flag(key: str, value: dict, updated_by: str) -> None:
+    """Python writes `edge_auto_off` only; `edge_display` is the operator's (P11)."""
+    if key != "edge_auto_off":
+        raise ValueError(f"Python does not write app_flags.{key}")
+    pool = await get_pool()
+    await pool.execute(
+        """INSERT INTO app_flags (key, value, updated_at, updated_by) VALUES ($1, $2::jsonb, now(), $3)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now(), updated_by = excluded.updated_by""",
+        key, json.dumps(value), updated_by)
+
+
+async def write_market_edges(results, displayed: bool, now) -> dict:
+    """Gates 10 + the current table, in one transaction.
+
+    `market_edges` becomes exactly the passing market-sides. `market_edge_log`
+    opens a row when a market-side first passes (or passes at a new soft
+    price: the shown price is what P13 measures), and closes the open row with
+    the first failing gate when it stops passing."""
+    from predict.market_edge import side_line
+
+    def key(m, side, line, book):
+        return (m.kind, m.game_id, m.subject_id, m.period, m.market, side, line, book)
+
+    passing, failing = {}, {}
+    for r in results:
+        if r.soft is None:
+            continue
+        k = key(r.market, r.side, side_line(r.market, r.side), r.soft.book)
+        (passing if r.passed else failing)[k] = r
+    pool = await get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        async with conn.transaction():
+            open_rows = await conn.fetch(
+                """SELECT id, kind, game_id, subject_id, period, market, side, line, bookmaker, soft_american, shown_at
+                     FROM market_edge_log WHERE ended_at IS NULL""")
+            open_by_key = {(o["kind"], o["game_id"], o["subject_id"], o["period"], o["market"], o["side"],
+                            o["line"], o["bookmaker"]): o for o in open_rows}
+            since: dict = {}
+            ends = []
+            for k, o in open_by_key.items():
+                r = passing.get(k)
+                if r is not None and r.soft.american == o["soft_american"]:
+                    since[k] = o["shown_at"]
+                    continue
+                reason = "price_changed" if r is not None else \
+                    (failing[k].first_failure if k in failing else "not_evaluated")
+                ends.append((o["id"], now, reason))
+            if ends:
+                await conn.executemany("UPDATE market_edge_log SET ended_at = $2, end_reason = $3 WHERE id = $1", ends)
+            opens = []
+            for k, r in passing.items():
+                if k in since:
+                    continue
+                m = r.market
+                opens.append((m.kind, m.sport, m.game_id, m.subject_id, m.period, m.market, r.side, k[6], r.soft.book,
+                              r.soft.provider, r.soft.american, r.fair, r.ev, r.method,
+                              json.dumps([{"gate": g.name, "ok": g.ok, "detail": g.detail} for g in r.gates]),
+                              json.dumps(_edge_reference(r)), now, displayed))
+                since[k] = now
+            if opens:
+                await conn.executemany(
+                    """INSERT INTO market_edge_log (kind, sport, game_id, subject_id, period, market, side, line,
+                         bookmaker, provider, soft_american, fair_prob, ev, method, gates, reference, shown_at, displayed)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,$18)""", opens)
+            await conn.execute("DELETE FROM market_edges")
+            rows = []
+            for k, r in passing.items():
+                m, sharp = r.market, list(r.reference.sharp_pair.values())
+                rows.append((m.kind, m.sport, m.game_id, m.subject_id, m.period, m.market, r.side, k[6], r.soft.book,
+                             r.soft.provider, r.soft.american, r.fair, r.edge_pts, r.ev, r.method,
+                             json.dumps(_edge_reference(r)), r.soft.checked_at, r.soft.since,
+                             min(q.checked_at for q in sharp), max((q.since or q.checked_at) for q in sharp),
+                             since[k], r.single_source, now))
+            if rows:
+                await conn.executemany(
+                    """INSERT INTO market_edges (kind, sport, game_id, subject_id, period, market, side, line, bookmaker,
+                         provider, soft_american, fair_prob, edge_pts, ev, method, reference, soft_checked_at, soft_since,
+                         sharp_checked_at, sharp_since, passing_since, single_source, computed_at)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,$20,$21,$22,$23)""",
+                    rows)
+    return {"edges": len(passing), "log_opened": len(opens), "log_closed": len(ends)}
+
+
+def _edge_reference(r) -> dict:
+    out = r.reference.as_json()
+    out["subject_name"] = r.market.subject_name or None
+    out["ev_by_method"] = {m: round(v, 5) for m, v in r.ev_by_method.items()}
+    out["soft"] = {"book": r.soft.book, "provider": r.soft.provider, "american": r.soft.american,
+                   "checked_at": r.soft.checked_at.isoformat(), "since": r.soft.since.isoformat() if r.soft.since else None}
+    return out

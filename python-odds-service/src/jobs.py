@@ -1234,6 +1234,18 @@ async def job_cost_guard(yield_fn=None) -> dict:
     return await _run_timed("costGuardJob", cost_guard.run_cost_guard())
 
 
+async def job_market_edge(yield_fn=None) -> dict:
+    """P11 (E1): the market edge — every gate in predict/market_edge.py, written
+    to market_edges / market_edge_log and the edge_auto_off flag. Reads prop_odds
+    and game_lines for the next four days' games and evaluates in memory; its
+    summary carries `runtime_s`, which the P11 runtime check reads (p95 over 20 s
+    on a full NFL Sunday means moving run() to the laptop bridge's cycle).
+    Sequential DB reads, no provider spend, so no yield point is needed."""
+    from predict import market_edge
+
+    return await _run_timed("marketEdgeJob", market_edge.run())
+
+
 # Task 4.5 (P3 M1) — CLV, computed here and STORED, never computed by the
 # renderer (Q13).
 #
@@ -1631,6 +1643,10 @@ JOB_REGISTRY = [
     # R5b -- strength rollups for the research pages. Daily; see the job.
     ("teamProductionJob", job_team_production, 24 * 60 * 60),
     ("mlbProjectionsJob", job_mlb_projections, 60 * 60),
+    # P11 (E1). Every 2 minutes, the spec's cadence: an edge is only shown while
+    # the soft quote was checked within 3 minutes, so a slower job would show
+    # edges whose inputs had already aged past their own gate.
+    ("marketEdgeJob", job_market_edge, 120),
 ]
 
 
