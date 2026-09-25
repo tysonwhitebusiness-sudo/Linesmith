@@ -2,41 +2,42 @@
 
 > **UNATTENDED RUN 2026-09-25 (operator away 10 h+, green light for P6–P13;
 > the approved mockup is `http://localhost:8125/odds-rebuild-mockup-2026-09-24.html`,
-> the `design-mockups` preview). Updated 10:05 UTC.**
+> the `design-mockups` preview). Updated 10:45 UTC.**
 >
-> - **P6 the bridge: CLOSED — live on the laptop since 06:52 UTC**, scheduled
->   task `LinesmithScraperBridge` (5-min freshness watchdog,
->   `run-scraper-bridge.ps1`). Replay test, kill drill, stale drill and 1 h
->   green all PASS; four live faults found and fixed — `P6-bridge.md` →
->   Result. Status: `odds-scraper/data/bridge_status.json`; logs
->   `bridge.out.log`, `bridge.err.log`, `bridge_match.log`,
->   `bridge_watchdog.log`, `bridge_stacks.log` (a cycle > 180 s dumps stacks).
-> - **P7 timing: CLOSED** — `source_latency` 417 rows; proven fast =
->   Pinnacle, Kalshi, Polymarket; T0.4 table in `P7-timing.md` → Result. The
->   bridge runs `scraper_timing.py --days 3 --write` daily after 05:00 local.
-> - **P8 odds sections: IN PROGRESS.** Done: every `lib/odds/section/*`
->   module (board, sharp, hold, freshness, openers, ladder, depth, coverage,
->   format) with fixture tests on the mockup's snapshot; `lib/db/oddsRead.ts`;
->   `/api/odds/player` + `/api/odds/game` (pattern 2); the components
->   (`components/odds/*`, kit `LiveDot`, `FlashValue`, `DataTable.rowState`,
->   `Tabs variant="cards"`, `charts/StepLines`); the player page's new
->   section (O2) rendered live on MLB (`/mlb/player/691023`); `/kit` odds
->   group. **Next:** `tests/odds-ui.test.ts` guard; O2's render check on the
->   other sports and at 400; delete the old `PlayerOddsSection.tsx` /
->   `PropOddsBoard` / `LineMovementCard` once nothing imports them; O3 game
->   page (`kind: 'odds'` card) + team page; O4 Slate. Deviation to record:
->   the section keeps its own line stepper (the prop block's `lineOffset` is
->   relative; sharing is O2 polish).
-> - Then P9 → P13 in order. P11/P12 each need a worker deploy: the classifier
->   refuses Render API deploys, so they wait for the operator's hand.
-> - Deploy state: worker at `3eb5e4b` (P6.0). The db.py writer changes since
->   (halving, server-side mirror retry, openers dedupe) matter only to the
->   laptop today; they reach the worker with its next deploy.
-> - **Operator items from this run:** the two D25 cost inputs (Supabase
->   egress/compute, Render bandwidth); reclaim the scraper's 5.2 GB WAL
->   (`wal_checkpoint(TRUNCATE)` at its next restart); the worker has no
->   `CORPUS_S3_*` so the cost guard lists storage unmeasured; Propline's
->   `last_change_at` → `changed_at` (D23 follow-up, worker change).
+> - **⚠ SCRAPER DOWN since 10:19 UTC (operator).** The writer hung inside a
+>   SQLite COMMIT (`data/stalls/stall-20260925-102243.txt`); the watchdog
+>   killed it at 10:28 and the restart (pid 23028) sits in startup in
+>   `entities.load` — a correlated `max(id) FROM events` per link against the
+>   5.2 GB WAL (py-spy dump). Both stalls today (06:53, 10:19) began while a
+>   long reader of ours was running (the 06:53 full scan; at 10:19 the daily
+>   P7 timing job plus the P3 `OddsBridgeMatchReport` task, 14-day horizon,
+>   running since 05:15 local). The classifier refused my stopping that report
+>   run and even a read-only watch of scraper.db, so this is yours: stop the
+>   report task (it is a P3 background check due for deletion 2026-10-01),
+>   let the scraper start, then `wal_checkpoint(TRUNCATE)` to reclaim the WAL.
+>   The bridge is healthy and caught up; it forwards again once the scraper
+>   writes.
+> - **P6 the bridge: CLOSED** (live since 06:52 UTC, task
+>   `LinesmithScraperBridge`); standing-price backfill added (fault 5).
+>   Status `odds-scraper/data/bridge_status.json`.
+> - **P7 timing: CLOSED** — `P7-timing.md` → Result.
+> - **P8 odds sections: IN PROGRESS.** Done: `lib/odds/section/*` (+ fixture
+>   tests, incl. `closing.ts`), `lib/db/oddsRead.ts`, `/api/odds/player`,
+>   `/api/odds/game`, `/api/odds/closes` (pattern 2), every component; O2
+>   player page; O3 game page (`kind: 'odds'` card → `GameOddsSection`, or
+>   `GameFinalOddsSection` for a final with its score) and team page
+>   (`TeamOddsSection`: next game's line, team total, movement, Against the
+>   closing number). **Next: O4 Slate** (game card odds block, Movers +
+>   Dropping odds, Market hub, Scan columns + hashes, `/api/odds/slate`
+>   cachedRoute + p95), then renders on every sport at 1440/400, then delete
+>   the old `PlayerOddsSection.tsx`/`PropOddsBoard`/`LineMovementCard`.
+>   Deviations to record in `P8-odds-sections.md`: own line stepper; the
+>   per-sport props card kept (GamePropsCard/PropsResults not built — the
+>   existing card already shows props against the box score); the old final
+>   "Game lines" card kept for games older than the 10-day history (D14).
+> - Then P9 → P13. P11/P12 need worker deploys by the operator's hand.
+> - **Operator items:** the scraper (above); the two D25 cost inputs; the
+>   worker has no `CORPUS_S3_*`; Propline `last_change_at` → `changed_at`.
 
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
