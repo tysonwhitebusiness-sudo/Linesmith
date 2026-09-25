@@ -14,7 +14,7 @@
  * `changed_at ?? fetched_at`. History comes only through `lib/db/priceHistory.ts`.
  */
 import { pgAll } from './pgClient';
-import { gameLineChangesForGame, propChangesForSubject } from './priceHistory';
+import { gameLineChangesForGame, gameLineClosesForGames, propChangesForSubject } from './priceHistory';
 import { bookGroup } from '@/lib/odds/books/registry';
 import type {
   GameOddsPayload, HistPoint, MarketSpec, OddsMarket, OddsQuote, OpenerRow, PlayerOddsPayload, PullRow, SourceLatencyRow,
@@ -250,4 +250,55 @@ export async function readGameOdds(sport: string, gameId: string): Promise<GameO
   for (const m of byMarket.values()) m.cur = m.cur.filter(q => bookGroup(q.book) !== 'pickem');
   return { sport, gameId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat,
     powerRatings: power.map(p => ({ subject: p.subject, data: p.data })) };
+}
+
+// ---------------------------------------------------------------------------
+// Closes (the team page's "Against the closing number", P8 O3)
+// ---------------------------------------------------------------------------
+export interface GameClose {
+  /** The consensus close: the full-game main line most books closed at (spread on the home side). */
+  spread: number | null;
+  total: number | null;
+  books: number;
+}
+
+/**
+ * Each game's consensus closing spread and total: per book, the last main
+ * price at or before the start (history first; else the current row when it
+ * has not changed since the start), then the line most books closed at.
+ */
+export async function readGameCloses(sport: string, games: { gameId: string; start: string }[]): Promise<Record<string, GameClose>> {
+  if (!games.length) return {};
+  const g = genericSport(sport);
+  const [hist, cur] = await Promise.all([
+    gameLineClosesForGames(games),
+    pgAll<{ game_id: string; market: string; side: string; point: number | null; bookmaker: string; since: unknown }>(
+      `SELECT game_id, market, side, point, bookmaker, coalesce(changed_at, fetched_at) AS since
+         FROM game_lines WHERE sport = ? AND game_id = ANY(?) AND period = 'fg' AND market IN ('sp', 'tot') AND is_main`,
+      [g, games.map(x => x.gameId)]),
+  ]);
+  const startOf = new Map(games.map(x => [x.gameId, Date.parse(x.start)]));
+  // (game, market, book) -> side A's closing line
+  const close = new Map<string, number>();
+  const sideA = (market: string) => (market === 'sp' ? 'home' : 'over');
+  for (const r of hist) {
+    if (r.side === sideA(r.market) && r.point != null && bookGroup(r.bookmaker) !== 'pickem') close.set(`${r.gameId}|${r.market}|${r.bookmaker}`, r.point);
+  }
+  for (const r of cur) {
+    const k = `${r.game_id}|${r.market}|${r.bookmaker}`;
+    if (close.has(k) || r.side !== sideA(r.market) || r.point == null || bookGroup(r.bookmaker) === 'pickem') continue;
+    if (Date.parse(iso(r.since)) <= (startOf.get(r.game_id) ?? -Infinity)) close.set(k, r.point);
+  }
+  const out: Record<string, GameClose> = {};
+  for (const { gameId } of games) {
+    const modal = (market: string) => {
+      const cnt = new Map<number, number>();
+      for (const [k, v] of close) if (k.startsWith(`${gameId}|${market}|`)) cnt.set(v, (cnt.get(v) ?? 0) + 1);
+      const e = [...cnt].sort((a, b) => b[1] - a[1] || Math.abs(a[0]) - Math.abs(b[0]));
+      return { line: e.length ? e[0][0] : null, n: [...cnt.values()].reduce((a, b) => a + b, 0) };
+    };
+    const sp = modal('sp'), tot = modal('tot');
+    out[gameId] = { spread: sp.line, total: tot.line, books: Math.max(sp.n, tot.n) };
+  }
+  return out;
 }

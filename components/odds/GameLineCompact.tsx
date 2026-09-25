@@ -2,11 +2,11 @@
 
 import { BookLogo } from '../BookLogo';
 import { Card, DataTable, LiveDot } from '../ui';
-import { useGameOdds } from './useOdds';
+import { useGameOdds, type OddsState } from './useOdds';
 import { bestPrice, boardRows, consensusLine } from '@/lib/odds/section/board';
 import { fmtAmerican, fmtLine, fmtPct } from '@/lib/odds/section/format';
 import { pinnacleAt } from '@/lib/odds/section/sharp';
-import { marketSpec, type MarketSpec, type OddsMarket } from '@/lib/odds/section/types';
+import { marketSpec, type GameOddsPayload, type MarketSpec, type OddsMarket } from '@/lib/odds/section/types';
 
 export interface TeamsRef {
   home: { abbr: string };
@@ -26,14 +26,17 @@ interface Row {
  * does). Best price per side across every book, and Pinnacle's two prices and
  * fair %, for the full-game spread, total and moneyline.
  */
-export function GameLineCompact({ sport, gameId, teams, title = 'Game line', href }: {
+export function GameLineCompact({ sport, gameId, teams, title = 'Game line', href, odds: given }: {
   sport: string;
   gameId: string;
   teams: TeamsRef;
   title?: string;
   href?: string;
+  /** The game's payload when the caller already reads it (the team page's odds section): no second fetch. */
+  odds?: OddsState<GameOddsPayload>;
 }) {
-  const odds = useGameOdds(sport, gameId);
+  const own = useGameOdds(given ? null : sport, gameId);
+  const odds = given ?? own;
   const now = odds.data ? Date.parse(odds.data.asOf) : Date.now();
   const by = new Map((odds.data?.markets ?? []).map(m => [m.key, m]));
   const rows: Row[] = ([['fg_sp', 'Spread', 'sp'], ['fg_tot', 'Total', 'tot'], ['fg_ml', 'Moneyline', 'ml']] as const)

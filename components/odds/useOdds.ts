@@ -46,3 +46,9 @@ export function useGameOdds(sport: string | null, gameId: string | null, refresh
   const url = sport && gameId ? `/api/odds/game?sport=${encodeURIComponent(sport)}&gameId=${encodeURIComponent(gameId)}` : null;
   return useJson<GameOddsPayload>(url, refreshKey);
 }
+
+export function useGameCloses(sport: string | null, games: { gameId: string; start: string }[], refreshKey?: unknown) {
+  const q = games.map(g => `${g.gameId}@${g.start}`).join(',');
+  const url = sport && q ? `/api/odds/closes?sport=${encodeURIComponent(sport)}&games=${encodeURIComponent(q)}` : null;
+  return useJson<{ closes: Record<string, { spread: number | null; total: number | null; books: number }> }>(url, refreshKey);
+}

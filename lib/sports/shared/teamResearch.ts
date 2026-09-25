@@ -236,7 +236,11 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
     ? [{
         id: 'odds', navLabel: 'Odds', title: 'Odds', sub: `${upcoming.home ? 'vs' : '@'} ${upcoming.opponent.abbr} · next game`,
         rows: [[{
-          kind: 'odds', key: 'odds', scope: 'team', sport, gameId: upcoming.id,
+          kind: 'odds', key: 'odds', scope: 'team', sport, gameId: upcoming.id, side: upcoming.home ? 'home' : 'away',
+          // The CURRENT season's finals, whatever season the page shows: the closes are this week's.
+          past: [...(byseason.get(payload.currentSeason)?.games ?? [])].sort((a, b) => a.start.localeCompare(b.start))
+            .filter(g => isFinal(g) && g.us != null && g.them != null && g.start < upcoming.start).slice(-10).reverse()
+            .map(g => ({ gameId: g.id, start: g.start, date: g.date, opp: g.opponent.abbr, home: g.home, us: g.us!, them: g.them! })),
           teams: upcoming.home
             ? { home: { abbr: payload.team.abbr }, away: { abbr: upcoming.opponent.abbr } }
             : { home: { abbr: upcoming.opponent.abbr }, away: { abbr: payload.team.abbr } },

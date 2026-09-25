@@ -349,3 +349,40 @@ export async function gameLineChangesForGame(gameId: string, sinceIso: string): 
     [gameId, sinceIso, sinceIso],
   );
 }
+
+/** One book's last full-game main price at or before its game's start (a close). */
+export interface GameLineCloseRow {
+  gameId: string;
+  market: string;
+  side: string;
+  point: number | null;
+  bookmaker: string;
+  americanOdds: number;
+  observedAt: string;
+}
+
+/**
+ * Each book's last full-game main spread and total price at or before each
+ * game's start (the team page's "Against the closing number", odds build P8
+ * O3). History is hot for ten days, so an older game has no rows here.
+ */
+export async function gameLineClosesForGames(games: { gameId: string; start: string }[]): Promise<GameLineCloseRow[]> {
+  if (!games.length) return [];
+  const floor = new Date(Math.min(...games.map(g => Date.parse(g.start))) - 11 * 86400e3).toISOString();
+  return pgAll(
+    `SELECT DISTINCT ON (q.game_id, h.book, h.market, h.side)
+            q.game_id AS "gameId", m.name AS market, sd.name AS side, h.point::numeric::float8 AS point,
+            b.name AS bookmaker, h.price AS "americanOdds", h.observed_at AS "observedAt"
+       FROM unnest(?::text[], ?::timestamptz[]) AS q(game_id, start)
+       JOIN odds_games g    ON g.game_id = q.game_id
+       JOIN game_lines_history h ON h.game = g.id
+       JOIN odds_markets m  ON m.id = h.market
+       JOIN odds_periods pe ON pe.id = h.period
+       JOIN odds_books b    ON b.id = h.book
+       JOIN odds_sides sd   ON sd.id = h.side
+      WHERE pe.name = 'fg' AND m.name IN ('sp', 'tot') AND h.is_main
+        AND h.observed_at <= q.start AND h.recorded_at >= ?::timestamptz
+      ORDER BY q.game_id, h.book, h.market, h.side, h.observed_at DESC`,
+    [games.map(g => g.gameId), games.map(g => g.start), floor],
+  );
+}

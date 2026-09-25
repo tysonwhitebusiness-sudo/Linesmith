@@ -4,6 +4,7 @@ import { BestPrice } from '@/components/odds/BestPrice';
 import { Coverage } from '@/components/odds/Coverage';
 import { Depth } from '@/components/odds/Depth';
 import { GameLineCompact } from '@/components/odds/GameLineCompact';
+import { GameFinalOddsSection } from '@/components/odds/GameFinalOddsSection';
 import { GameOddsSection } from '@/components/odds/GameOddsSection';
 import { Ladder } from '@/components/odds/Ladder';
 import { LineMovement } from '@/components/odds/LineMovement';
@@ -11,6 +12,7 @@ import { OpenNow } from '@/components/odds/OpenNow';
 import { PlayerOddsSection } from '@/components/odds/PlayerOddsSection';
 import { PriceBoard } from '@/components/odds/PriceBoard';
 import { SharpPrices } from '@/components/odds/SharpPrices';
+import { TeamOddsSection } from '@/components/odds/TeamOddsSection';
 import { Card, FlashValue, LiveDot } from '@/components/ui';
 import { boardRows } from '@/lib/odds/section/board';
 import { fmtAmerican } from '@/lib/odds/section/format';
@@ -62,6 +64,8 @@ export function KitOdds() {
         <Coverage markets={[m, one]} marketLabel={label} />
         <GameLineCompact sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} />
         <GameOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} />
+        <GameFinalOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} start="2026-09-23T22:35:00Z" score={{ home: 4, away: 2 }} />
+        <TeamOddsSection sport="mlb" gameId="kit-no-such-game" teams={{ home: { abbr: 'BOS' }, away: { abbr: 'CHC' } }} side="home" past={[]} />
         <PlayerOddsSection sport="mlb" gameId={null} subjectId={null} teams={null} marketLabel={label} />
       </div>
     </section>

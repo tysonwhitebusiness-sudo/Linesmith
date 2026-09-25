@@ -469,6 +469,14 @@ export type ResearchCard =
       sport: string;
       gameId: string;
       teams: { home: { abbr: string }; away: { abbr: string } };
+      /** ISO start: a finished game's closes are the last prices at or before it. */
+      start?: string;
+      /** A finished game's score; with it, scope 'game-final' draws the closing-line research. */
+      score?: { home: number; away: number } | null;
+      /** Scope 'team': which side of the next game the team is. */
+      side?: 'home' | 'away';
+      /** Scope 'team': the team's recent finished games, for "Against the closing number". */
+      past?: Array<{ gameId: string; start: string; date: string; opp: string; home: boolean; us: number; them: number }>;
     }
   | {
       /** A match on one axis of minutes, one lane per team: goals, cards, substitutions and shots (R8.3, soccer). */

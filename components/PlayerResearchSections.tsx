@@ -10,7 +10,8 @@ import { Avatar, Card, Chip, Collapse, cx, DisclosureBar, DataTable, ResultMark,
 import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import { GameOddsSection } from './odds/GameOddsSection';
-import { GameLineCompact } from './odds/GameLineCompact';
+import { GameFinalOddsSection } from './odds/GameFinalOddsSection';
+import { TeamOddsSection } from './odds/TeamOddsSection';
 import {
   formatResearchValue,
   type PlayerBio,
@@ -788,8 +789,10 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
   switch (card.kind) {
     case 'odds':
       return card.scope === 'team'
-        ? <GameLineCompact sport={card.sport} gameId={card.gameId} teams={card.teams} title="Next game's line" />
-        : <GameOddsSection sport={card.sport} gameId={card.gameId} teams={card.teams} final={card.scope === 'game-final'} />;
+        ? <TeamOddsSection sport={card.sport} gameId={card.gameId} teams={card.teams} side={card.side ?? 'home'} past={card.past ?? []} />
+        : card.scope === 'game-final' && card.score && card.start
+          ? <GameFinalOddsSection sport={card.sport} gameId={card.gameId} teams={card.teams} start={card.start} score={card.score} />
+          : <GameOddsSection sport={card.sport} gameId={card.gameId} teams={card.teams} final={card.scope === 'game-final'} />;
     case 'percentiles':
       return (
         <Card title={card.title} scope={card.scope} info={card.info} caption={card.caption}>
