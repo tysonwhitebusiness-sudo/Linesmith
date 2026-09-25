@@ -75,6 +75,7 @@ LAG_HEALTHY_S = 600
 LAG_PRUNE_ALERT_S = 6 * 3600      # the scraper prunes after 3 days; alert long before
 EVENT_MISS_TTL_S = 120
 SEED_GAMES_PER_CYCLE = 5
+SEED_SECONDS_PER_CYCLE = 5.0
 SEED_SINCE = "2026-09-22"
 TABLES = ("offers", "snapshots", "offer_events", "splits", "reference_data")
 RATING_KINDS = {"nfl_power_rating": "nfl", "cfb_power_rating": "cfb", "mlb_power_rating": "mlb",
@@ -661,20 +662,23 @@ class Bridge:
         todo = [(k, v) for k, v in self.res.links.items()
                 if k not in done and v[3] and (parse_ts(v[3]) or now) > now][:SEED_GAMES_PER_CYCLE]
         out = []
+        t_seed = time.time()
         for key, (app_sport, app_game_id, brev, app_start, _h, _a) in todo:
+            if time.time() - t_seed > SEED_SECONDS_PER_CYCLE:
+                break                      # the rest next cycle: seeding never holds a cycle up
             # Each source event's EARLIEST rows only (bounded): a comparenbet event
             # holds hundreds of thousands of offer rows, and a book's opener is in
-            # its first polls. The prop rows are filtered after the bounded read.
+            # its first polls. Game-line rows only, filtered inside SQLite (5,000 an event).
             rows = []
             for src, ext in self.scraper.execute("SELECT source, external_id FROM game_links WHERE game_key = ?",
                                                  (key,)).fetchall():
-                rows += [r for r in self.scraper.execute(
+                rows += self.scraper.execute(
                     "SELECT o.id, o.snapshot_id, o.source, s.endpoint, o.event_external_id, o.market, o.side, o.line, "
-                    "o.book, o.book_key, o.price, o.source_ts_ms, o.depth, s.fetched_at, s.cache_age_s, "
-                    "o.prop_market_external_id FROM (SELECT * FROM offers INDEXED BY ix_offers_event_external_id "
-                    "WHERE event_external_id = ? ORDER BY id LIMIT 50000) o JOIN snapshots s ON s.id = o.snapshot_id "
-                    "WHERE o.source = ? AND s.fetched_at >= ?", (ext, src, SEED_SINCE)).fetchall()
-                         if r[15] is None]
+                    "o.book, o.book_key, o.price, o.source_ts_ms, o.depth, s.fetched_at, s.cache_age_s "
+                    "FROM (SELECT * FROM offers INDEXED BY ix_offers_event_external_id WHERE event_external_id = ? "
+                    "AND prop_market_external_id IS NULL ORDER BY id LIMIT 5000) o "
+                    "JOIN snapshots s ON s.id = o.snapshot_id WHERE o.source = ? AND s.fetched_at >= ?",
+                    (ext, src, SEED_SINCE)).fetchall()
             rows.sort(key=lambda r: r[0])
             self.res.prime_events({(r[2], r[4]) for r in rows})
             first: dict[tuple, list] = {}
