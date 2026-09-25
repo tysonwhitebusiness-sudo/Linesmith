@@ -81,3 +81,17 @@ test('P9: no animation class is used outside components/odds and components/ui',
   assert.deepEqual(bad, []);
 });
 
+// ---------------------------------------------------------------------------
+// P10 ("Where the money is"): every row names whose customers or which
+// exchange it describes. No rendered string may speak for all bettors, name
+// "sharp money", or present a number as the total wagered.
+// ---------------------------------------------------------------------------
+test('P10: no "public", "sharp money" or "handle" in the money card or its rows', () => {
+  const files = [join(process.cwd(), 'components', 'odds', 'MoneyCard.tsx'), join(process.cwd(), 'lib', 'odds', 'section', 'money.ts')];
+  const bad: string[] = [];
+  for (const f of files) {
+    const code = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    for (const w of ['public', 'sharp money', 'handle']) if (code.toLowerCase().includes(w)) bad.push(`${f.split(/[\/]/).pop()}: ${w}`);
+  }
+  assert.deepEqual(bad, []);
+});

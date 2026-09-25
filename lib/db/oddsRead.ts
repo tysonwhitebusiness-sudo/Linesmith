@@ -23,6 +23,7 @@ import { marketSpec } from '@/lib/odds/section/types';
 import { detectSteam, lineMoves } from '@/lib/odds/section/steam';
 import { slateGame, type SlateOddsPayload, type SplitRow } from '@/lib/odds/section/slate';
 import { scanKey, type ScanExtras } from '@/lib/odds/section/scanCells';
+import type { ExchangeObs, MoneyPayload, SplitHistPoint, SplitObs } from '@/lib/odds/section/money';
 
 const HISTORY_DAYS = 10;
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v));
@@ -104,12 +105,53 @@ async function checkedBySource(gameId: string): Promise<Map<string, string>> {
 const later = (a: string | null, b: string | null | undefined) => (!a ? b ?? null : !b ? a : a > b ? a : b);
 
 // ---------------------------------------------------------------------------
+// Where the money is (P10): splits, DraftKings' split history, exchange rows
+// ---------------------------------------------------------------------------
+const n = (v: unknown) => (v == null ? null : Number(v));
+
+/**
+ * One game's (or, with `subjectId`, one player's) "Where the money is" rows:
+ * the newest `market_splits` observation per source, book, kind, market, side
+ * and line; DraftKings Network's side-A history per full-game market (the
+ * money trend); and `exchange_books` for the game's or player's contracts.
+ * Three small queries; the tables are written by the P6 bridge only.
+ */
+export async function readMoney(gameId: string, subjectId = ''): Promise<MoneyPayload> {
+  const since = new Date(Date.now() - HISTORY_DAYS * 86400e3).toISOString();
+  const [splits, hist, ex] = await Promise.all([
+    pgAll<{ source: string; kind: string; book: string | null; market: string; side: string; line: number | null; pct_bets: number | null;
+      pct_money: number | null; count: number | null; count_total: number | null; observed_at: unknown }>(
+      `SELECT DISTINCT ON (source, book, kind, market, side, line) source, kind, book, market, side, line, pct_bets, pct_money, count, count_total, observed_at
+         FROM market_splits WHERE game_id = ? AND subject_id = ? AND period = 'fg'
+        ORDER BY source, book, kind, market, side, line, observed_at DESC`, [gameId, subjectId]),
+    subjectId ? Promise.resolve([]) : pgAll<{ market: string; line: number | null; pct_bets: number | null; pct_money: number | null; observed_at: unknown }>(
+      `SELECT market, line, pct_bets, pct_money, observed_at FROM market_splits
+        WHERE game_id = ? AND subject_id = '' AND period = 'fg' AND source = 'dknetwork' AND book = 'draftkings' AND kind = 'bets_money'
+          AND ((market IN ('ml', 'sp') AND side = 'home') OR (market = 'tot' AND side = 'over')) AND observed_at >= ?::timestamptz
+        ORDER BY observed_at`, [gameId, since]),
+    pgAll<{ exchange: string; market: string; side: string; point: number | null; best_bid: number | null; best_ask: number | null;
+      volume_24h: number | null; open_interest: number | null; liquidity: number | null; fetched_at: unknown }>(
+      `SELECT exchange, market, side, point, best_bid, best_ask, volume_24h, open_interest, liquidity, fetched_at
+         FROM exchange_books WHERE game_id = ? AND coalesce(subject_id, '') = ? AND period = 'fg'`, [gameId, subjectId]),
+  ]);
+  const splitHist: Record<string, SplitHistPoint[]> = {};
+  for (const h of hist) (splitHist[`dknetwork|draftkings|${h.market}`] ??= []).push([iso(h.observed_at), n(h.line), n(h.pct_bets), n(h.pct_money)]);
+  return {
+    splits: splits.map((r): SplitObs => ({ at: iso(r.observed_at), source: r.source, kind: r.kind, book: r.book, market: r.market, side: r.side,
+      line: n(r.line), pctBets: n(r.pct_bets), pctMoney: n(r.pct_money), count: n(r.count), countTotal: n(r.count_total) })),
+    splitHist,
+    exchanges: ex.map((r): ExchangeObs => ({ exchange: r.exchange, market: r.market, side: r.side, point: n(r.point), bestBid: n(r.best_bid),
+      bestAsk: n(r.best_ask), volume24h: n(r.volume_24h), openInterest: n(r.open_interest), liquidity: n(r.liquidity), at: iso(r.fetched_at) })),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Player
 // ---------------------------------------------------------------------------
 export async function readPlayerOdds(sport: string, gameId: string, subjectId: string): Promise<PlayerOddsPayload> {
   const now = new Date();
   const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
-  const [rows, checks, changes, openers, pulls, lat] = await Promise.all([
+  const [rows, checks, changes, openers, pulls, lat, money] = await Promise.all([
     pgAll<{ provider_id: string; market_key: string; line: number | null; side: string; bookmaker: string;
       american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT provider_id, market_key, line, side, bookmaker, american_odds, fetched_at, changed_at, extra
@@ -126,6 +168,7 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
          FROM prop_odds_pulls WHERE game_id = ? AND subject_id = ? AND pulled_at >= ?::timestamptz`,
       [gameId, subjectId, since]),
     latency(sport),
+    readMoney(gameId, subjectId),
   ]);
   const sp = marketSpec('prop');
   const byMarket = new Map<string, OddsMarket>();
@@ -160,7 +203,7 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     market(p.market_key).pulls!.push({ book: p.bookmaker, side: p.side, line: p.line, lastPrice: p.last_american_odds,
       pulledAt: iso(p.pulled_at), returnedAt: p.returned_at ? iso(p.returned_at) : null } satisfies PullRow);
   }
-  return { sport, gameId, subjectId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat };
+  return { sport, gameId, subjectId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat, money };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +298,7 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
   const pullsSince = live ? new Date(now.getTime() - 3600e3).toISOString() : since;
   const none = Promise.resolve([] as never[]);
   const g = genericSport(sport);
-  const [lines, legacy, checks, changes, openers, pulls, power, lat] = await Promise.all([
+  const [lines, legacy, checks, changes, openers, pulls, power, lat, money] = await Promise.all([
     pgAll<{ period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
       source: string; american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT period, market, side, point, is_main, bookmaker, source, american_odds, fetched_at, changed_at, extra
@@ -281,10 +324,11 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
     live ? none : pgAll<{ subject: string; data: Record<string, unknown> }>(
       `SELECT subject, data FROM game_reference WHERE sport = ? AND game_id = ? AND kind = 'power_rating'`, [g, gameId]),
     live ? none : latency(sport),
+    readMoney(gameId),
   ]);
   const byMarket = assembleGameMarkets(lines, legacy, checks, changes, openers, pulls);
   return { sport, gameId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat,
-    powerRatings: power.map(p => ({ subject: p.subject, data: p.data })) };
+    powerRatings: power.map(p => ({ subject: p.subject, data: p.data })), money };
 }
 
 // ---------------------------------------------------------------------------

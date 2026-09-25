@@ -6,15 +6,18 @@ import { Card, DataTable, EmptyState, Tabs } from '../ui';
 import type { SlateGameRef } from './SlateOddsMovers';
 import { boardBooks, holdList, type SlateOddsGame } from '@/lib/odds/section/slate';
 import { fmtAmerican, fmtLine, fmtPct } from '@/lib/odds/section/format';
+import { slateMoneyGaps } from '@/lib/odds/section/money';
 
-type Hub = 'board' | 'openers' | 'hold' | 'lines';
+type Hub = 'board' | 'openers' | 'hold' | 'lines' | 'money';
 
 /**
  * The Slate's Market hub (odds build P8, O4; the mockup's `slateMarket`): the
  * odds hub, with no separate odds page. Best prices (games × books, the best
  * per side filled), Openers vs now, Lowest hold at the best prices (a negative
  * hold is a fact, D20) and Line disagreements on the total. Edges arrive in
- * P11 and Where the money is in P10. A price gap, not a model edge.
+ * P11; Where the money is (P10) sorts the games by the gap between
+ * DraftKings customers' money and bets on the home moneyline. A price gap,
+ * not a model edge.
  */
 export function SlateOddsHub({ games, refs }: { games: SlateOddsGame[]; refs: Map<string, SlateGameRef> }) {
   const [hub, setHub] = useState<Hub>('board');
@@ -23,18 +26,38 @@ export function SlateOddsHub({ games, refs }: { games: SlateOddsGame[]; refs: Ma
   const name = (id: string) => refs.get(id)?.label ?? id;
   const disagree = priced.filter(g => g.totalLines.length > 1);
   const hold = holdList(priced);
+  const gaps = slateMoneyGaps(games);
   return (
     <Card title="Market" scope="the odds hub · full-game lines" flush className="mt-3"
-      caption="Best prices across every book the app reads. A price gap between books, not a model edge.">
+      caption={hub === 'money'
+        ? "DraftKings customers only (DK Network / VSiN). A gap is a fact about DK's customers, not a signal."
+        : 'Best prices across every book the app reads. A price gap between books, not a model edge.'}>
       <div className="px-4 pt-1">
         <Tabs<Hub> label="Market hub" value={hub} onChange={setHub} items={[
           { value: 'board', label: 'Best prices' },
           { value: 'openers', label: 'Openers vs now' },
           { value: 'hold', label: 'Lowest hold' },
           { value: 'lines', label: 'Line disagreements', count: disagree.length || undefined },
+          { value: 'money', label: 'Where the money is', count: gaps.filter(g => g.split).length || undefined },
         ]} />
       </div>
-      {priced.length === 0 ? <EmptyState title="No game lines yet" reason="No book has priced a game on this slate." /> : hub === 'board' ? (
+      {hub === 'money' ? (
+        gaps.length ? (
+          <DataTable<(typeof gaps)[number]>
+            caption="DraftKings customers on the home moneyline, largest money/bets gap first"
+            density="compact"
+            rows={gaps}
+            rowKey={g => g.gameId}
+            columns={[
+              { key: 'g', label: 'Game · home moneyline', sortable: false, render: g => <b>{name(g.gameId)}</b> },
+              { key: 'm', label: 'DK money %', numeric: true, sortable: false, render: g => `${g.money}%` },
+              { key: 'b', label: 'DK bets %', numeric: true, sortable: false, render: g => `${g.bets}%` },
+              { key: 'gap', label: 'Money − bets', numeric: true, sortable: false,
+                render: g => <span className={g.split ? 'font-semibold text-warn-ink' : undefined}>{g.gap > 0 ? '+' : g.gap < 0 ? '−' : ''}{Math.abs(g.gap)} pts{g.split ? ' · split' : ''}</span> },
+            ]}
+          />
+        ) : <EmptyState title="No DraftKings splits yet" reason="DK Network and VSiN have not published money and bets for this slate's moneylines." />
+      ) : priced.length === 0 ? <EmptyState title="No game lines yet" reason="No book has priced a game on this slate." /> : hub === 'board' ? (
         <DataTable<SlateOddsGame>
           caption="Every book's moneyline per game"
           density="compact"

@@ -8,6 +8,7 @@ import { Depth } from './Depth';
 import { GameLineCompact, type TeamsRef } from './GameLineCompact';
 import { Ladder } from './Ladder';
 import { LineMovement } from './LineMovement';
+import { MoneyCard } from './MoneyCard';
 import { OpenNow } from './OpenNow';
 import { PriceBoard } from './PriceBoard';
 import { SharpPrices } from './SharpPrices';
@@ -25,7 +26,7 @@ import { bookLabel } from '@/lib/odds/books/registry';
  * The player page's "Odds & prices" (odds build P8, O2) — the approved
  * mockup's player surface, in its order: market tabs · line stepper · Sharp
  * prices · Best price (the Edge slot stays empty until P11) · Every book (This
- * line / All lines) · Line movement (Where the money is joins in P10) ·
+ * line / All lines) · Line movement + Where the money is (P10) ·
  * Opening → now + Depth · Coverage · Game line. Sport-agnostic: every number
  * comes from `/api/odds/player` through `lib/odds/section/*`.
  */
@@ -121,7 +122,10 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
           ? <Ladder market={market} spec={spec} span={span || 8} line={L} sideLabels={labels} />
           : <PriceBoard market={market} spec={spec} line={L} rows={rows} sideLabels={labels} userBook={userBook} latency={odds.data?.latency ?? []} now={now} />}
       </Card>
-      <LineMovement market={market} spec={spec} sideLabels={labels} userBook={userBook} now={now} />
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <LineMovement market={market} spec={spec} sideLabels={labels} userBook={userBook} now={now} />
+        <MoneyCard money={odds.data?.money} view={{ kind: 'prop', marketKey: market.key, line: L }} now={now} />
+      </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <OpenNow market={market} spec={spec} now={now} />
         <Depth market={market} spec={spec} line={L} now={now} />

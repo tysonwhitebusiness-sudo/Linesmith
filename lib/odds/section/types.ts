@@ -9,6 +9,7 @@
  * port is line-for-line, with two changes: fields are named, and times are
  * absolute ISO strings (the mockup kept a relative "checked N s ago").
  */
+import type { MoneyPayload } from './money';
 
 /** One book's current price on one side at one line. */
 export interface OddsQuote {
@@ -118,6 +119,8 @@ export interface PlayerOddsPayload {
   asOf: string;
   markets: OddsMarket[];
   latency: SourceLatencyRow[];
+  /** P10: Sleeper pick counts and Kalshi contracts for this player (the "Where the money is" card). */
+  money?: MoneyPayload;
 }
 
 export interface GameOddsPayload {
@@ -128,6 +131,8 @@ export interface GameOddsPayload {
   markets: OddsMarket[];
   latency: SourceLatencyRow[];
   powerRatings: { subject: string; data: Record<string, unknown> }[];
+  /** P10: the game's splits by source, DraftKings' split history and its exchange contracts. */
+  money?: MoneyPayload;
 }
 
 export interface SourceLatencyRow {

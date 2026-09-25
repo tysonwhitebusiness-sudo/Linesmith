@@ -8,6 +8,7 @@ import { GameFinalOddsSection } from '@/components/odds/GameFinalOddsSection';
 import { GameOddsSection } from '@/components/odds/GameOddsSection';
 import { Ladder } from '@/components/odds/Ladder';
 import { LineMovement } from '@/components/odds/LineMovement';
+import { MoneyCard } from '@/components/odds/MoneyCard';
 import { OpenNow } from '@/components/odds/OpenNow';
 import { PlayerOddsSection } from '@/components/odds/PlayerOddsSection';
 import { PriceBoard } from '@/components/odds/PriceBoard';
@@ -51,6 +52,25 @@ export function KitOdds() {
             <FlashValue value={108} format={fmtAmerican} best />
           </div>
         </Card>
+        <MoneyCard now={KIT_NOW} view={{ kind: 'game', sport: 'nfl', marketKey: 'fg_ml', teams: { home: { abbr: 'GB' }, away: { abbr: 'ATL' } } }} money={{
+          splits: [
+            { at: at(4), source: 'dknetwork', kind: 'bets_money', book: 'draftkings', market: 'ml', side: 'home', line: null, pctBets: 83, pctMoney: 68, count: null, countTotal: null },
+            { at: at(4), source: 'dknetwork', kind: 'bets_money', book: 'draftkings', market: 'ml', side: 'away', line: null, pctBets: 17, pctMoney: 32, count: null, countTotal: null },
+            { at: at(9), source: 'vsin', kind: 'bets_money', book: 'circa', market: 'ml', side: 'home', line: null, pctBets: 55, pctMoney: 60, count: null, countTotal: null },
+            { at: at(9), source: 'vsin', kind: 'bets_money', book: 'circa', market: 'ml', side: 'away', line: null, pctBets: 45, pctMoney: 40, count: null, countTotal: null },
+            { at: at(6), source: 'actionnetwork', kind: 'bet_count', book: 'actionnetwork', market: 'game', side: '', line: null, pctBets: null, pctMoney: null, count: 96910, countTotal: null },
+          ],
+          splitHist: { 'dknetwork|draftkings|ml': [[at(480), null, 85, 79], [at(240), null, 84, 74], [at(60), null, 83, 70], [at(4), null, 83, 68]] },
+          exchanges: [{ exchange: 'kalshi', market: 'ml', side: 'home', point: null, bestBid: 0.69, bestAsk: 0.7, volume24h: 578370, openInterest: 923486, liquidity: null, at: at(2) }],
+        }} />
+        <MoneyCard now={KIT_NOW} view={{ kind: 'prop', marketKey: 'receptions', line: 5.5 }} money={{
+          splits: [
+            { at: at(12), source: 'sleeper', kind: 'pick_counts', book: 'sleeper', market: 'receptions', side: 'over', line: 5.5, pctBets: null, pctMoney: null, count: 1598, countTotal: 1757 },
+            { at: at(12), source: 'sleeper', kind: 'pick_counts', book: 'sleeper', market: 'receptions', side: 'under', line: 5.5, pctBets: null, pctMoney: null, count: 159, countTotal: 1757 },
+          ],
+          splitHist: {},
+          exchanges: [{ exchange: 'kalshi', market: 'receptions', side: 'over', point: 5.5, bestBid: 0.44, bestAsk: 0.46, volume24h: 2210, openInterest: 6400, liquidity: null, at: at(3) }],
+        }} />
         <Card title="Live layer (P9)" scope="frozen at a moment after each change">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-6">

@@ -1,36 +1,50 @@
 # CURRENT — pick up here
 
-> **ODDS BUILD — updated 2026-09-25 15:00 UTC. P6, P7, P8 CLOSED. Next: P9.**
-> Start a NEW session per phase (the operator's call after this run's usage:
-> 95% of it ran above 150k context). Read this block, then the phase's spec in
+> **ODDS BUILD — updated 2026-09-25 19:15 UTC. P6–P10 CLOSED. Next: P11.**
+> Start a NEW session per phase. Read this block, then the phase's spec in
 > `docs/design/odds-build/`, then build.
 >
-> - **P9 next** (`docs/design/odds-build/P9-live.md`): the live refresh (30–60 s)
->   and the flash/roll on the odds components. Everything it animates exists:
->   `components/odds/*`, the kit's `LiveDot`/`FlashValue`/`DataTable.rowState`,
->   hooks in `components/odds/useOdds.ts` (fetch once today; P9 adds the
->   refresh). Then P10 → P13. P11 and P12 each need a worker deploy by the
->   operator's hand (the classifier refuses Render API deploys).
-> - **P8 (closed)** — `P8-odds-sections.md` → Result: routes `/api/odds/{player,
->   game,closes,scan}` (pattern 2) and `/api/odds/slate` (cachedRoute 60 s);
->   player, game (live + final), team and Slate surfaces; Scan's D22 columns
->   (pin 50770); old cards deleted. **Follow-ups listed there:** soccer's 1X2
->   (`fg_ml3`) has no game-page tab (needs a three-way MarketSpec);
->   `bookLabel("marathon")` missing; `/api/props/line-history` has no caller.
+> - **P11 next** (`docs/design/odds-build/P11-edge.md`): the market edge
+>   (Python compute on the worker + TS render, one migration). **It needs a
+>   Render worker deploy by the operator's hand** (the classifier refuses
+>   Render API deploys): build, test, push, then write the deploy ask here.
+>   `EdgeCard` is NOT built yet (P8's spec said "on /kit" — it is not; nor
+>   was `MoneyCard`, which P10 built). Then P12 (also a worker deploy), P13.
+> - **P9 (closed, `5fbfdc5`)** — `P9-live.md` → Result. The live layer:
+>   player/game odds poll every **45 s** (the spec's 30 s failed its own load
+>   bar: p95 1.08 s at 45 s from the laptop, recorded), the Slate 60 s; the
+>   game page polls a light `?live=1` read merged client-side
+>   (`lib/odds/section/liveMerge.ts`), full resync every 8th poll. Diff in
+>   `lib/odds/section/liveDiff.ts`, memory in `components/odds/live.ts`. Two
+>   fixes the measurement forced: the game payload re-read 10 days of history
+>   per poll, and every `/api/odds/*` read sat in `proxy.ts`'s 10/min
+>   provider rate class (now page-read). Re-measure the load on a hosted
+>   build before tightening 45 s.
+> - **P10 (closed)** — `P10-money.md` → Result. "Where the money is" beside
+>   Line movement (game + player) and as the Market hub tab; splits ride on
+>   the game/player payloads (`money`).
+> - **Operator items (new today):**
+>   1. The scraper stalled again at **17:43 UTC** (watchdog restarted it at
+>      17:44; the bridge ran ~450 s behind for a while) — the fourth today.
+>      The earlier notes still stand: delete `OddsBridgeMatchReport`, and a
+>      `wal_checkpoint(TRUNCATE)` at a scraper restart.
+>   2. **Bridge: Kalshi prop contracts written with `side = 'under'`** in
+>      `exchange_books` while their bid/ask are the YES side (Henry's rushing
+>      ladder). P10 reads them as stored; the fix belongs in the bridge (label
+>      every N+ contract `over`). Check `prop_odds`' Kalshi rows for the same.
+>   3. The dev server another session runs on **:3001** returned 500 on
+>      `/api/odds/player` and `/api/odds/game` while the same code served 200
+>      directly and on a fresh server (:3000). Restart it before trusting it.
+>   4. Carried: the two D25 cost inputs; the worker has no `CORPUS_S3_*`;
+>      Propline `last_change_at` → `changed_at`. Worker deploy state:
+>      `3eb5e4b` (P9/P10 are TypeScript only — no deploy needed).
+> - **Follow-ups listed in the Results (not blockers):** soccer 1X2 has no
+>   game-page tab (three-way MarketSpec); `bookLabel("marathon")`;
+>   `/api/props/line-history` has no caller; an MLB player page (665489)
+>   never requests player odds; a player page flashes "No prices posted"
+>   before its game id resolves.
 > - **P6 bridge** live on the laptop (task `LinesmithScraperBridge`); status
->   `odds-scraper/data/bridge_status.json` (15:00: lag 103 s, healthy).
-> - **Scraper stalls (operator):** the scraper's writer hung inside a SQLite
->   COMMIT three times today (06:53, 10:19, 11:14 UTC); its watchdog restarted
->   it each time (10:19 took ~1 h to come back: startup sat in
->   `entities.load`'s correlated `max(id)` per link against the 5.2 GB WAL).
->   Each coincided with long readers of ours (the 06:53 full scan; the daily P7
->   timing job + the P3 `OddsBridgeMatchReport` task, 14-day horizon, daily at
->   05:15 local — a P3 background check due for deletion 2026-10-01; the
->   classifier refused my stopping it). Suggested: delete that task now, and
->   `wal_checkpoint(TRUNCATE)` at a scraper restart to reclaim the WAL.
-> - **Operator items:** the above; the two D25 cost inputs; the worker has no
->   `CORPUS_S3_*`; Propline `last_change_at` → `changed_at`. Worker deploy
->   state: `3eb5e4b` (the laptop's db.py writer changes reach it next deploy).
+>   `odds-scraper/data/bridge_status.json`.
 
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is

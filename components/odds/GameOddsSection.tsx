@@ -7,6 +7,7 @@ import { BestPrice } from './BestPrice';
 import { Depth } from './Depth';
 import { Ladder } from './Ladder';
 import { LineMovement } from './LineMovement';
+import { MoneyCard } from './MoneyCard';
 import { OpenNow } from './OpenNow';
 import { PriceBoard } from './PriceBoard';
 import { SharpPrices } from './SharpPrices';
@@ -121,7 +122,10 @@ export function GameOddsSection({ sport, gameId, teams, final, userBook }: {
           ? <Ladder market={market} spec={spec} span={spec.signed ? 6 : 8} line={L} sideLabels={labels} />
           : <PriceBoard market={market} spec={spec} line={L} rows={rows} sideLabels={labels} userBook={userBook} latency={odds.data?.latency ?? []} now={now} />}
       </Card>
-      <LineMovement market={market} spec={spec} sideLabels={labels} userBook={userBook} now={now} closed={final} />
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <LineMovement market={market} spec={spec} sideLabels={labels} userBook={userBook} now={now} closed={final} />
+        <MoneyCard money={odds.data?.money} view={{ kind: 'game', sport, marketKey: market.key, teams }} now={now} />
+      </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {per === 'fg' ? <VegasBoard byKey={byKey} teams={teams} power={odds.data?.powerRatings ?? []} /> : null}
         <Depth market={market} spec={spec} line={L} now={now} />
