@@ -1,0 +1,28 @@
+{
+  "decision": "D24",
+  "decided": "2026-09-25",
+  "note": "D24: everything reaches Supabase, pre-game and in-game, compact, 10 days hot then the corpus; the disk guard owns the window (P5 A2). Budget is enforced by the disk guard (85% of 27 GB) and the cost guard (D25), both read as brakes before every write cycle.",
+  "classes": {
+    "first_hand": {"pregame": true, "ingame": true},
+    "relay_only": {"pregame": true, "ingame": true},
+    "relay_duplicate": {"pregame": true, "ingame": true}
+  },
+  "first_hand_sources": ["pinnacle", "kalshi", "polymarket", "vsin", "draftkings", "fanduel", "betmgm", "betrivers", "sleeper", "underdog"],
+  "first_hand_books": {
+    "pinnacle": ["pinnacle"],
+    "kalshi": ["kalshi"],
+    "polymarket": ["polymarket"],
+    "vsin": ["circa", "betmgmnv", "caesarsnv", "wynn", "boomers", "southpoint", "stations"],
+    "draftkings": ["draftkings"],
+    "fanduel": ["fanduel"],
+    "betmgm": ["betmgm"],
+    "betrivers": ["betrivers"],
+    "sleeper": ["sleeper"],
+    "underdog": ["underdog"]
+  },
+  "unmatched_prices": {
+    "on": true,
+    "reasons": ["unmatched-game", "unmatched-player", "unmapped-market", "unmapped-game-market", "no-app-sport"]
+  },
+  "hot_windows_days": {"first_hand": 10, "relay_only": 10, "relay_duplicate": 10}
+}

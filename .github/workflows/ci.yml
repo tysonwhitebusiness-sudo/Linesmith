@@ -126,6 +126,10 @@ jobs:
 
       - name: test_cost_guard
         run: python -u src/test_cost_guard.py
+      - name: test_scraper_bridge
+        run: python -u src/test_scraper_bridge.py
+      - name: test_odds_checks
+        run: python -u src/test_odds_checks.py
       - name: test_scraper_markets
         run: python -u src/test_scraper_markets.py
       - name: test_scraper_match

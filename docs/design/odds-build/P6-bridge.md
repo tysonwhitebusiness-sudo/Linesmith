@@ -367,3 +367,42 @@ section.
   tests and ownership row.
 - **2026-09-25 — amendments:** P6.0 (the D25 audit, meters and brakes first),
   D24's policy (everything), the compact history, and the two brakes.
+- **2026-09-25 — build corrections (measured while building):**
+  - **§3 "for `sp` negate `point`" was wrong.** scraper.db stores a spread's
+    point PER SIDE (Pinnacle 1637020561: home −1.5 at +197, away +1.5 at
+    −229, one snapshot). A reversed game swaps the side and KEEPS the point:
+    the point belongs to the team. Swapping and negating would give each team
+    the other's number. `test_scraper_bridge.py` pins the corrected rule.
+  - **§8b umpires and referees:** every `mlb_umpire` / `nfl_referee` row read
+    (107 / 17) is a season table (`Umpire`, `G`, `OV/UN/P`, `Runs`, …;
+    `Referee`, `PTS`, `OU`, `$Home`, …). None names a matchup, so none can be
+    keyed to a game and the bridge writes none. Power ratings: the pro
+    leagues' rows carry full names ("Arizona Cardinals", "Wash Commanders");
+    CFB's carry the school only ("Alabama", "Arizona ST", "Alabama A&M"), so
+    CFB matches on the longest school prefix and refuses a prefix followed by
+    a school modifier ("Texas" is not "Texas Southern Tigers").
+    `vsin_opener`: `{book, period fg|1h, spread_away "-1.5 +145" | "PK -110" |
+    "- -", ml_away, total}` — the away side only. `cnb_event`: `{links: {book:
+    url}}`.
+  - **§8 Action Network's `bet_count`** is per game, all markets, no side:
+    stored as market `game`, side `all` (P10 reads it as "N tracked bets on
+    this game").
+  - **§6 `scraper_checks.source`** is the provider id the rows carry
+    (`scraper:<source>`), so the reader's join is direct.
+  - **§2 step 2:** `run_matching` took 151 s over 14 days in P3, so the bridge
+    runs it as its OWN process every 5 minutes
+    (`scraper_match_run.py --horizon-hours 36`, one pooled connection) and
+    reloads the links when it finishes; a cycle never waits on it.
+    Connections: bridge 2 + matcher 1 = 3, named `scraper_bridge*`.
+  - **§3 is_main without an alt flag** is decided over the bridge's view of
+    every line the book currently quotes for that (game, period, market), not
+    only the batch; when the main moves, the earlier-forwarded rows whose flag
+    flips are re-written.
+  - **§7 prop first_seen** comes from a book's own line only: not an
+    alternate rung, a yes-only ladder or an exchange contract.
+  - **D25 egress meter:** counted at the TLS layer — every byte the bridge
+    receives from a `*.supabase.com` host, as ciphertext — which is what
+    Supabase bills. `usage_meters` `bridge.egress_bytes` / `bridge.rows_written`.
+  - **P3's routed NHL item:** `load_app_games('nhl')` now merges each team's
+    `api-web.nhle.com` roster (NHL API ids — the ids `player_game_history`
+    already keys NHL by), cached 6 h.

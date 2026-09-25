@@ -125,6 +125,7 @@ async def load_app_games(sport: str) -> list:
         await _merge_mlb_active_rosters(games)
     elif sport == "nhl":
         games = await load_nhl_games()
+        await _merge_nhl_rosters(games)
     elif sport in PERSON_SPORTS:
         games = await load_tennis_games(sport)
     else:
@@ -174,6 +175,46 @@ async def _merge_mlb_active_rosters(games: list) -> None:
                         g.roster.append(RosterEntry(subject_id=pid, subject_name=name, team_abbr=abbr, position=pos))
                     elif not e.position and pos:
                         e.position = pos
+
+
+NHL_ROSTER_URL = "https://api-web.nhle.com/v1/roster/{abbr}/current"
+_nhl_roster_cache: dict[str, tuple[float, list]] = {}
+
+
+async def _merge_nhl_rosters(games: list) -> None:
+    """P3 routed to P6 (2026-09-25): `load_nhl_games` carries no roster, so no
+    NHL player could link. The NHL's own roster endpoint (cached 6 h) gives
+    the same NHL API ids the app keys NHL players by (`player_game_history.
+    athlete_id` 8478109 etc.), with positions. A failed fetch is a miss for
+    that team, never a guess."""
+    import httpx
+
+    from entity_resolution import RosterEntry
+
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        for g in games:
+            for abbr in (g.home_abbr, g.away_abbr):
+                if not abbr:
+                    continue
+                hit = _nhl_roster_cache.get(abbr)
+                if hit and time.time() - hit[0] < MLB_ROSTER_SECONDS:
+                    people = hit[1]
+                else:
+                    try:
+                        r = await client.get(NHL_ROSTER_URL.format(abbr=abbr))
+                        r.raise_for_status()
+                        d = r.json()
+                        people = [(str(x["id"]), f"{x['firstName']['default']} {x['lastName']['default']}",
+                                   x.get("positionCode"))
+                                  for grp in ("forwards", "defensemen", "goalies") for x in d.get(grp, [])]
+                    except Exception as exc:  # a miss, never a guess
+                        print(f"[scraper_match] NHL roster {abbr} failed: {type(exc).__name__}: {exc}", flush=True)
+                        continue
+                    _nhl_roster_cache[abbr] = (time.time(), people)
+                have = {e.subject_id for e in g.roster}
+                for pid, name, pos in people:
+                    if pid not in have:
+                        g.roster.append(RosterEntry(subject_id=pid, subject_name=name, team_abbr=abbr, position=pos))
 
 
 # ---------------------------------------------------------------------------
@@ -268,11 +309,12 @@ def _sqlite_ts(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _read_canon_games(scraper: sqlite3.Connection, now: datetime, sports: set | None) -> list[CanonGame]:
+def _read_canon_games(scraper: sqlite3.Connection, now: datetime, sports: set | None,
+                      horizon_hours: float = 14 * 24) -> list[CanonGame]:
     rows = scraper.execute(
         "SELECT game_key, sport, league_key, home_name, away_name, start_utc, women FROM canon_games "
         "WHERE start_utc >= ? AND start_utc <= ?",
-        (_sqlite_ts(now - timedelta(hours=6)), _sqlite_ts(now + timedelta(days=14))),
+        (_sqlite_ts(now - timedelta(hours=6)), _sqlite_ts(now + timedelta(hours=horizon_hours))),
     ).fetchall()
     out = []
     for key, sport, league, home, away, start, women in rows:
@@ -320,7 +362,11 @@ def _read_players(scraper: sqlite3.Connection, game_keys: list[str], since: date
 
 
 async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None = None,
-                       now: datetime | None = None, player_days: int = 3) -> MatchSummary:
+                       now: datetime | None = None, player_days: int = 3,
+                       horizon_hours: float = 14 * 24) -> MatchSummary:
+    """P3's run. The P6 bridge calls it (through `scraper_match_run.py
+    --horizon-hours 36`) every 5 minutes for games starting in the next 36 h
+    and those started in the last 6 h."""
     from bridge_state import open_state
 
     now = now or datetime.now(timezone.utc)
@@ -330,7 +376,7 @@ async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None 
     state = open_state(state_db)
     summary = MatchSummary()
     try:
-        canon = _read_canon_games(scraper, now, want)
+        canon = _read_canon_games(scraper, now, want, horizon_hours)
         names = _read_names(scraper, [c.game_key for c in canon])
         existing = {r[0]: r for r in state.execute(
             "SELECT game_key, app_sport, app_game_id, reversed, method FROM game_links")}
@@ -356,7 +402,8 @@ async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None 
                     summary.relink_conflicts.append((c.game_key, old[2], result.app_game_id))
                     linked_keys[c.game_key] = (app_sport, old[2])
                 else:
-                    state.execute("INSERT OR REPLACE INTO game_links VALUES (?,?,?,?,?,?,?,?)",
+                    state.execute("INSERT OR REPLACE INTO game_links (game_key, app_sport, app_game_id, reversed, method, "
+                                  "start_delta_min, app_start, linked_at) VALUES (?,?,?,?,?,?,?,?)",
                                   (c.game_key, app_sport, result.app_game_id, int(result.reversed), result.method,
                                    result.start_delta_min, result.app_start, stamp))
                     state.execute("DELETE FROM game_link_misses WHERE game_key = ?", (c.game_key,))
@@ -371,10 +418,16 @@ async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None 
                               (c.game_key, app_sport, result.reason, result.detail, stamp))
                 bucket = result.reason if result.reason in ("ambiguous", "no-game-in-window") else "other"
                 stats[bucket] += 1
+        # The app's team names on every link (P6 §8b reads them for power ratings).
+        by_id = {(s, str(g.game_id)): g for s, gs in app_games.items() for g in gs}
+        for key, (app_sport, app_game_id) in linked_keys.items():
+            g = by_id.get((app_sport, app_game_id))
+            if g is not None:
+                state.execute("UPDATE game_links SET app_home = ?, app_away = ? WHERE game_key = ?",
+                              (g.home_team_name, g.away_team_name, key))
         state.commit()
 
         # Players, for linked games only.
-        by_id = {(s, str(g.game_id)): g for s, gs in app_games.items() for g in gs}
         rows = _read_players(scraper, list(linked_keys), now - timedelta(days=player_days))
         for source, player_norm, raw, game_key, n in rows:
             app_sport, app_game_id = linked_keys[game_key]

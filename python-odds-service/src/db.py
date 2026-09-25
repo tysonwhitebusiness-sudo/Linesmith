@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 
 import asyncpg
 
-from config import DATABASE_URL, DB_POOLER_MODE
+from config import DATABASE_URL, DB_POOLER_MODE, env
 # Safe one-way import: entity_resolution.py depends only on `re`/`unicodedata`
 # and never imports db, so this cannot cycle. Used by
 # write_game_odds_book_lines to canonicalise bookmaker spellings at the one
@@ -142,12 +142,20 @@ async def get_pool() -> asyncpg.Pool:
                 # id from backend A is meaningless on backend B. Session mode
                 # doesn't have this problem (one dedicated backend for the
                 # connection's life), so the default (cache on) stays there.
+                # DB_POOL_MAX_SIZE / DB_APPLICATION_NAME (P6, 2026-09-25): the
+                # laptop's scraper bridge runs as two processes (the bridge and
+                # its matcher) that together must stay inside 3 connections,
+                # and names itself so `pg_stat_activity` can prove it. Unset,
+                # both keep the worker's behaviour exactly.
+                server_settings = {"statement_timeout": "15000"}
+                if env("DB_APPLICATION_NAME"):
+                    server_settings["application_name"] = env("DB_APPLICATION_NAME")
                 _pool = await asyncpg.create_pool(
                     dsn=dsn,
                     ssl=ctx,
                     min_size=1,
-                    max_size=3,
-                    server_settings={"statement_timeout": "15000"},
+                    max_size=int(env("DB_POOL_MAX_SIZE") or 3),
+                    server_settings=server_settings,
                     statement_cache_size=0 if transaction_mode else 100,
                 )
                 break
@@ -519,7 +527,8 @@ def canonical_prop_side(raw) -> str:
     return s if s in PROP_SIDE_VALID else "other"
 
 
-async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str] | frozenset[str] = frozenset()) -> None:
+async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str] | frozenset[str] = frozenset(),
+                          in_tx=None) -> None:
     """Direct port of lib/db/client.ts's writePropOdds — not a simplified
     reimplementation. Per row, within one real transaction covering the
     whole batch (matching the TS version's single pgTransaction wrapping
@@ -579,6 +588,11 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
         A key that comes back (no prior current row) closes its open pull
         (`returned_at`).
       A caller that passes no times gets exactly the pre-P5 behaviour.
+
+    `in_tx` (P6): an optional `async (conn, rows)` called INSIDE the write
+    transaction with the deduplicated batch — the scraper bridge deletes a
+    key's `scraper_unmatched_prices` row there, so the mapped price and the
+    unmatched row never both exist or both vanish (P6 §6b).
     """
     if not rows:
         return
@@ -755,6 +769,9 @@ async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str
                     provider, [r.game_id for r in mine], [r.subject_id for r in mine], [r.market_key for r in mine],
                     [r.line for r in mine], [r.side for r in mine], [r.bookmaker for r in mine], fetched_at,
                 )
+
+            if in_tx is not None:
+                await in_tx(conn, batch)
 
 
 def _history_row(r: PropOddsInput, fetched_at: datetime) -> "price_history.PropHistoryRow":
@@ -4121,7 +4138,8 @@ _GAME_LINES_UPSERT = """
 """
 
 
-async def write_game_lines(rows: list[GameLineInput], complete_sources: frozenset[str] = frozenset()) -> None:
+async def write_game_lines(rows: list[GameLineInput], complete_sources: frozenset[str] = frozenset(),
+                           in_tx=None) -> None:
     """Current per-book game lines for every period, alternate and market
     type, plus their history (P5). Pure additions to what exists: no other
     table's rows are touched except the full-game main ml/sp/tot, which are
@@ -4139,6 +4157,9 @@ async def write_game_lines(rows: list[GameLineInput], complete_sources: frozense
         (game, period, market)s this batch covers. Its rungs the batch did not
         return are deleted and recorded in `game_line_pulls`.
       * A key with no current row closes its open pull.
+      * `in_tx` (P6): `write_prop_odds`' hook, called inside EACH transaction
+        that commits rows, with exactly the rows it commits (a chunk, or one
+        row on the isolation path).
     """
     if not rows:
         return
@@ -4202,6 +4223,8 @@ async def write_game_lines(rows: list[GameLineInput], complete_sources: frozense
                 async with conn.transaction():
                     await conn.executemany(_GAME_LINES_UPSERT, [_params(r) for r in chunk])
                     await price_history.insert_game_line_history(conn, [_hist(r) for r in chunk if _changed(r)])
+                    if in_tx is not None:
+                        await in_tx(conn, chunk)
                 written.extend(chunk)
             except asyncpg.CheckViolationError:
                 for r in chunk:
@@ -4210,6 +4233,8 @@ async def write_game_lines(rows: list[GameLineInput], complete_sources: frozense
                             await conn.execute(_GAME_LINES_UPSERT, *_params(r))
                             if _changed(r):
                                 await price_history.insert_game_line_history(conn, [_hist(r)])
+                            if in_tx is not None:
+                                await in_tx(conn, [r])
                         written.append(r)
                     except asyncpg.CheckViolationError as e:
                         rejected.append(f"{r.sport}/{r.game_id}/{r.period}/{r.market}/{r.side}/{r.bookmaker}"
@@ -4562,6 +4587,123 @@ async def write_game_reference(rows: list[GameReferenceInput]) -> int:
         [r.observed_at for r in rows],
     )
     return int(res.split()[-1])
+
+
+# ---------------------------------------------------------------------------
+# The scraper bridge's own tables (P6, 2026-09-25). The bridge is their only
+# writer (docs/table-ownership.md); `scraper_bridge_run.py` calls these.
+# ---------------------------------------------------------------------------
+
+
+async def write_scraper_checks(rows: list[tuple[str, str, datetime]]) -> int:
+    """(source, game_id, last_ok_at): the last ok/unchanged poll that confirmed
+    a source's prices for a game (P6 §6). `source` is the provider id the
+    rows carry (`scraper:<source>`), so a reader joins on it directly. A time
+    only ever moves forward. Returns rows written."""
+    if not rows:
+        return 0
+    latest: dict[tuple[str, str], datetime] = {}
+    for source, game_id, at in rows:
+        k = (source, game_id)
+        if k not in latest or latest[k] < at:
+            latest[k] = at
+    pool = await get_pool()
+    res = await pool.execute(
+        """
+        INSERT INTO scraper_checks (source, game_id, last_ok_at)
+        SELECT * FROM unnest($1::text[], $2::text[], $3::timestamptz[])
+        ON CONFLICT (source, game_id) DO UPDATE SET last_ok_at = excluded.last_ok_at
+        WHERE scraper_checks.last_ok_at < excluded.last_ok_at
+        """,
+        [k[0] for k in latest], [k[1] for k in latest], list(latest.values()),
+    )
+    return int(res.split()[-1])
+
+
+@dataclass
+class UnmatchedPriceInput:
+    source: str          # the provider id, `scraper:<source>`
+    scraper_key: str
+    event: str | None
+    market: str
+    player: str | None
+    book: str
+    line: float | None
+    side: str | None
+    price: float
+    checked: datetime
+    since: datetime
+    reason: str
+
+
+async def write_scraper_unmatched(rows: list[UnmatchedPriceInput]) -> int:
+    """Upsert the current price of each scraper key the bridge could not map
+    (P6 §6b, plan B4). One row per (source, scraper_key); `since` moves only
+    when the price does. Returns rows written."""
+    if not rows:
+        return 0
+    latest = {(r.source, r.scraper_key): r for r in rows}
+    rows = list(latest.values())
+    pool = await get_pool()
+    res = await pool.execute(
+        """
+        INSERT INTO scraper_unmatched_prices
+          (source, scraper_key, event, market, player, book, line, side, price, checked, since, reason)
+        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                             $7::float8[], $8::text[], $9::float8[], $10::timestamptz[], $11::timestamptz[], $12::text[])
+        ON CONFLICT (source, scraper_key) DO UPDATE SET
+          event = excluded.event, market = excluded.market, player = excluded.player, book = excluded.book,
+          line = excluded.line, side = excluded.side, reason = excluded.reason,
+          since = CASE WHEN scraper_unmatched_prices.price IS DISTINCT FROM excluded.price
+                       THEN excluded.since ELSE scraper_unmatched_prices.since END,
+          price = excluded.price,
+          checked = GREATEST(scraper_unmatched_prices.checked, excluded.checked)
+        """,
+        [r.source for r in rows], [r.scraper_key for r in rows], [r.event for r in rows], [r.market for r in rows],
+        [r.player for r in rows], [r.book for r in rows], [r.line for r in rows], [r.side for r in rows],
+        [r.price for r in rows], [r.checked for r in rows], [r.since for r in rows], [r.reason for r in rows],
+    )
+    return int(res.split()[-1])
+
+
+async def delete_scraper_unmatched(conn, keys: list[tuple[str, str]]) -> int:
+    """Remove (source, scraper_key) rows on an open connection — called from a
+    writer's `in_tx`, so a key leaves the unmatched table in the transaction
+    that writes its mapped price."""
+    if not keys:
+        return 0
+    res = await conn.execute(
+        """
+        DELETE FROM scraper_unmatched_prices u
+         USING unnest($1::text[], $2::text[]) AS k(source, scraper_key)
+         WHERE u.source = k.source AND u.scraper_key = k.scraper_key
+        """,
+        [k[0] for k in keys], [k[1] for k in keys],
+    )
+    return int(res.split()[-1])
+
+
+async def read_scraper_unmatched_keys(source_prefix: str) -> set[tuple[str, str]]:
+    """Every (source, scraper_key) held for sources under a prefix — the
+    bridge's memory of what it has written there, rebuilt on start."""
+    pool = await get_pool()
+    rows = await pool.fetch("SELECT source, scraper_key FROM scraper_unmatched_prices WHERE source LIKE $1",
+                            source_prefix + "%")
+    return {(r["source"], r["scraper_key"]) for r in rows}
+
+
+async def read_bridge_brakes() -> dict:
+    """The two brakes the bridge reads before every write cycle (P6
+    amendments): the disk guard's `bridge_paused` and the cost guard's
+    `brake`. A guard that has never run brakes nothing."""
+    pool = await get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        disk = await conn.fetchrow("SELECT bridge_paused, reason, measured_at FROM disk_guard_state WHERE id")
+        cost = await conn.fetchrow("SELECT brake, reason, measured_at FROM cost_guard_state WHERE id")
+    return {
+        "disk_paused": bool(disk and disk["bridge_paused"]), "disk_reason": disk and disk["reason"],
+        "cost_brake": bool(cost and cost["brake"]), "cost_reason": cost and cost["reason"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -5087,6 +5229,16 @@ RETENTION_RULES: list[tuple[str, str, str]] = [
         "system_events",
         "occurred_at < now() - interval '30 days'",
         "operational log, not a record anything reads back beyond a month (P2 L4)",
+    ),
+    (
+        "scraper_checks",
+        "last_ok_at < now() - interval '3 days'",
+        "a checked time only matters while the game's prices do; the scraper itself keeps 3 days (P6 §6)",
+    ),
+    (
+        "scraper_unmatched_prices",
+        "checked < now() - interval '3 days'",
+        "a key the scraper stopped quoting; the laptop keeps the raw rows (P6 §6b)",
     ),
 ]
 

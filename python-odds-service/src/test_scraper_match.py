@@ -134,7 +134,8 @@ def relink_case() -> bool:
     s.commit()
     s.close()
     st = open_state(state_db)
-    st.execute("INSERT INTO game_links VALUES ('gk','nfl','OLD',0,'exact',0,'','x')")
+    st.execute("INSERT INTO game_links (game_key, app_sport, app_game_id, reversed, method, start_delta_min, "
+               "app_start, linked_at) VALUES ('gk','nfl','OLD',0,'exact',0,'','x')")
     st.commit()
     st.close()
     sm._games_cache["nfl"] = (1e18, [G("NEW", "Green Bay Packers", "Dallas Cowboys", "2026-09-27T20:25Z", "GB", "DAL")])

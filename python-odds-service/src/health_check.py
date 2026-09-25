@@ -1003,6 +1003,37 @@ async def check_harvester_scrapes() -> dict:
                        if healthy else "; ".join(bits))}
 
 
+BRIDGE_STALE_MINUTES = 15
+
+
+async def check_scraper_bridge() -> dict:
+    """P6 — the scraper bridge's heartbeat, the laptop's third Python writer.
+
+    `check_harvester_scrapes` is the template, for the same reason: the bridge
+    runs on the operator's machine (scheduled task `LinesmithScraperBridge`),
+    not on the worker, so JOB_REGISTRY cannot see it. It writes
+    `job_health_checks.scraper_bridge` every 5 minutes.
+      * STALE     — no heartbeat for 15 minutes: the process or the laptop is
+                    down, and the app's scraper prices are aging.
+      * UNHEALTHY — it reported `healthy=false`: lag >= 600 s (it is behind the
+                    scraper, or a brake is holding rows) or its writes fail.
+    Before the bridge first runs there is no row, which is not a failure.
+    """
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        row = await conn.fetchrow("SELECT healthy, status, checked_at FROM job_health_checks "
+                                  "WHERE check_name = 'scraper_bridge'")
+    if row is None:
+        return {"name": "scraperBridge", "healthy": True, "status": "no heartbeat yet — the bridge has never run"}
+    age_min = (datetime.now(timezone.utc) - row["checked_at"]).total_seconds() / 60
+    if age_min > BRIDGE_STALE_MINUTES:
+        return {"name": "scraperBridge", "healthy": False,
+                "status": f"STALE: last heartbeat {age_min:.0f} min ago ({row['checked_at']:%Y-%m-%d %H:%M}Z) — "
+                          f"bridge stopped or laptop off? Last: {row['status']}"}
+    return {"name": "scraperBridge", "healthy": bool(row["healthy"]),
+            "status": row["status"] if row["healthy"] else f"UNHEALTHY: {row['status']}"}
+
+
 async def check_history_prefix_cutoff() -> dict:
     """Phase 5 — does `player_history_prefix` still meet the hot window exactly?
 
@@ -1370,6 +1401,7 @@ async def main() -> int:
         await check_corpus_freshness(),
         await check_history_prefix_cutoff(),
         await check_harvester_scrapes(),
+        await check_scraper_bridge(),
         await check_database_growth(),
         await check_disk_guard(),
         await check_cost_guard(),

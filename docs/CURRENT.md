@@ -1,5 +1,17 @@
 # CURRENT — pick up here
 
+> **IN FLIGHT 2026-09-25 (unattended run, operator away 10 h+): P6 the bridge.**
+> P6.0 (cost guard) is committed (`3eb5e4b`) and DEPLOYED (worker, by the
+> operator's hand at 04:37 UTC; the classifier refused the Render API deploy).
+> The bridge build is under way, uncommitted until tested:
+> `src/scraper_bridge.py`, `src/odds_checks.py`, `scraper_bridge_policy.json`,
+> db.py (`in_tx` hooks, `write_scraper_checks`/`write_scraper_unmatched`,
+> retention rules, `DB_POOL_MAX_SIZE`/`DB_APPLICATION_NAME`), bridge_state
+> (cursors, opener_seeded, app team names), scraper_match `--horizon-hours`.
+> Next: `scraper_bridge_run.py`, tests, replay test, health check, launcher,
+> go-live + drills. Spec correction found: a spread's point is PER SIDE in
+> scraper.db, so a reversed game swaps side and does NOT negate the point.
+
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is
 answered. All sixteen phases of the run order are built and

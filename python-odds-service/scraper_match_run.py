@@ -1,6 +1,6 @@
 """Link the odds-scraper's games and prop players to the app's ids (P3, odds build).
 
-    python scraper_match_run.py [--sports mlb,nfl,...] [--report] [--sample 50]
+    python scraper_match_run.py [--sports mlb,nfl,...] [--report] [--sample 50] [--horizon-hours 36]
 
 Opens the scraper's scraper.db read-only and the bridge's bridge.db read-write
 (src/bridge_state.py), then runs src/scraper_match.run_matching over canonical
@@ -94,10 +94,12 @@ async def main() -> None:
     ap.add_argument("--sample", type=int, default=0)
     ap.add_argument("--scraper-db", default=SCRAPER_DB)
     ap.add_argument("--state-db", default=STATE_DB)
+    ap.add_argument("--horizon-hours", type=float, default=14 * 24,
+                    help="canonical games starting up to this far ahead (the P6 bridge passes 36)")
     a = ap.parse_args()
     sports = [s.strip() for s in a.sports.split(",")] if a.sports else None
     t0 = datetime.now(timezone.utc)
-    summary = await run_matching(a.scraper_db, a.state_db, sports)
+    summary = await run_matching(a.scraper_db, a.state_db, sports, horizon_hours=a.horizon_hours)
     print(f"matched in {(datetime.now(timezone.utc) - t0).total_seconds():.1f}s")
     if a.report or not a.sample:
         report(summary)
