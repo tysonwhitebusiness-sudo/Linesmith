@@ -148,3 +148,16 @@ services:
       # backends and doesn't hold one dedicated to this short-lived process.
       - key: DB_POOLER_MODE
         value: transaction
+      # P5 A2 (2026-09-25): the history mover runs here and writes the corpus,
+      # and corpusFreshness reads it. Without these the corpus resolves to this
+      # instance's ephemeral disk, which the mover refuses. Set in the dashboard.
+      - key: CORPUS_URI
+        sync: false
+      - key: CORPUS_S3_ENDPOINT
+        sync: false
+      - key: CORPUS_S3_REGION
+        sync: false
+      - key: CORPUS_S3_KEY_ID
+        sync: false
+      - key: CORPUS_S3_SECRET
+        sync: false
