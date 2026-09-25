@@ -40,11 +40,23 @@ Read it next. In short:
    oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
-7. **ODDS BUILD — P0–P4 DONE, P5 NEXT (handoff 2026-09-25).** **Start at
-   `docs/design/odds-build/HANDOFF-P5.md`**: the operator's approvals (full
-   approval for everything), the new decisions D24 (storage) and D25
-   ($50/month cost ceiling), P5 as approved (compact storage done properly,
-   the disk guard), and the state. The phase table below is the record.
+7. **ODDS BUILD — P0–P5 DONE, P6 (the bridge) NEXT.** The operator's
+   approvals, D24 (storage) and D25 ($50/month ceiling) are in
+   `docs/design/odds-build/HANDOFF-P5.md`, which still holds. P5 closed
+   2026-09-25 03:46 UTC. Its Result section is in `P5-schema-and-writers.md`,
+   with the measurements in `results/P5-read-timings.md`.
+   **Next: read `P6-bridge.md` in full.** D25 comes first: before the bridge
+   ships, audit every provider's live price and usage, then build meters,
+   alerts and brakes. The bridge's Supabase writes must check
+   `disk_guard_state.bridge_paused`.
+
+   **What P5 changed, in one breath:**
+   - `prop_odds_history` is GONE, converted row for row into the compact,
+     day-partitioned `prop_price_history` at 101 B/row. Read it only through
+     `lib/db/priceHistory.ts` / `src/price_history.py`.
+   - `diskGuardJob` (worker) sets the hot window; `history_mover.py` (in the
+     health-check cron) exports closed days to the corpus and drops them.
+   - Every new table has RLS on.
 
    History — order of work and approvals:
    `docs/design/odds-build/HANDOFF-P0-P4.md`. Specs: `docs/design/odds-build/`.
@@ -57,6 +69,7 @@ Read it next. In short:
    | P2 names | **DONE 22:25 UTC** — `08fa35e`. `scraper_markets.py` (scraper labels → app keys), verify list decided, 28 keys and 49 books in both alias maps; coverage 99.9% props / 96.5% game markets. See P2 → Result |
 | P3 matching | **DONE 23:15 UTC** — scraper games and players → app ids in `bridge.db`; zero wrong links in the 170-game / 215-player hand check; MLB 98.3% of player rows (after the StatsAPI roster fallback), NFL 99.6%, CFB 89.4%, MLS 95.8%. See P3 → Result |
 | P4 storage decision | **CLOSED 2026-09-25 — D24:** everything reaches Supabase, compact (117 B/row), 10 days hot → corpus; disk held at 27 GB (~6.1 GB used) by our guard at 85%; no corpus reader for now. **D25:** $50/month all-in ceiling enforced by our own caps (audit + build before anything else that can raise a bill) |
+| P5 schema + writers + compact history + disk guard | **DONE 2026-09-25 03:46 UTC** — `7b58cac`, `4c10275`, `c5b9cf7`; deployed (see Deploys). 7,100,514 rows converted and proven (in the table AND the corpus); old table dropped (DB 6,235 → 3,638 MB); reads no slower (Movers 15.6 → 10.3 s). See P5 → Result |
    | D24 (storage policy) | **decided 2026-09-25** (master plan §1) |
    | the six spec corrections (HANDOFF §"Known spec corrections") | **DONE** — P11 gate 2 = D13 (`3a1ac92`), P6 `scraper_unmatched_prices` (`9a1ec62`), P8 line movement + L5 dropping odds (`1680556`), P7 T0.4 (`ab73734`), S-G3 beyond 7 days (`eec6bba`). Each spec has a Changelog line |
 
@@ -75,13 +88,17 @@ Read it next. In short:
    UTC): raw pruning listed ~198k files on the writer thread. It is fixed
    (pruning has its own thread) and loaded at 22:24 UTC. See P0 → Result.
 
-   **Operator items from this run:**
-   - **Deploy `e8b5a89`** (a fix, not a phase): `tennisStatsJob` fails at
-     its first yield (`maybe_yield() missing 'wait_hint'`, seen on the first
-     cycle after P1's deploy), and `golfCoursesJob` has the same bug, hidden
-     because it is a no-op. The fix is committed, and `test_yield_contract`
-     is now in CI. It needs a worker deploy; this run was authorised for P1
-     only. Run `node scripts/render_deploy.mjs` on your go.
+   **Found in P5, routed (not fixed there):**
+   - **`refresh_corpus` leaves each id chunk's tail unexported** (2,945,086
+     prop rows had never reached the corpus; P5 saved them as supplements).
+     `mlb_pitch_events` uses the same path. A task chip ("Fix refresh_corpus
+     skipping a chunk's tail") carries the full brief. Nothing is lost:
+     `prune_corpus` deletes only verified ids.
+   - **RLS is off** on `slate_rankings`, `model_status`, `tennis_match_stats`
+     (`docs/table-ownership.md`).
+   - `LinesmithCorpusRefresh` was disabled during the conversion and is
+     re-enabled; it now handles `mlb_pitch_events` only (the prop history
+     left its list).
    Background: `docs/design/odds-rebuild/HANDOFF-OM.md` covers the four mockup rounds (approved); the
    resume prompt is `docs/design/odds-rebuild/HANDOFF-PROMPT.md`.
 
@@ -135,6 +152,7 @@ Update this table and the run doc's §2 after every phase commit, then push.
 
 | when | commit | service | what it enables |
 |---|---|---|---|
+| 2026-09-25 03:14 UTC | `c5b9cf7` (odds P5) | line-buddy-odds-worker (live); the health-check cron auto-deployed on the push, and gained `CORPUS_URI` + `CORPUS_S3_*` via the Render API | `write_prop_odds` writes the compact `prop_price_history` (two times, pulls/returns, `changed_at`/`extra` on `prop_odds`); `diskGuardJob` every 15 min; the history mover + `diskGuard` check in the cron. Also ships `e8b5a89` (`tennisStatsJob` yield fix). First cycle: every job green, 7,676 compact rows and 541 pulls in the first minutes. Was on `4d64071`. |
 | 2026-09-24 21:48 UTC | `4d64071` (odds P1) | line-buddy-odds-worker (`dep-daqpki6k1f9s73d15vbg`, live) | `write_game_odds_history` logs a line move at an unchanged price. Proved live at 21:50:57: MLB 822840's total moved 8.5 → 7.5 at −110 (BetUS, LowVig, BetOnline) and was logged. 21 of 22 jobs green on the first cycle; the one failure (`tennisStatsJob`) is a pre-existing yield bug, fixed in `e8b5a89`, which awaits a deploy. Was on `f4a8373`. |
 | 2026-09-23 18:53 UTC | `f4a8373` (odds-model Phase 0) | line-buddy-odds-worker (`dep-daq1vkjncjis7397r6rg`, live) | `golfEloJob` (hourly) and `maintainMlbStatcastAggJob` (6-hourly), both confirmed running live at 21:44 UTC. Nine dead model files deleted. The `corpusFreshness` fix (checks all 6 corpus tables, was 2) lives in the health-check cron, which auto-deploys on push. Its Render deploy has not been checked yet. Was on `4f49150`. |
 | 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |

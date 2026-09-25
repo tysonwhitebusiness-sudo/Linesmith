@@ -582,6 +582,74 @@ None (P6's soak watches the new tables filling).
   - `lib/db/client.ts`, `lib/odds/props/mainLine.ts`;
   - `docs/table-ownership.md`, `CLAUDE.md`, `docs/CURRENT.md`.
 
+## Result
+
+**Closed 2026-09-25 03:46 UTC.**
+- Commits: `7b58cac` (the amendments), `4c10275` (the build), `c5b9cf7`
+  (`render.yaml`).
+- Worker deployed live at 03:14:41 UTC (`docs/CURRENT.md` → Deploys); the
+  health-check cron auto-deployed on the push.
+- Migration `20260925010830` was applied by hand first, with a dry run.
+
+**A1 — compact history:**
+- **Conversion:** 7,100,514 rows went into `prop_price_history`, verified row
+  for row in all 13 columns (`EXCEPT ALL` both ways, counts equal). This was
+  proven twice: before the deploy, and again after the catch-up copy, once the
+  old writer had stopped.
+- **Size:** 341 → **101.1 B/row** (heap 85.8, index 15.4); the database went
+  from 6,235 MB to 3,638 MB once the old table was dropped.
+- **Reads** (`results/P5-read-timings.md`, 7-run medians, all passed the gate):
+
+  | read | old | new |
+  |---|---|---|
+  | price chart | 137 ms | 149 ms |
+  | game page pre-game props | 1,074 ms | 571 ms |
+  | Movers | 15.6 s | 10.3 s |
+
+  The Movers source rows are identical between the two tables: 439,536 rows,
+  0 missing, 0 extra.
+- **Three wrong turns, each measured and recorded** in `P5-read-timings.md`:
+  1. per-row decoding before aggregation;
+  2. a side filter written as a semi-join;
+  3. a covering index. It cost 145 B/row, gained nothing, and was reverted.
+- **Legacy proof:** every one of the 7,100,514 old rows is proven in the
+  corpus per id, before the `DROP`.
+  - **2,945,086 of them had never reached the corpus**:
+    `refresh_corpus` re-exports a 500k-id chunk only while it is still open,
+    so a chunk that closes between two runs keeps a partial file forever.
+  - They are in 17 supplementary objects, `prop_odds_history_<lo>_final.parquet`,
+    each read back and verified. Nothing was lost; `prune_corpus` fails safe.
+  - `mlb_pitch_events` uses the same path; its fix is its own task.
+- **Mover** (in the cron): a real 823,498-row day took 89 s at a 160 MB peak,
+  6.53 B/row as Parquet.
+
+**A2 — disk guard:**
+- `diskGuardJob` runs green on the worker.
+- `diskGuard`, `historyMover` and `corpusFreshness` are healthy on the cron.
+  `corpusFreshness` had been failing for want of the corpus settings; the
+  cron now has `CORPUS_URI` + `CORPUS_S3_*`.
+- The mover refuses a local corpus.
+
+**A3 — the rest:**
+- The new worker writes `changed_at` (18,153 of 18,269 rows in its first
+  15 minutes; the rest were the old instance's last write).
+- 541 `complete_fetch` pulls were recorded in its first cycles.
+- All tests passed:
+  - `npm test` 711/711;
+  - `test_write_prop_odds` (26 checks);
+  - `test_write_game_lines`, `_openers`, `_splits`, `_exchange_books`;
+  - `test_price_history`, `test_entity_resolution`,
+    `test_canonical_bookmaker`, `test_yield_contract`;
+  - RLS as `anon`: read yes, insert no, partition function no.
+- `e8b5a89` (the `tennisStatsJob` fix) shipped with this deploy.
+
+**Open, found here:**
+- `slate_rankings`, `model_status` and `tennis_match_stats` have RLS off
+  (`docs/table-ownership.md`).
+- Movers' old read varied from 10.1 to 15.6 s run to run on the live
+  database. It is slow either way, and caching (`cachedRoute`) is what keeps
+  it off the page's path.
+
 ## Changelog
 
 - **2026-09-25 — A1, compact history built properly** (operator, with D24).
@@ -600,3 +668,9 @@ None (P6's soak watches the new tables filling).
   worker peaks at 477 of 512 MB.
 - **2026-09-25 — A3, the rest as specified.** `game_lines_history`'s text
   layout in §1 is replaced by A1's compact one.
+- **2026-09-25 — closed.** See Result. Changes to the build from the spec:
+  - the timing script is TypeScript (`scripts/p5-timing/`), because it times
+    the real TypeScript readers;
+  - the covering index was tried and reverted, on measurement;
+  - the legacy proof writes supplements rather than re-exporting chunks,
+    because re-exporting would drop rows already pruned from Postgres.

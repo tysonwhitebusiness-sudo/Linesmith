@@ -57,9 +57,11 @@ worker. The new 10,334 ms passes against the fastest of them (10,114 × 1.2 =
 | 3. + a covering index `INCLUDE (line, side, book, source, price)` | 11.6 → 29.6 s | the trend query went 0.9 → 8.2 s: with fresh statistics the planner hash-joined whole partitions against 40 keys. The consensus query could not go index-only anyway (it needs `recorded_at` for the partition bound): 7.4 s against 7.8 s without the index. The index cost 145 B/row against 101 | the covering index was **reverted** (no measured gain). The trend reads each key through a `LATERAL` index lookup (`keyedFrom`): 160 ms, where the old table took 646 ms |
 | 4. shipped | 15.6 → 10.3 s | — | — |
 
-Output equality (the same Movers rows from both tables) is checked at the
-cutover, once the old table has stopped receiving writes and both hold the same
-rows.
+**Output equality, checked at the cutover** once the old table had stopped
+receiving writes: the rows Movers aggregates for the 12 busiest games came out
+identical from both tables (439,536 rows, 0 missing, 0 extra). The rows
+compared were the same selection Movers makes: 7 days, sane prices, books
+outside the consensus exclusions.
 
 ## Mover (the cron's export of a day)
 
