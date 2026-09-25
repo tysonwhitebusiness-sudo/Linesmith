@@ -1,0 +1,48 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { GameOddsPayload, PlayerOddsPayload } from '@/lib/odds/section/types';
+
+/**
+ * The odds section's fetch hooks (odds build P8). They live in components,
+ * never in adapters (CLAUDE.md rule 3). Each fetches once on mount and again
+ * whenever `refreshKey` changes; P9 adds the 30–60 s refresh.
+ */
+export interface OddsState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
+function useJson<T>(url: string | null, refreshKey: unknown): OddsState<T> {
+  const [state, setState] = useState<OddsState<T>>({ data: null, loading: !!url, error: null });
+  useEffect(() => {
+    if (!url) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+    let live = true;
+    setState(s => ({ ...s, loading: true, error: null }));
+    fetch(url)
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return (await r.json()) as T;
+      })
+      .then(data => { if (live) setState({ data, loading: false, error: null }); })
+      .catch(e => { if (live) setState({ data: null, loading: false, error: String(e?.message ?? e) }); });
+    return () => { live = false; };
+  }, [url, refreshKey]);
+  return state;
+}
+
+export function usePlayerOdds(sport: string | null, gameId: string | null, subjectId: string | null, refreshKey?: unknown) {
+  const url = sport && gameId && subjectId
+    ? `/api/odds/player?sport=${encodeURIComponent(sport)}&gameId=${encodeURIComponent(gameId)}&subjectId=${encodeURIComponent(subjectId)}`
+    : null;
+  return useJson<PlayerOddsPayload>(url, refreshKey);
+}
+
+export function useGameOdds(sport: string | null, gameId: string | null, refreshKey?: unknown) {
+  const url = sport && gameId ? `/api/odds/game?sport=${encodeURIComponent(sport)}&gameId=${encodeURIComponent(gameId)}` : null;
+  return useJson<GameOddsPayload>(url, refreshKey);
+}

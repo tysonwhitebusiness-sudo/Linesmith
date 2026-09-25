@@ -89,6 +89,7 @@ export function Tabs<T extends string>({
   onChange,
   label,
   idPrefix,
+  variant = 'underline',
   className,
 }: {
   items: Option<T>[];
@@ -97,6 +98,14 @@ export function Tabs<T extends string>({
   label: string;
   /** When set, each tab points at a panel with id `${idPrefix}-panel-${value}`. */
   idPrefix?: string;
+  /**
+   * `cards` (odds build P8, the odds section's market tabs): each tab is a
+   * boxed tile that carries a small summary under its name — the market's
+   * line, best prices, book count and sharp price. The underline tab cannot
+   * hold three lines of data, and a row of hand-made buttons would not be a
+   * tablist.
+   */
+  variant?: 'underline' | 'cards';
   className?: string;
 }) {
   const refs = useRef(new Map<T, HTMLButtonElement>());
@@ -114,7 +123,8 @@ export function Tabs<T extends string>({
   };
 
   return (
-    <div role="tablist" aria-label={label} onKeyDown={onKeyDown} className={cx('flex gap-4 overflow-x-auto border-b border-line lb-scroll-x', className)}>
+    <div role="tablist" aria-label={label} onKeyDown={onKeyDown}
+      className={cx(variant === 'cards' ? 'flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lb-scroll-x' : 'flex gap-4 overflow-x-auto border-b border-line lb-scroll-x', className)}>
       {items.map((it) => {
         const on = it.value === value;
         return (
@@ -132,10 +142,13 @@ export function Tabs<T extends string>({
             tabIndex={on ? 0 : -1}
             disabled={it.disabled}
             onClick={() => onChange(it.value)}
-            className={cx(
-              '-mb-px shrink-0 whitespace-nowrap border-b-2 pb-[11px] pt-3 text-body font-semibold transition-colors duration-quick ease-standard disabled:text-ink-disabled',
-              on ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink',
-            )}
+            className={variant === 'cards'
+              ? cx('shrink-0 rounded-ctl border bg-card px-3 py-2 text-left transition-colors duration-quick ease-standard disabled:text-ink-disabled',
+                on ? 'border-ink ring-1 ring-ink ring-inset' : 'border-line-soft hover:border-line')
+              : cx(
+                '-mb-px shrink-0 whitespace-nowrap border-b-2 pb-[11px] pt-3 text-body font-semibold transition-colors duration-quick ease-standard disabled:text-ink-disabled',
+                on ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink',
+              )}
           >
             <span className="inline-flex items-center gap-1.5">
               {it.label}

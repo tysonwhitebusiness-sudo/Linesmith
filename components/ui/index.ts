@@ -56,3 +56,5 @@ export {
 } from './Overlays';
 export { Section, SectionBand, SectionNav } from './Section';
 export { BackLink, useUrlState } from './Navigation';
+export { LiveDot } from './LiveDot';
+export { FlashValue } from './FlashValue';

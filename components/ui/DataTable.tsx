@@ -146,6 +146,14 @@ export interface DataTableProps<Row> {
    * Row state must never be colour alone: the caller marks the cell too.
    */
   rowClassName?: (row: Row) => string | undefined;
+  /**
+   * P8 (the odds section's price board): a book that PULLED its price stays in
+   * the table struck through (the cell says "Pulled" in words too — never
+   * colour alone); `returned` and `new` mark a row P9 animates in. No existing
+   * prop said "this row's price is gone", and a class alone would not carry
+   * the meaning to assistive tech.
+   */
+  rowState?: (row: Row) => 'pulled' | 'returned' | 'new' | null;
   className?: string;
   maxHeight?: number;
   /**
@@ -210,6 +218,7 @@ export function DataTable<Row>({
   className,
   maxHeight,
   rowClassName,
+  rowState,
   columnGroups,
 }: DataTableProps<Row>) {
   const compact = density === 'compact' || (density === undefined && dense === true);
@@ -337,6 +346,7 @@ export function DataTable<Row>({
             marked && 'bg-card-sunk',
             onRowClick && !isTotals && 'cursor-pointer',
             !isTotals && rowClassName?.(row),
+            !isTotals && rowState?.(row) === 'pulled' && 'line-through text-ink-muted',
           )}
         >
           {columns.map((c, i) => {

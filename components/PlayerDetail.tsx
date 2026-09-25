@@ -4,7 +4,7 @@ import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Chip, DataTable, EmptyState, Section, SectionNav, SegmentedToggle, SkeletonLines, StatusPill, Tabs, Tooltip } from './ui';
 import { GameStateCard } from './GameStateCard';
-import { PlayerOddsSection } from './PlayerOddsSection';
+import { PlayerOddsSection as PlayerOddsSection2 } from './odds/PlayerOddsSection';
 import { playerPriceRows } from '@/lib/odds/props/playerPrices';
 import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
 import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText, type HeroNext } from './PlayerResearchSections';
@@ -1481,13 +1481,23 @@ export function PlayerDetail({
     oddsCards: { movement: React.ReactNode; books: React.ReactNode; gameLine: React.ReactNode } | null,
     live: React.ReactNode,
   ) => {
+    // P8 O2: the odds section is one component that reads /api/odds/player
+    // itself (the approved mockup's player surface); the old trio of cards the
+    // page built (`oddsCards`) is no longer mounted.
+    const myAbbr = bioState.data?.team?.abbr ?? null;
+    const oppAbbr = next?.opponent.abbr ?? null;
+    const oddsTeams = myAbbr && oppAbbr
+      ? (next?.homeAway === '@' ? { home: { abbr: oppAbbr }, away: { abbr: myAbbr } } : { home: { abbr: myAbbr }, away: { abbr: oppAbbr } })
+      : null;
     const odds = (
-      <PlayerOddsSection
-        prices={prices}
-        loading={marketsLoading || (Boolean(gamePkStr) && propOdds.loading && prices.length === 0)}
-        started={started}
-        activeMarketKey={activeMarketKey}
+      <PlayerOddsSection2
+        sport={subject.sport}
+        gameId={gamePkStr ?? null}
+        subjectId={priceSubjectId}
+        teams={oddsTeams}
+        userBook={propOdds.userSportsbook ?? null}
         marketLabel={marketLabel}
+        activeMarketKey={activeMarketKey}
         onPickMarket={
           onMarketChange
             ? (key) => {
@@ -1495,13 +1505,9 @@ export function PlayerDetail({
                 if (!dimension) return;
                 setLineOffset(0);
                 onMarketChange(dimension);
-                document.getElementById('sec-props')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }
             : null
         }
-        movement={oddsCards?.movement ?? null}
-        books={oddsCards?.books ?? null}
-        gameLine={oddsCards?.gameLine ?? null}
       />
     );
     return (
