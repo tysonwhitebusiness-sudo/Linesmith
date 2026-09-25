@@ -90,7 +90,10 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
     # session. Downloading 130 MB to verify a delete that reads the same bytes
     # remotely was never the safety property; having read them back at all is.
     source = path
-    if backend is not None and filename is not None and not os.path.exists(path):
+    multi = backend is not None and part[0] is None     # P5.1: an id chunk = main + supplements
+    if multi:
+        pass                                             # read below, every object the chunk has
+    elif backend is not None and filename is not None and not os.path.exists(path):
         try:
             source = backend.open_object(table, filename)
         except Exception as e:                              # noqa: BLE001
@@ -108,17 +111,22 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
                 "deletable": 0, "live_only": 0, "file_only": 0,
                 "corrupt": 0, "ids": []}
 
-    def _fp(row) -> int:
-        line = "".join(cs._canon(v) for v in row)
-        return int(hashlib.sha256(line.encode()).hexdigest()[:16], 16)
+    _fp = cs.fingerprint          # the one implementation (corpus_store)
 
     id_i = cols.index("id")
     file_fp: dict[int, int] = {}
-    pf = pq.ParquetFile(source)
-    for batch in pf.iter_batches(batch_size=cs.CHUNK_ROWS):
-        d = batch.to_pydict()
-        for row in zip(*(d[c] for c in cols)):
-            file_fp[int(row[id_i])] = _fp(row)
+    if multi:
+        # P5.1: an id chunk is its main file PLUS its supplements (rows the
+        # main file missed, added without rewriting it). Read them all.
+        file_fp, _names = await asyncio.to_thread(cs.chunk_fingerprints, backend, table, part, cols)
+        schema_checked = True
+    else:
+        pf = pq.ParquetFile(source)
+        for batch in pf.iter_batches(batch_size=cs.CHUNK_ROWS):
+            d = batch.to_pydict()
+            for row in zip(*(d[c] for c in cols)):
+                file_fp[int(row[id_i])] = _fp(row)
+        schema_checked = False
 
     live_rows = 0
     deletable: list[int] = []
@@ -144,7 +152,8 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
                 corrupt.append(rid)
         last_id = raw[-1]["id"]
 
-    schema_ok = list(pf.schema_arrow.names) == cols
+    # chunk_fingerprints raises on a schema mismatch, so reaching here means it matched.
+    schema_ok = True if schema_checked else list(pf.schema_arrow.names) == cols
     return {
         "ok": bool(schema_ok and not corrupt),
         "path": path, "partition": part,
@@ -252,7 +261,13 @@ async def prune_table(conn, table: str, backend, apply: bool,
     total_ids = 0
     deleted = 0
     bad: list[str] = []
+    max_id = await conn.fetchval(f"SELECT max(id) FROM {table}")
     for part in parts:
+        if part[0] is None and cs.chunk_is_open(part, max_id):
+            # P5.1 rule 1: nothing is deleted from an OPEN id chunk, so its file
+            # can always be rebuilt in full from Postgres (corpus_store's note).
+            print(f"   {str(part):<18}open chunk — never pruned while ids can still land in it")
+            continue
         fname = f"{cs.partition_name(table, part)}.parquet"
         path = os.path.join(root, table, fname)
         v = await verify_partition_live(conn, table, part, path,

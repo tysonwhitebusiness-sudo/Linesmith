@@ -69,7 +69,8 @@ async def main(tables: list[str]) -> int:
         # Pooled: one short-lived connection PER PARTITION. Supabase's pooler
         # recycles connections, and holding one across ~196 partitions killed
         # two full-export attempts with ConnectionDoesNotExistError.
-        r = await cs.export_table_pooled(pool, table, root, progress=progress)
+        # backend: closed id chunks already in the corpus are final (P5.1).
+        r = await cs.export_table_pooled(pool, table, root, progress=progress, backend=backend)
         totals["rows"] += r["rows"]
         totals["bytes"] += r["bytes"]
         totals["resumed"] += r["resumed"]

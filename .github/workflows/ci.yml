@@ -120,6 +120,9 @@ jobs:
 
       - name: test_price_history
         run: python -u src/test_price_history.py
+
+      - name: test_corpus_chunk_rule
+        run: python -u src/test_corpus_chunk_rule.py
       - name: test_scraper_markets
         run: python -u src/test_scraper_markets.py
       - name: test_scraper_match

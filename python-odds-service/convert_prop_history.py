@@ -220,11 +220,10 @@ async def _file_fingerprints(backend, table: str, filename: str, cols: list[str]
 
 
 def _fp(row) -> int:
-    # The same fingerprint prune_corpus.verify_partition_live authorises deletes with.
-    import hashlib
-
-    line = "".join(cs._canon(v) for v in row)
-    return int(hashlib.sha256(line.encode()).hexdigest()[:16], 16)
+    # The one fingerprint (corpus_store.fingerprint). P5's run used a copy that
+    # joined without the  separator; it was consistent with itself on
+    # both sides of every comparison, so that proof stands.
+    return cs.fingerprint(row)
 
 
 async def legacy_proof(pool, apply: bool) -> int:

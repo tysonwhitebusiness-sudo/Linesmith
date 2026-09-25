@@ -189,6 +189,26 @@ async def main(tables: list[str], check_only: bool, prune: bool = False) -> int:
             await _close(pool)
             return r.returncode
 
+    # P5.1: a CLOSED id chunk is final (never re-exported), so rows it lacks
+    # -- the tail written after its last export -- are added here as verified
+    # supplements (corpus_store.complete_chunk). Without this they could never
+    # leave Postgres: 10,150 mlb_pitch_events rows were stuck so on 2026-09-25.
+    import tempfile
+
+    completed: dict[str, int] = {}
+    for table in tables:
+        if table not in ID_CHUNKED:
+            continue
+        async with pool.acquire(timeout=600.0) as conn:
+            await conn.execute("SET statement_timeout = '15min'")
+            parts = await cs.partitions_for(conn, table)
+        with tempfile.TemporaryDirectory(prefix="corpus-supp-") as work:
+            for part in parts:
+                r = await cs.complete_chunk(pool, backend, table, part, work)
+                if r.get("written"):
+                    completed[table] = completed.get(table, 0) + r["missing"]
+                    print(f"  {table} {part}: +{r['missing']:,} rows -> {r['written']} (verified)", flush=True)
+
     # PRUNE closes the loop. Without it the corpus accumulates a faithful copy
     # and Postgres never sheds anything: measured 2026-09-12, the database was
     # growing +469.6 MB/day with 10 days of headroom, because Phase 5's
@@ -219,7 +239,7 @@ async def main(tables: list[str], check_only: bool, prune: bool = False) -> int:
         print(f"\n  prune not due ({prune_age:.1f}h since last, every "
               f"{PRUNE_EVERY_HOURS:.0f}h)", flush=True)
 
-    beat = {"tables": tables, "lagging_before": lagging, "pruned": pruned}
+    beat = {"tables": tables, "lagging_before": lagging, "pruned": pruned, "supplemented": completed}
     if pruned:
         beat["last_prune_at"] = datetime.now(timezone.utc).isoformat()
     elif prune_age is not None:

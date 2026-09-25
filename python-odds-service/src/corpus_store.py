@@ -610,7 +610,8 @@ async def export_table_pooled(pool, table: str, out_dir: str,
                               chunk_rows: int = CHUNK_ROWS,
                               parts: list[tuple] | None = None,
                               progress=None, resume: bool = True,
-                              spec: CorpusTable | None = None) -> dict:
+                              spec: CorpusTable | None = None,
+                              backend=None) -> dict:
     """`export_table`, but taking a POOL and acquiring one connection PER
     PARTITION rather than holding one for the whole table.
 
@@ -633,9 +634,26 @@ async def export_table_pooled(pool, table: str, out_dir: str,
             await conn.execute(f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
             parts = await partitions_for(conn, table, spec)
 
+    # P5.1 rule 2: a CLOSED id chunk that already exists in the corpus is
+    # final. Re-exporting it from Postgres would drop every id already pruned
+    # from it; rows it lacks are added by `complete_chunk` as supplements.
+    final: set[str] = set()
+    if backend is not None and spec_for(table, spec).partition_by == "id_chunk":
+        import asyncio as _asyncio
+
+        async with pool.acquire(timeout=600.0) as conn:
+            max_id = await conn.fetchval(f"SELECT max(id) FROM {table}")
+        present = set(await _asyncio.to_thread(backend.list_names, table, f"{table}_"))
+        final = {partition_name(table, p) for p in parts
+                 if not chunk_is_open(p, max_id) and f"{partition_name(table, p)}.parquet" in present}
+
     verdicts = []
     for part in parts:
         path = os.path.join(out_dir, table, f"{partition_name(table, part)}.parquet")
+        if partition_name(table, part) in final:
+            verdicts.append({"path": path, "partition": part, "table": table, "skipped": True,
+                             "final": True, "pg_rows": 0, "file_rows": 0, "bytes": 0, "ok": True})
+            continue
         done = completed_manifest(path) if resume else None
         if done is not None:
             v = {"path": path, "partition": part, "table": table,
@@ -844,3 +862,134 @@ def stale_partition_files(out_dir: str, table: str, valid_names: set[str]) -> li
         return []
     return [os.path.join(d, f) for f in sorted(os.listdir(d))
             if f.endswith(".parquet") and f[:-len(".parquet")] not in valid_names]
+
+
+# ---------------------------------------------------------------------------
+# P5.1 — A CLOSED ID CHUNK IS COMPLETED BY SUPPLEMENTS, NEVER BY A REWRITE.
+# ---------------------------------------------------------------------------
+#
+# MEASURED 2026-09-25. `refresh_corpus` re-exported an id chunk only while it
+# was still open at refresh time, so a chunk that filled up between two runs
+# kept the partial file it was exported with. 2,945,086 `prop_odds_history`
+# rows (P5's legacy proof) and 10,150 `mlb_pitch_events` rows (P5.1) were in
+# no corpus file. Nothing was lost -- `prune_corpus` deletes only ids it can
+# see in the corpus -- but the rows could never leave Postgres.
+#
+# THREE RULES:
+#   1. `prune_corpus` never deletes from an OPEN chunk (`lo + SPAN > max(id)`),
+#      so an open chunk's file can always be rebuilt in full from Postgres.
+#   2. A CLOSED chunk's main file is final: rewriting it from Postgres would
+#      drop every id already pruned. Rows it lacks go to append-only
+#      supplements, `<chunk>_sNN.parquet` (P5 wrote `<chunk>_final.parquet`
+#      for the legacy prop rows), each read back and verified before it counts.
+#   3. Verification reads the main file AND every supplement
+#      (`chunk_fingerprints`); the chunk's name is their shared prefix, and the
+#      table glob `<table>_*.parquet` reads them all as one relation.
+
+
+def fingerprint(row) -> int:
+    """The per-row fingerprint that authorises a delete -- THE one implementation
+    (`prune_corpus`, `convert_prop_history` and `complete_chunk` all call it).
+
+    Values are joined with the unit separator \x1f, as `prune_corpus` always
+    did. A copy of it written in P5 joined them with "" instead (the separator
+    is invisible in a terminal); that copy was consistent with itself, but
+    compared against this one it read every supplement row as corrupt. One
+    function, so that cannot recur.
+    """
+    import hashlib
+
+    line = "\x1f".join(_canon(v) for v in row)
+    return int(hashlib.sha256(line.encode()).hexdigest()[:16], 16)
+
+
+def chunk_object_names(backend, table: str, part: tuple) -> list[str]:
+    """The chunk's main file and its supplements, as stored."""
+    name = partition_name(table, part)
+    return [n for n in backend.list_names(table, name)
+            if n == f"{name}.parquet" or n.startswith(f"{name}_")]
+
+
+def chunk_is_open(part: tuple, max_id: int | None) -> bool:
+    return max_id is None or part[1] + ID_CHUNK_SPAN > max_id
+
+
+def chunk_fingerprints(backend, table: str, part: tuple, cols: list[str]) -> tuple[dict[int, int], list[str]]:
+    """{id: fingerprint} over the main file and every supplement, and the names read.
+
+    Blocking (object storage): call through `asyncio.to_thread`.
+    """
+    import pyarrow.parquet as pq
+
+    fps: dict[int, int] = {}
+    names = chunk_object_names(backend, table, part)
+    id_i = cols.index("id")
+    for n in names:
+        pf = pq.ParquetFile(backend.open_object(table, n))
+        if list(pf.schema_arrow.names) != cols:
+            raise RuntimeError(f"{table}/{n}: schema {pf.schema_arrow.names} != {cols}")
+        for b in pf.iter_batches(batch_size=CHUNK_ROWS):
+            d = b.to_pydict()
+            for row in zip(*(d[c] for c in cols)):
+                fps[int(row[id_i])] = fingerprint(row)
+    return fps, names
+
+
+async def complete_chunk(pool, backend, table: str, part: tuple, workdir: str,
+                         spec: CorpusTable | None = None, apply: bool = True) -> dict:
+    """Make one CLOSED chunk complete: every frozen live row must be in the
+    corpus. Missing rows go to a new supplement, which is uploaded, read back
+    and verified. A content mismatch between the corpus and Postgres raises:
+    that is corruption, and nothing downstream may act on the chunk.
+    """
+    import asyncio
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    async with pool.acquire(timeout=600.0) as conn:
+        await conn.execute(f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
+        cols = await column_names(conn, table)
+        schema = await arrow_schema(conn, table)
+        max_id = await conn.fetchval(f"SELECT max(id) FROM {table}")
+    if chunk_is_open(part, max_id):
+        return {"part": part, "open": True}
+    fps, names = await asyncio.to_thread(chunk_fingerprints, backend, table, part, cols)
+    missing: list[tuple] = []
+    corrupt = live = 0
+    sql, prefix = _partition_query(table, cols, part, CHUNK_ROWS, spec)
+    last = -1
+    async with pool.acquire(timeout=600.0) as conn:
+        await conn.execute(f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
+        while True:
+            raw = await conn.fetch(sql, *prefix, last)
+            if not raw:
+                break
+            for r in raw:
+                live += 1
+                row = tuple(_cell(r[c]) for c in cols)
+                want = fps.get(int(r["id"]))
+                if want is None:
+                    missing.append(row)
+                elif want != fingerprint(row):
+                    corrupt += 1
+            last = raw[-1]["id"]
+    out = {"part": part, "open": False, "live": live, "files": len(names), "missing": len(missing),
+           "corrupt": corrupt, "written": None}
+    if corrupt:
+        raise RuntimeError(f"{table} {part}: {corrupt} row(s) differ between Postgres and the corpus")
+    if not missing or not apply:
+        return out
+    base = partition_name(table, part)
+    n = 1 + sum(1 for x in names if x.startswith(f"{base}_s"))
+    sup = f"{base}_s{n:02d}.parquet"
+    local = os.path.join(workdir, sup)
+    os.makedirs(workdir, exist_ok=True)
+    pq.write_table(pa.table({c: [r[i] for r in missing] for i, c in enumerate(cols)}, schema=schema),
+                   local, compression="zstd")
+    await asyncio.to_thread(backend.put, local, table, sup)
+    back, _ = await asyncio.to_thread(chunk_fingerprints, backend, table, part, cols)
+    unproven = sum(1 for r in missing if back.get(int(r[cols.index("id")])) != fingerprint(r))
+    if unproven:
+        raise RuntimeError(f"{table} {part}: {unproven} row(s) not proven after writing {sup}")
+    out["written"] = sup
+    return out

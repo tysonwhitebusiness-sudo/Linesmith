@@ -40,14 +40,12 @@ Read it next. In short:
    oddstrader openers, betmonitor still rate-limiting us, FanDuel NBA/NHL prop
    tabs). Nothing in line-buddy/Supabase changed for the source run. Also done: user CLV removed (`709d807`), `prop_odds_history`
    window 14 → 10 days (`2331a56`).**
-7. **ODDS BUILD — P0–P5 DONE; P5.1 (hardening) NEXT, then P6 (the bridge).** The operator's
+7. **ODDS BUILD — P0–P5.1 DONE; P6 (the bridge) NEXT.** The operator's
    approvals, D24 (storage) and D25 ($50/month ceiling) are in
    `docs/design/odds-build/HANDOFF-P5.md`, which still holds. P5 closed
    2026-09-25 03:46 UTC. Its Result section is in `P5-schema-and-writers.md`,
    with the measurements in `results/P5-read-timings.md`.
-   **Next: `P5.1-hardening.md`** (the corpus export gap and RLS on three
-   tables; moved there from P5's findings by the operator). **Then
-   `P6-bridge.md` in full.** D25 comes first: before the bridge
+   **Next: `P6-bridge.md` in full.** D25 comes first: before the bridge
    ships, audit every provider's live price and usage, then build meters,
    alerts and brakes. The bridge's Supabase writes must check
    `disk_guard_state.bridge_paused`.
@@ -71,7 +69,7 @@ Read it next. In short:
    | P2 names | **DONE 22:25 UTC** — `08fa35e`. `scraper_markets.py` (scraper labels → app keys), verify list decided, 28 keys and 49 books in both alias maps; coverage 99.9% props / 96.5% game markets. See P2 → Result |
 | P3 matching | **DONE 23:15 UTC** — scraper games and players → app ids in `bridge.db`; zero wrong links in the 170-game / 215-player hand check; MLB 98.3% of player rows (after the StatsAPI roster fallback), NFL 99.6%, CFB 89.4%, MLS 95.8%. See P3 → Result |
 | P4 storage decision | **CLOSED 2026-09-25 — D24:** everything reaches Supabase, compact (117 B/row), 10 days hot → corpus; disk held at 27 GB (~6.1 GB used) by our guard at 85%; no corpus reader for now. **D25:** $50/month all-in ceiling enforced by our own caps (audit + build before anything else that can raise a bill) |
-| P5.1 hardening | **NEXT** — `P5.1-hardening.md` |
+| P5.1 hardening | **DONE 2026-09-25** — RLS on 20 tables (not 3; anon could write to all); the corpus export gap fixed at its cause, 14,415 pitch rows backfilled and verified. See P5.1 → Result |
 | P5 schema + writers + compact history + disk guard | **DONE 2026-09-25 03:46 UTC** — `7b58cac`, `4c10275`, `c5b9cf7`; deployed (see Deploys). 7,100,514 rows converted and proven (in the table AND the corpus); old table dropped (DB 6,235 → 3,638 MB); reads no slower (Movers 15.6 → 10.3 s). See P5 → Result |
    | D24 (storage policy) | **decided 2026-09-25** (master plan §1) |
    | the six spec corrections (HANDOFF §"Known spec corrections") | **DONE** — P11 gate 2 = D13 (`3a1ac92`), P6 `scraper_unmatched_prices` (`9a1ec62`), P8 line movement + L5 dropping odds (`1680556`), P7 T0.4 (`ab73734`), S-G3 beyond 7 days (`eec6bba`). Each spec has a Changelog line |
@@ -91,10 +89,7 @@ Read it next. In short:
    UTC): raw pruning listed ~198k files on the writer thread. It is fixed
    (pruning has its own thread) and loaded at 22:24 UTC. See P0 → Result.
 
-   **Found in P5, now phase P5.1** (`P5.1-hardening.md`): the corpus export
-   gap (2,945,086 prop rows had never reached the corpus; P5 saved them;
-   `mlb_pitch_events` uses the same path) and RLS off on `slate_rankings`,
-   `model_status`, `tennis_match_stats`.
+   **P5's findings were closed in P5.1** (`P5.1-hardening.md` → Result).
    - `LinesmithCorpusRefresh` was disabled during the conversion and is
      re-enabled; it now handles `mlb_pitch_events` only (the prop history
      left its list).

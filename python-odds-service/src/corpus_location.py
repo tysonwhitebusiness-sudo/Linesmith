@@ -98,6 +98,11 @@ class CorpusBackend:
         """One corpus file as a seekable stream pyarrow can read."""
         raise NotImplementedError
 
+    def list_names(self, table: str, prefix: str = "") -> list[str]:
+        """File names under `table/` that start with `prefix` (P5.1: an id
+        chunk's main file and its supplements share its name as a prefix)."""
+        raise NotImplementedError
+
     def configure_duckdb(self, con) -> None:
         """Whatever the connection needs before it can read `table_glob`."""
 
@@ -128,6 +133,12 @@ class LocalCorpus(CorpusBackend):
 
     def table_glob(self, table: str) -> str:
         return os.path.join(self.root, table, f"{table}_*.parquet")
+
+    def list_names(self, table: str, prefix: str = "") -> list[str]:
+        d = os.path.join(self.root, table)
+        if not os.path.isdir(d):
+            return []
+        return sorted(f for f in os.listdir(d) if f.startswith(prefix) and f.endswith(".parquet"))
 
     @property
     def describe(self) -> str:
@@ -160,6 +171,25 @@ class S3Corpus(CorpusBackend):
     def table_glob(self, table: str) -> str:
         parts = [p for p in (self.prefix, table) if p]
         return f"s3://{self.bucket}/{'/'.join(parts)}/{table}_*.parquet"
+
+    def list_names(self, table: str, prefix: str = "") -> list[str]:
+        import boto3
+
+        s3 = boto3.client(
+            "s3", endpoint_url=self.endpoint, region_name=self.region,
+            aws_access_key_id=self.key_id, aws_secret_access_key=self.secret)
+        key_prefix = self._key(table, prefix)
+        out, token = [], None
+        while True:
+            kw = {"Bucket": self.bucket, "Prefix": key_prefix}
+            if token:
+                kw["ContinuationToken"] = token
+            r = s3.list_objects_v2(**kw)
+            out += [o["Key"].rsplit("/", 1)[-1] for o in r.get("Contents", [])]
+            if not r.get("IsTruncated"):
+                break
+            token = r.get("NextContinuationToken")
+        return sorted(n for n in out if n.endswith(".parquet"))
 
     def open_object(self, table: str, filename: str):
         """One corpus file as a seekable, pyarrow-readable stream.
