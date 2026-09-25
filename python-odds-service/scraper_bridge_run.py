@@ -238,7 +238,11 @@ class Bridge:
         self.book_prefix = "scrapertest" if self.test else ""
         self.split_prefix = f"{self.prefix}:" if self.test else ""
         self.policy = Policy.load(POLICY_PATH)
-        self.scraper = sqlite3.connect(f"file:{args.scraper_db}?mode=ro", uri=True, timeout=60)
+        # isolation_level=None: autocommit. The resolver writes a TEMP table; under the
+        # default mode that opens an implicit transaction nobody commits, which pins
+        # this connection to one snapshot (no new rows, ever) and holds back the
+        # scraper's WAL checkpoint. Measured live 2026-09-25 07:41: offers_read froze.
+        self.scraper = sqlite3.connect(f"file:{args.scraper_db}?mode=ro", uri=True, timeout=60, isolation_level=None)
         self.state = open_state(args.state_db)
         self.res = Resolver(self.scraper, self.state)
         self.res.reload_links()

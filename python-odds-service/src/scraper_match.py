@@ -372,7 +372,7 @@ async def run_matching(scraper_db: str, state_db: str, sports: list[str] | None 
     now = now or datetime.now(timezone.utc)
     stamp = now.isoformat()
     want = set(sports) if sports else None
-    scraper = sqlite3.connect(f"file:{scraper_db}?mode=ro", uri=True, timeout=30)
+    scraper = sqlite3.connect(f"file:{scraper_db}?mode=ro", uri=True, timeout=30, isolation_level=None)  # no implicit txn: see scraper_bridge_run
     state = open_state(state_db)
     summary = MatchSummary()
     try:

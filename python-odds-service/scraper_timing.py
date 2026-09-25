@@ -250,7 +250,7 @@ def timelines(rows: list):
 def measure(scraper_db: str, state_db: str, days: float, sports: set | None) -> dict:
     from scraper_bridge import GameRef, Policy, parse_ts
     policy = Policy.load(os.path.join(HERE, "scraper_bridge_policy.json"))
-    scraper = sqlite3.connect(f"file:{scraper_db}?mode=ro", uri=True, timeout=60)
+    scraper = sqlite3.connect(f"file:{scraper_db}?mode=ro", uri=True, timeout=60, isolation_level=None)
     state = sqlite3.connect(state_db, timeout=60)
     now = datetime.now(timezone.utc)
     since_dt = now - timedelta(days=days)

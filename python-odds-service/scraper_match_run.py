@@ -52,7 +52,7 @@ def report(summary) -> None:
 async def write_sample(n: int, sports: list[str] | None) -> str:
     os.makedirs(RESULTS, exist_ok=True)
     path = os.path.join(RESULTS, f"p3-sample-{datetime.now(timezone.utc):%Y-%m-%d}.csv")
-    scraper = sqlite3.connect(f"file:{SCRAPER_DB}?mode=ro", uri=True, timeout=30)
+    scraper = sqlite3.connect(f"file:{SCRAPER_DB}?mode=ro", uri=True, timeout=30, isolation_level=None)
     state = sqlite3.connect(STATE_DB, timeout=30)
     rng = random.Random(20260924)
     rows = []
