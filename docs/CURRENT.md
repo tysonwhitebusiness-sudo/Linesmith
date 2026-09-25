@@ -1,50 +1,63 @@
 # CURRENT — pick up here
 
-> **ODDS BUILD — updated 2026-09-25 19:15 UTC. P6–P10 CLOSED. Next: P11.**
-> Start a NEW session per phase. Read this block, then the phase's spec in
-> `docs/design/odds-build/`, then build.
+> **ODDS BUILD — updated 2026-09-25 22:30 UTC. P11, P12, P13 BUILT, TESTED,
+> PUSHED (`6d5fbe6`, `35b10c8`, `352d022`). They wait on ONE worker deploy.**
+> Each spec in `docs/design/odds-build/` has its Result (what was verified,
+> what was not, deviations).
 >
-> - **P11 next** (`docs/design/odds-build/P11-edge.md`): the market edge
->   (Python compute on the worker + TS render, one migration). **It needs a
->   Render worker deploy by the operator's hand** (the classifier refuses
->   Render API deploys): build, test, push, then write the deploy ask here.
->   `EdgeCard` is NOT built yet (P8's spec said "on /kit" — it is not; nor
->   was `MoneyCard`, which P10 built). Then P12 (also a worker deploy), P13.
-> - **P9 (closed, `5fbfdc5`)** — `P9-live.md` → Result. The live layer:
->   player/game odds poll every **45 s** (the spec's 30 s failed its own load
->   bar: p95 1.08 s at 45 s from the laptop, recorded), the Slate 60 s; the
->   game page polls a light `?live=1` read merged client-side
->   (`lib/odds/section/liveMerge.ts`), full resync every 8th poll. Diff in
->   `lib/odds/section/liveDiff.ts`, memory in `components/odds/live.ts`. Two
->   fixes the measurement forced: the game payload re-read 10 days of history
->   per poll, and every `/api/odds/*` read sat in `proxy.ts`'s 10/min
->   provider rate class (now page-read). Re-measure the load on a hosted
->   build before tightening 45 s.
-> - **P10 (closed)** — `P10-money.md` → Result. "Where the money is" beside
->   Line movement (game + player) and as the Market hub tab; splits ride on
->   the game/player payloads (`money`).
-> - **Operator items (new today):**
->   1. The scraper stalled again at **17:43 UTC** (watchdog restarted it at
->      17:44; the bridge ran ~450 s behind for a while) — the fourth today.
->      The earlier notes still stand: delete `OddsBridgeMatchReport`, and a
->      `wal_checkpoint(TRUNCATE)` at a scraper restart.
->   2. **Bridge: Kalshi prop contracts written with `side = 'under'`** in
->      `exchange_books` while their bid/ask are the YES side (Henry's rushing
->      ladder). P10 reads them as stored; the fix belongs in the bridge (label
->      every N+ contract `over`). Check `prop_odds`' Kalshi rows for the same.
->   3. The dev server another session runs on **:3001** returned 500 on
->      `/api/odds/player` and `/api/odds/game` while the same code served 200
->      directly and on a fresh server (:3000). Restart it before trusting it.
->   4. Carried: the two D25 cost inputs; the worker has no `CORPUS_S3_*`;
->      Propline `last_change_at` → `changed_at`. Worker deploy state:
->      `3eb5e4b` (P9/P10 are TypeScript only — no deploy needed).
-> - **Follow-ups listed in the Results (not blockers):** soccer 1X2 has no
->   game-page tab (three-way MarketSpec); `bookLabel("marathon")`;
->   `/api/props/line-history` has no caller; an MLB player page (665489)
->   never requests player odds; a player page flashes "No prices posted"
->   before its game id resolves.
-> - **P6 bridge** live on the laptop (task `LinesmithScraperBridge`); status
->   `odds-scraper/data/bridge_status.json`.
+> **⚑ THE DEPLOY ASK (operator, by hand — the classifier refuses Render API deploys)**
+> - **Service:** `line-buddy-odds-worker`. **Commit:** `352d022` (or later
+>   `main`; it carries P11 + P12 + P13). The worker is on `3eb5e4b`.
+> - **What it turns on:** `marketEdgeJob` every 2 min (writes `market_edges`,
+>   `market_edge_log`, `app_flags.edge_auto_off`; `reference.start` for P13);
+>   the four odds research flags inside `slateRankingsJob` (`odds-steam`,
+>   `odds-pulled`, `odds-money-split`, `odds-first-mover`). The migration is
+>   already applied; the TypeScript is live on push.
+> - **Verify (SQL, 10 min after):**
+>   `SELECT count(*), max(computed_at) FROM market_edges;` → computed_at < 3 min old;
+>   `SELECT payload::json->>'ok', payload::json->>'runtime_s', payload::json->>'passing' FROM snapshot_cache WHERE cache_key = 'python-harness:job-run:marketEdgeJob';`;
+>   `SELECT key, value FROM app_flags;` → `edge_auto_off.on` false;
+>   `SELECT ranking_id, sport, count(*) FROM slate_rankings WHERE ranking_id LIKE 'odds-%' GROUP BY 1, 2;`
+>   Then open a game page (a Total or Spread tab with the green dot) and see an
+>   Edge card.
+> - **Until it deploys:** pages show no edges (they only show edges computed
+>   in the last 5 min — a fail-safe), and the health-check cron (auto-deployed
+>   on push) reports `marketEdgeJob: NEVER RUN`. That is expected, not a fault.
+> - **After it deploys, on NFL Sunday 2026-09-27:** read `runtime_s` across the
+>   slate. If p95 > 20 s, `run()` moves into the laptop bridge's cycle (P11
+>   spec; needs a bridge-task restart by you).
+>
+> **Operator checks that need you (not deploys):**
+> 1. A signed-in pass: track a line, then see the bell and the Slate's Your
+>    lines alerts (no test account in this session).
+> 2. The kill switch is yours: `UPDATE app_flags SET value = '{"enabled": false}',
+>    updated_by = 'operator' WHERE key = 'edge_display';` hides every edge in ≤ 30 s
+>    (drilled: 22 s). `true` brings them back.
+> 3. **P13's reads:** deploy + 3–5 days, then deploy + 2 weeks, then monthly —
+>    `cd python-odds-service && .venv/Scripts/python.exe edge_clv_report.py`
+>    → `docs/design/odds-build/results/e3-<date>.md`. Gate thresholds change only
+>    from that evidence (D3).
+> 4. Decide on P11's deviation 1: gate 6 uses the minimum of multiplicative,
+>    power and Shin; worst case (logged) would have killed both mockup edges.
+> 5. Carried from P10: the bridge's Kalshi `side='under'` labels; restart the
+>    :3001 dev server before trusting it; the D25 cost inputs; `CORPUS_S3_*` on
+>    the worker; Propline `last_change_at` → `changed_at` (without it Propline's
+>    soft prices fail edge gate 2); scraper stalls, `OddsBridgeMatchReport`.
+> 6. New, small: the bridge stores no CDN `Age`/`Last-Modified`, so every
+>    Pinnacle price takes D13's 15-minute bound. Storing `cache_age_s` in
+>    `extra` would make gate 2 exact (a bridge change + restart).
+>
+> **Next build work:** none is queued in `docs/design/odds-build/` after P13
+> (the build ends at P12; P13 is a measurement). Follow-ups in the Results:
+> the Scan edge cell was not seen in a live table (only `/kit` + payload);
+> soccer 1X2 has no game-page tab; `/api/props/line-history` has no caller;
+> MLB player 665489's page never requests odds; the "No prices posted" flash.
+> Then the other workstreams below (C5-UI sign-off after 09-27, the
+> odds-model Phase 1).
+>
+> **This session also** fixed two pre-existing test failures: `test_price_history`'s
+> owner list (P6's replay script) and two tennis read templates in
+> `slate_rankings.py`. The dev server it ran is stopped.
 
 **Updated 2026-09-23 — THE RUN IS COMPLETE. Track C (card redesign) and the
 sport-specific Spotlights are approved, audited, and every question is

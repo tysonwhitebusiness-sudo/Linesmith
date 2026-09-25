@@ -85,3 +85,71 @@ match the mockup's Alerts tab.
 ## Background checks
 
 None.
+
+---
+
+## Result (2026-09-25, `35b10c8`)
+
+**Built.**
+1. **Alerts.** `GET /api/tracked-lines/alerts` (session-scoped, direct read,
+   no cache, no write; behind the existing `/api/tracked-lines` auth prefix).
+   `lib/odds/alerts.ts` decides `moved`, `better_price` (≥ 5¢), `pulled` (+
+   "and reposted at"), `steam` (3+ books within 30 min, after tracking); ids
+   `<tracked id>:<type>:<event time>`. "The next game" is the player's priced
+   game with the earliest start still ahead (`lib/odds/gameStarts.ts`: StatsAPI,
+   NHL, ESPN scoreboards, cached 10 min — public schedule data only).
+   `components/useTrackedAlerts.ts` is one store for the header bell
+   (`AlertsBell` in `TopBar`, signed in only, unread badge, "Mark all read")
+   and the Slate's Your lines (an Alerts card; the nav counts it). Seen state
+   in `localStorage` (`linesmith:alerts:seen:<id>`), wrapped in try/catch.
+2. **Slip.** Each leg reads its market from `/api/odds/player`;
+   `lib/odds/slipBest.ts` uses the Best price card's own rule (`boardRows` +
+   `bestPrice`). "Best right now … · checked N s ago", "your {book} is N¢
+   worse", "Open at {book}" only from a stored `book_link` (`links` on the
+   player payload; http(s) only).
+3. **Flags.** `src/odds_flags.py` (main-line series ported from TS
+   `histFromChanges`, steam, first mover, money split) and four `RankingDef`s
+   (`kind='spotlight'`, freezing) + their words in `SPOTLIGHT_RANKINGS`. The
+   history is read once per sport-day through
+   `price_history.read_prop_changes_for_games`.
+
+**Tests.** `tests/tracked-line-alerts.test.ts` (7: quiet, no game, moved +
+stable id, 4¢ vs 6¢, pull + repost + returned, no user book, steam 3 vs 2 vs
+too slow vs before tracking); `tests/slip-best-book.test.tsx` (4, incl. the
+outlier); `src/test_slate_rankings.py` (steam at 3 not 2, not over 35 min, not
+one relay snapshot, first mover 12 min vs 5 min, money split at 15 not 14 and
+a GAME subject, no pronouns in the reads, all four spotlights that freeze;
+builds on real rows); `tests/slate-flags.test.ts` (the four render through the
+flags path, the split as a game). `npm test` 767/767; `tsc` clean.
+
+**Live data.** On today's rows: steam 26–89 players per sport, pulled and
+reposted 31–108, money split 11–41 games, first mover 0 (no Pinnacle-led prop
+move with a 10-minute lead today — honest). Written for CFB 2026-09-26 and NFL
+2026-09-27 through the job's own scoring and writer, and read back through
+`/api/slate/flags?date=…`: e.g. NFL steam "Saw 5 books move the receiving
+yards line up within 19 minutes, DraftKings first."; the split "MIN @ TB" as a
+game subject.
+
+**Render.** `/kit`: the slip leg (this found the bug below), the edge pieces;
+signed out the bell does not render and the alerts route answers 401.
+**Not seen yet:** the alerts on a signed-in Slate (no test account in this
+session — a signed-in pass is the operator's), and the flag chips on a real
+player/game page (they read today's date; they appear on 09-26 / 09-27).
+
+**Found and fixed:** the slip's first "best" was bet365 +900 — the kit's D19
+outlier. It now uses the Best price card's rule, so the two cannot disagree.
+
+**Deviations.**
+1. P8's `detectSteam` stays at 45 minutes; the alerts and the flags apply this
+   spec's 30 minutes on top of it.
+2. A steam run needs three independent observations (source + time) as well
+   as three books: one relay snapshot re-reading five books at one instant was
+   "5 books in 0 minutes" on real CFB data.
+3. The money split flags |money − bets| ≥ 15 (P10's split, either direction).
+4. No header bell existed; `AlertsBell` is new, in `TopBar`.
+5. Also fixed in passing: `test_slate_rankings.py` raised on two tennis
+   factors with no read template (`games_rate`, `surface_matches`).
+
+**Waiting on the operator:** the worker deploy (the flags come from
+`slateRankingsJob`). Until then the CFB/NFL rows written here stand as
+written and do not freeze (the old worker does not know these ids).

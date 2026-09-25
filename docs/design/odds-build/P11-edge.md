@@ -237,3 +237,95 @@ INSERT INTO app_flags (key, value, updated_by) VALUES ('edge_display', '{"enable
   the soft price nor a fast sharp source has moved since. The checked-age
   limits are kept, and `test_market_edge.py` gains the case where the soft
   book moved after the sharp price time.
+
+---
+
+## Result (2026-09-25, `6d5fbe6`; P13's `352d022` adds `reference.start`)
+
+**Built.** `predict/market_edge.py`: the gates, one function each; `evaluate()`
+pure; `run()` reads `prop_odds`/`game_lines` (+ `scraper_checks`, open pulls,
+`source_latency`, the schedules' starts), writes `market_edges`,
+`market_edge_log` and `edge_auto_off` through `db.write_market_edges` /
+`db.write_app_flag`. `marketEdgeJob` every 120 s in `JOB_REGISTRY`;
+`health_check.check_edge_self_check`. Migration `20260925202000_market_edge`
+**applied** (RLS read-only, `edge_display` on). TypeScript reads only:
+`readFlags` (30 s) / `readEdges` in `lib/db/oddsRead.ts`; `edges` rides on
+`/api/odds/player`, `/api/odds/game` (and its `?live=1`) and `/api/odds/scan`
+only while the switch is on and auto-off is off, and only rows computed in the
+last 5 minutes. `/api/odds/edges` (pattern 2, page-read in `proxy.ts`) feeds
+the Slate. Mounted: `EdgeCard` beside Best price on the player and game
+sections (tab dots; folds with `Collapse`; "Passing for N min"), the Slate
+game card dot, the Market hub's Edges tab (`SlateEdges`), Scan's Edge column
+(`ScanEdgeCell`, `sortable: false`, pin updated). CLAUDE.md "The Slate" §4
+carries the spec's D6 text. `tests/scan-no-edge.test.ts` rewritten: every
+model-vs-market assertion kept; an allowlist that may only READ payload fields
+and imports no de-vig or probability helper; the mounts may not read an
+edge's numbers; Scan cannot sort by it; the visibility rule is pinned.
+
+**Tests.** `src/test_market_edge.py` (CI): a fixture passing every gate, one
+fixture per gate failing only it, D13 (price time from Age / Last-Modified /
+the 15-minute bound; a soft move after it → no edge; a Kalshi 2-pt move → no
+edge; < 1.5 → shown; relay rules), both mockup edges, the anytime-TD mismatch
+(gate 8), self-check trip and 3-run clear. `npm test` 756/756 at the commit;
+`tsc` clean.
+
+**Drills (live, local dev server against the real database).**
+- Kill switch: `edge_display` → false at 20:58:33; every route
+  (`edges`, `game`, `game?live=1`, `scan`, `player`) had no `edges` 22 s later;
+  back on → edges returned in 19 s.
+- Auto-off: fake prices injected **in memory** into 11 real live markets (not
+  written to the live tables — see deviations) and run through the real
+  evaluator: the 12% price was capped by gate 8; 8 of 10 fake 6% edges passed
+  gates 1–8 (2 failed gate 2: an exchange had moved); the self-check tripped
+  (10 of 126 passing above 5%); the flag was written; `health_check`
+  reported `edgeSelfCheck` unhealthy; pages hid edges within 10 s. Three real
+  runs cleared it ("cleared after 3 clean runs").
+
+**Live, first runs (laptop).** 113 upcoming games, 8,486 markets with a
+reference line, ~31,000 market-sides evaluated per run. Passing between 7 and
+124 per run (freshness drives it); EV 0.0–6.2%, two above 5% of 51 in one run
+(3.9%, under the trip line); the self-check never tripped on real data.
+Commonest first failures: gate 2 (relays with no measured delay, Propline's
+missing `changed_at`), gate 1 (no Pinnacle at the line), gate 6.
+
+**Runtime.** From the laptop 19–65 s per run (the read 8–34 s over home
+broadband; evaluation 4–6 s after caching each market's shared pieces).
+**The worker's p95 is not measured yet — it needs the deploy.** Read
+`python-harness:job-run:marketEdgeJob` (`runtime_s`) across the NFL Sunday
+2026-09-27 slate; if p95 > 20 s, move `run()` into the laptop bridge's cycle
+(an operator restart of the bridge task).
+
+**Render.** Game page (MLB 824220, Total 7.5): the card at 1440 and 400, no
+horizontal overflow — `results/p11-game-edge-1440.png`. Player page (NFL
+3117256): the edge at 400 (Under 5.5 DraftKings +4.4%); at 1440 the check
+landed on another market and drew the honest empty state. Slate (MLB): dots
+on the two games with edges, the hub's Edges tab listing three totals (text
+check in the pane). Scan: the cell on `/kit` and in `/api/odds/scan`'s
+payload; the live NFL props board did not finish loading on the dev server
+inside the check, so the in-table cell was not seen on a page.
+
+**Deviations.**
+1. Gate 6 takes the minimum over multiplicative, power and Shin; worst case is
+   logged in `reference.ev_by_method`, not gating. Measured: worst case turns
+   both required edges negative (GB +1.0% → −1.4%; London +1.8% → −3.2%).
+2. London shows **+1.6%** (power, the minimum) where the mockup said +1.8%
+   (multiplicative); the test asserts both.
+3. `market_edges` keys with `UNIQUE NULLS NOT DISTINCT`, not a primary key: a
+   moneyline's line is NULL.
+4. Sharp price time: the bridge stores neither Age nor Last-Modified, so every
+   Pinnacle price uses D13's 15-minute bound (`price_time_basis:
+   assumed_max_cdn_age`) — the soft book must have held its price 15 minutes.
+   Conservative; storing `cache_age_s` in `extra` at the bridge would loosen it
+   to the truth (follow-up; the bridge is the operator's process).
+5. The Slate reads `/api/odds/edges`, not the Slate's 60 s `cachedRoute`
+   payload: that cache would hold an edge past the 30 s kill switch.
+6. The Edges tab lives in `SlateOddsHub` via `components/odds/SlateEdges.tsx`
+   (the spec named `SlateMarket.tsx`); the allowlist names the real files.
+7. The auto-off drill injected in memory, not as `edge-test` rows in the live
+   tables, so no fake price could reach a real page.
+8. Fail-safe added: a page shows no edge computed more than 5 minutes ago.
+9. Novig/ProphetX relays are not proven fast (P7), so prop edges today need
+   Pinnacle plus an agreeing first-hand exchange.
+
+**Waiting on the operator:** the worker deploy (docs/CURRENT.md), the runtime
+p95, and seeing the first live edges on a deployed page.

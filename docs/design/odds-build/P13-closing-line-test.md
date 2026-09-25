@@ -55,3 +55,23 @@ is a numbered decision in the master plan.
 that a soft close moving toward fair counts, one moving away does not, CLV
 matches a hand computation, the bootstrap interval is ordered, and n < 30
 prints "not enough data".
+
+---
+
+## Result (2026-09-25, `352d022`) — built and started; read later
+
+- `python-odds-service/edge_clv_report.py [--since YYYY-MM-DD]` as specified;
+  `src/test_edge_clv_report.py` (CI) passes.
+- The close needs each game's start: P11's writer now stores it in
+  `reference.start`; older rows fall back to `game_result.event_start`, then
+  the scoreboards.
+- First run 2026-09-25 22:13 UTC: 2 closed edges (MLB), both measured — "not
+  enough data", as it should (`results/e3-2026-09-25.md`). Rows logged today
+  came from the laptop runs during the P11 build; they are real edges on real
+  prices, and they stay in the log.
+- **It starts collecting for real at the worker deploy** (marketEdgeJob).
+  **Read it:** first at deploy + 3–5 days (≈ 2026-09-29 to 10-01 if deployed
+  2026-09-26), the real report at deploy + 2 weeks (≈ 2026-10-10), then
+  monthly: `cd python-odds-service && .venv/Scripts/python.exe edge_clv_report.py`.
+- No scheduled task was created (the report is a laptop script that writes a
+  file into the repo; the dates are in `docs/CURRENT.md`).
