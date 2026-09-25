@@ -78,7 +78,10 @@ def adds_up() -> bool:
     s.commit()
     s.close()
     st = open_state(bdb)
-    st.execute("INSERT INTO game_links VALUES ('gk','nfl','401',0,'exact',0,'','x')")
+    # Named columns: game_links has gained columns since (P6's backfill state), and a positional
+    # insert broke on each one.
+    st.execute("INSERT INTO game_links (game_key, app_sport, app_game_id, reversed, method, start_delta_min, "
+               "app_start, linked_at) VALUES ('gk','nfl','401',0,'exact',0,'','x')")
     st.execute("INSERT INTO player_links VALUES ('draftkings','jordan love','401','nfl','p9','Jordan Love','GB','QB','exact','x')")
     st.commit()
     st.close()

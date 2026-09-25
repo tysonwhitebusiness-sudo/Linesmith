@@ -1,5 +1,25 @@
 # CURRENT — pick up here
 
+> **P0–P13 AUDIT — IN PROGRESS (stopped at the usage limit, 2026-09-25 ~23:40 UTC).**
+> Done: the price-time fix (`bed4b6f`; exact CDN copy age, median 449 s vs the
+> 900 s assumed — **needs the laptop bridge task restarted AND the worker
+> deploy** to go live; `scraper_checks.price_asof` is 0 of 1,958 until then).
+> Tests: all 30 CI Python tests pass after removing 3 dead CI steps (files
+> deleted 09-06 — CI was red since) and fixing `test_scraper_volume`'s fixture;
+> live-DB writer tests (P1/P5) all pass; npm 767/767. Health check: every job
+> green except `marketEdgeJob` (awaits deploy) and `harvesterScrapes` (NBA/EPL
+> OddsHarvester tasks, not odds-build). Live tables per phase look healthy
+> (history 1.4M prop + 1.2M game rows/24 h, 100 partitions, no table without
+> RLS, bridge lag 27 s, source_latency ran 09-25 10:33).
+> **Open finding:** `game_line_pulls` 622k rows/24 h — 415k from
+> actionnetwork and 175k from comparenbet, ~97% "returned" within ~15–25 min:
+> relays dropping and re-listing alt lines, logged as pulls. Noise that inflates
+> Pulled lists/flags; fix = don't record pulls for relay-only sources (or require
+> a first-hand source) — not yet done.
+> **Left:** finish the audit (P8–P13 route/render checks on a fresh dev
+> server), then write the per-phase deviations report (sources: each spec's
+> Result, `HANDOFF-P0-P4.md` "Known spec corrections", P4's D24 supersession).
+
 > **ODDS BUILD — updated 2026-09-25 22:30 UTC. P11, P12, P13 BUILT, TESTED,
 > PUSHED (`6d5fbe6`, `35b10c8`, `352d022`). They wait on ONE worker deploy.**
 > Each spec in `docs/design/odds-build/` has its Result (what was verified,
