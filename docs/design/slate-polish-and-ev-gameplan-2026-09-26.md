@@ -81,9 +81,23 @@ evidence): S-G3 (poll far-out games more often — the scraper lane item),
 measuring relay delays for more books, and the self-check rule (it trips on
 2 hot edges out of 27).
 
+### C2. Correction, measured the same morning (gate 2 by cause)
+
+Broken down properly, gate 2's failures were NOT mostly the 3-minute soft rule:
+
+| gate-2 cause | share | what it is | fix |
+|---|---|---|---|
+| "sharp checked N min ago > 20" | **74%** | **a bridge bug**: after a restart the bridge only re-learned which games an endpoint covers from price CHANGES, so unchanged Pinnacle games stopped being confirmed (18 of 99 in 20 min; median 33 min) | fixed `f0d1049` — the map is rebuilt at start-up; **takes effect when the bridge task restarts** |
+| relay with no measured delay for the book | 19% | P7 measured a relay's delay only for books with 30+ repeated changes | legitimate: keep measuring (the daily P7 run grows n); never trust an unmeasured relay |
+| soft checked > 3 min | 6% | the scraper polls games >24 h out every 10–30 min | fixes itself: inside 24 h every 3 min (borderline), inside 6 h every minute. Legitimate speed-ups: S-G3 (poll further-out games faster) or an on-demand re-check of just the book and game behind a positive candidate before it is shown |
+| relay showed no change in 60 min / relay late | <1% | D23 "since, not checked" | by design |
+
+None of the fixes loosens a rule: each makes the price we compare genuinely
+fresh, or confirms it is.
+
 ## D. A Spotlight card: best prices vs the sharp price, today
 
-**Proposed:** "Best prices vs the sharp fair price" — the day's market lines for
+**Operator (2026-09-26): yes — a card ranking edge/EV.** **Proposed:** "Best prices vs the sharp fair price" — the day's market lines for
 the sport ranked by EV, from `market_edge_candidates` (Python's numbers; the
 page ranks, never computes). Each row: game/player, market and line, the book
 (logo) and price, fair price, EV, and a status: **EDGE** (passes every gate) or
