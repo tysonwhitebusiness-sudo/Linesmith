@@ -11,7 +11,7 @@
  * only carries semantic tones.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Avatar } from './Avatar';
 import { Tooltip } from './Tooltip';
 import { cx } from './cx';
@@ -236,6 +236,72 @@ export function ResultMark({
       )}
     >
       <span aria-hidden>{glyph}</span>
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `ClampText` — a sentence that belongs to a row, at ONE fixed width, two lines
+ * until pressed (slate-polish v4, operator-approved 2026-09-26).
+ *
+ * WHY A FIXED WIDTH. Laid across the full width of a row, the sentence stopped
+ * wherever it ended: short ones stopped halfway, long ones ran off the card,
+ * and the rows read as ragged. Under the name at one width, every row keeps
+ * the same shape. Pressing it opens the rest in place.
+ */
+export function ClampText({ children, className }: { children: ReactNode; className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen((v) => !v);
+      }}
+      className={cx(
+        'mt-1 block w-[290px] max-w-full cursor-pointer text-left text-label text-ink-secondary',
+        !open && 'line-clamp-2',
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * `StatusMark` — a status as an icon and at most one word, with its reason in
+ * two or three grey words beneath (slate-polish v4). It replaced a pill per
+ * row that restated the verdict in a sentence.
+ */
+export function StatusMark({ status, word, reason, className }: { status: 'ok' | 'hold' | 'no'; word: string; reason?: ReactNode; className?: string }) {
+  return (
+    <span className={cx('inline-flex flex-col', className)}>
+      <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap text-body-sm font-bold', status === 'ok' ? 'text-good-ink' : status === 'hold' ? 'text-warn-ink' : 'text-ink-muted')}>
+        <svg aria-hidden width="15" height="15" viewBox="0 0 16 16" className="shrink-0">
+          {status === 'ok' ? (
+            <>
+              <circle cx="8" cy="8" r="8" className="fill-good" />
+              <path d="M4.5 8.2 7 10.6l4.6-5" className="stroke-good-on" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </>
+          ) : status === 'hold' ? (
+            <>
+              <circle cx="8" cy="8" r="8" className="fill-warn" />
+              <path d="M6.2 5v6M9.8 5v6" className="stroke-ink" strokeWidth="1.8" strokeLinecap="round" />
+            </>
+          ) : (
+            <>
+              <circle cx="8" cy="8" r="7.2" fill="none" className="stroke-ink-faint" strokeWidth="1.6" />
+              <path d="M5.5 8h5" className="stroke-ink-muted" strokeWidth="1.8" strokeLinecap="round" />
+            </>
+          )}
+        </svg>
+        {word}
+      </span>
+      {reason ? <span className="ml-[21px] whitespace-nowrap text-label text-ink-muted">{reason}</span> : null}
     </span>
   );
 }

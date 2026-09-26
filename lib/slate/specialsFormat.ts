@@ -7,11 +7,34 @@ export const FACTOR_FORMAT: Record<string, 'pct' | 'fraction-pct'> = {
   hr_per_pa: 'pct',
   vs_hand_hr_pa: 'pct',
   team_share: 'pct',
+  barrel_pct: 'pct',
+  opp_k_pct: 'pct',
   opp_staff_hr_rate: 'fraction-pct',
+};
+
+/**
+ * PLAIN UNITS (slate-polish v4, operator-approved 2026-09-26): a number the
+ * reader can say out loud, so a column needs no explainer under it. "1.25"
+ * under Park had to be decoded; "+25%" is runs against an average park. Only
+ * factors whose stored scale was measured get a unit — the rest print bare
+ * rather than carry a guessed one.
+ */
+const PLAIN: Record<string, (v: number) => string> = {
+  // A run-scoring factor, 1.00 = average.
+  park_factor: (v) => `${v >= 1 ? '+' : '−'}${Math.abs(Math.round((v - 1) * 100))}%`,
+  // The share of games the opposing staff allows a homer, stored as a fraction.
+  opp_staff_hr_rate: (v) => `${Math.round(v * 100)}%`,
+  // Signed: positive is blowing out, negative in.
+  wind_out: (v) => (v > 0.5 ? `${Math.round(v)} mph` : v < -0.5 ? `${Math.round(Math.abs(v))} mph in` : 'Calm'),
+  temp_f: (v) => `${Math.round(v)}°`,
+  slg_vs_hand: (v) => v.toFixed(3).replace(/^0/, ''),
+  avg_hr_dist: (v) => `${Math.round(v)} ft`,
 };
 
 export function formatFactor(key: string, v: number | null | undefined): string {
   if (v == null) return '—';
+  const plain = PLAIN[key];
+  if (plain) return plain(v);
   const f = FACTOR_FORMAT[key];
   if (f === 'pct') return `${v.toFixed(1)}%`;
   if (f === 'fraction-pct') return `${(v * 100).toFixed(1)}%`;

@@ -13,6 +13,10 @@ import {
   Chip,
   Collapse,
   PercentileCell,
+  HeatNumber,
+  ClampText,
+  StatusMark,
+  FormBars,
   ResultMark,
   DataTable,
   DrillDownPanel,
@@ -686,6 +690,35 @@ export default function KitPage() {
           <PercentileCell value="4.02" percentile={12} />
           <PercentileCell value="3.10 ERA" percentile={88} direction="lower" />
           <PercentileCell value="—" percentile={null} />
+          <PercentileCell value="+25%" percentile={96} label="Park" align="left" />
+        </Row>
+        <Row name="HeatNumber" note="a 0-100 score in the heat ramp's ink (Specials)">
+          <HeatNumber value={90} />
+          <HeatNumber value={55} />
+          <HeatNumber value={18} />
+        </Row>
+        <Row name="ClampText" note="a row's sentence: one fixed width, two lines, press for the rest">
+          <ClampText>
+            Plays in a park scoring <b className="font-semibold text-good-ink">25%</b> more runs than average, and faces a staff that allows a homer in{' '}
+            <b className="font-semibold text-good-ink">12%</b> of games, with a <b className="font-semibold text-good-ink">5 mph</b> wind blowing out.
+          </ClampText>
+        </Row>
+        <Row name="StatusMark" note="an icon and one word; the reason in grey under it">
+          <StatusMark status="ok" word="Edge" />
+          <StatusMark status="hold" word="Held" reason="passes every gate" />
+          <StatusMark status="no" word="Unverified" reason="price 6 min old" />
+        </Row>
+        <Row name="FormBars" note="the last games against the line; hover a bar for the game">
+          <FormBars
+            label="Strikeouts, last 10"
+            line={0.5}
+            games={[1, 2, 0, 1, 3, 1, 0, 2, 1, 1].map((v, i) => ({ value: v, hit: v > 0.5, label: `Sep ${14 + i} vs TOR`, detail: `${v} K` }))}
+          />
+          <FormBars
+            label="Walks, last 10"
+            line={0.5}
+            games={Array.from({ length: 10 }, (_, i) => ({ value: 0, hit: false, label: `${10 - i} games ago`, detail: '0 BB' }))}
+          />
         </Row>
         <Row name="Collapse · peek" note="once per viewer; not remembered; never with reduced motion">
           <div className="w-full max-w-md overflow-hidden rounded-card border border-line-soft">

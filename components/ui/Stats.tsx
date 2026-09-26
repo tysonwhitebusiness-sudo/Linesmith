@@ -259,6 +259,7 @@ export function PercentileCell({
   percentile,
   direction = 'higher',
   align = 'right',
+  label,
   className,
 }: {
   value: ReactNode;
@@ -266,23 +267,59 @@ export function PercentileCell({
   percentile: number | null | undefined;
   direction?: StatDirection;
   align?: 'left' | 'right';
+  /**
+   * A short label printed BESIDE the number ("Park +25%"). For a list whose
+   * rows carry different factors (the game page's Flags today), where no
+   * column header can say what each number is. Never words under the number:
+   * the operator rejected explainers under a value (slate-polish v3 → v4).
+   */
+  label?: ReactNode;
   className?: string;
 }) {
+  const lab = label ? <span className="mr-1.5 whitespace-nowrap text-label font-normal text-ink-muted">{label}</span> : null;
   if (percentile == null || !Number.isFinite(percentile)) {
-    return <span className={cx('tabular-nums text-ink', className)}>{value}</span>;
+    return (
+      <span className={cx('inline-flex items-baseline tabular-nums text-ink', className)}>
+        {lab}
+        <span className="font-semibold">{value}</span>
+      </span>
+    );
   }
   const p = Math.max(0, Math.min(100, Math.round(percentile)));
   const g = goodness(p, direction);
   const t = g == null ? 0.5 : g / 100;
+  // COLOUR ONLY WHERE IT MEANS SOMETHING (slate-polish v4): the number is bold
+  // green in the pool's best fifth and bold red in its worst, plain between.
+  // The bar and the percentile carry the rest in the heat ramp.
+  const ink = g == null ? 'text-ink' : g >= 80 ? 'text-good-ink' : g <= 20 ? 'text-bad-ink' : 'text-ink';
   return (
-    <span className={cx('inline-flex min-w-[64px] flex-col gap-0.5', align === 'right' ? 'items-end' : 'items-start', className)}>
-      <span className="font-semibold tabular-nums text-ink">{value}</span>
-      <span className="text-overline font-semibold tabular-nums" style={{ color: heatInk(t) }}>
-        {ordinal(p)} pct
+    <span className={cx('inline-flex min-w-[84px] flex-col gap-1', align === 'right' ? 'items-end' : 'items-start', className)}>
+      <span className="inline-flex items-baseline">
+        {lab}
+        <span className={cx('text-body font-bold tabular-nums', ink)}>{value}</span>
       </span>
-      <span aria-hidden className="block h-[3px] w-full overflow-hidden rounded-full bg-card-sunk">
-        <span className="block h-full rounded-full" style={{ width: `${p}%`, background: heatFill(t) }} />
+      <span className="flex w-full items-center gap-1.5">
+        <span aria-hidden className="block h-1 min-w-[40px] flex-1 overflow-hidden rounded-full bg-card-sunk">
+          <span className="block h-full rounded-full" style={{ width: `${p}%`, background: heatFill(t) }} />
+        </span>
+        <span className="text-overline font-semibold tabular-nums" style={{ color: heatInk(t) }}>
+          {ordinal(p)}
+        </span>
       </span>
+    </span>
+  );
+}
+
+/**
+ * A 0-100 score as a bold number in the heat ramp's ink — the Specials score
+ * (slate-polish v4). It replaced a grey magnitude bar that said "bigger"
+ * without saying better or worse.
+ */
+export function HeatNumber({ value, text, className }: { value: number; text?: ReactNode; className?: string }) {
+  const t = Math.max(0, Math.min(100, value)) / 100;
+  return (
+    <span className={cx('text-title font-bold tabular-nums', className)} style={{ color: heatInk(t) }}>
+      {text ?? Math.round(value)}
     </span>
   );
 }
