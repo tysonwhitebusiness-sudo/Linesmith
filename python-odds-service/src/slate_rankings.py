@@ -312,6 +312,12 @@ def _et_date(iso: str | None) -> date | None:
 
 
 async def _sport_games_today(sport: str, slate: date) -> list:
+    # MLB has its own loader (the snapshot's schedule, not ESPN's): the shared
+    # builders (role changes, milestones, revenge, the odds flags) call this for
+    # every sport, and "mlb" reached ESPN's config and raised KeyError on
+    # 2026-09-26, aborting every ranking after it that run.
+    if sport == "mlb":
+        return await _mlb_games_today(slate)
     if sport == "nhl":
         loaded = await gc.load_nhl_games()
     elif sport.startswith("tennis"):
@@ -2396,7 +2402,7 @@ async def run(slate: date | None = None, grade_for: date | None = None) -> dict:
     grade_for = grade_for or (slate - timedelta(days=1))
 
     pool = await db.get_pool()
-    written = frozen = 0
+    written = frozen = failed = 0
     per_ranking: dict[str, str] = {}
 
     async with pool.acquire() as conn:
@@ -2413,9 +2419,14 @@ async def run(slate: date | None = None, grade_for: date | None = None) -> dict:
                     per_ranking[key] = f"frozen ({n} rows)" if n else "already frozen"
                     continue
                 try:
-                    cands = await rdef.build(conn, slate) if len(rdef.sports) == 1 else await rdef.build(conn, slate, sport)
-                except TypeError:
-                    cands = await rdef.build(conn, slate)
+                    try:
+                        cands = await rdef.build(conn, slate) if len(rdef.sports) == 1 else await rdef.build(conn, slate, sport)
+                    except TypeError:
+                        cands = await rdef.build(conn, slate)
+                except Exception as e:  # one ranking's failure must not stop the rest (2026-09-26)
+                    per_ranking[key] = f"FAILED: {type(e).__name__}: {e}"[:200]
+                    failed += 1
+                    continue
                 if not cands:
                     per_ranking[key] = "no candidates"
                     continue
@@ -2428,6 +2439,9 @@ async def run(slate: date | None = None, grade_for: date | None = None) -> dict:
                 per_ranking[key] = f"{len(cands)} candidates -> top {len(top)}"
 
     graded = await grade(grade_for)
+    if failed:
+        # Still a failed run in the job log (health_check alerts), after every other ranking was written.
+        raise RuntimeError(f"{failed} ranking(s) failed: " + "; ".join(v for v in per_ranking.values() if v.startswith("FAILED")))
     return {"slate": str(slate), "written": written, "frozen": frozen, "graded": graded,
             "rankings": per_ranking}
 
