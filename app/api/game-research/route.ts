@@ -82,6 +82,18 @@ export async function GET(request: Request) {
     if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;
   }
+  // Dev-only replay (MLB): the game as it stood at a StatsAPI timecode, so a
+  // finished game can be looked at live. Uncached on purpose — it is a moving
+  // read for reviewing the page, never a visitor's load, and it must not leave
+  // a live-shaped entry under a final game's key.
+  const replay = url.searchParams.get('replay');
+  if (replay) {
+    if (process.env.NODE_ENV === 'production' || sport !== 'mlb' || !/^\d{8}_\d{6}$/.test(replay)) {
+      return NextResponse.json({ error: 'replay is dev-only, MLB only, and takes a timecode yyyymmdd_hhmmss (UTC)' }, { status: 400 });
+    }
+    const payload = await readMlbGameResearch(gameId, new Date(), replay).catch(() => null);
+    return payload ? NextResponse.json(payload) : NextResponse.json({ error: `No replay of ${sport} game ${gameId} at ${replay}` }, { status: 404 });
+  }
   let state = await reader.state(gameId).catch(() => null);
   if (!state) {
     // R12d: the state lookups use lenient fetches, so a null here is either "no

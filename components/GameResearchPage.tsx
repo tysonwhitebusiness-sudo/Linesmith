@@ -58,8 +58,11 @@ export interface GameResearchPageProps {
 }
 
 export function GameResearchPage({ sport, gameId, onReadyChange }: GameResearchPageProps) {
-  const research = useGameResearch(sport, gameId);
   const search = useSearchParams();
+  const replayFrom = search?.get('replay') ?? null;
+  const replaySpeed = Number(search?.get('speed') ?? 1) || 1;
+  const replay = useMemo(() => (replayFrom && /^\d{8}_\d{6}$/.test(replayFrom) ? { from: replayFrom, speed: replaySpeed } : null), [replayFrom, replaySpeed]);
+  const research = useGameResearch(sport, gameId, replay);
   const router = useRouter();
   const pathname = usePathname();
   const requested = search?.get('state') ?? null;
@@ -102,6 +105,12 @@ export function GameResearchPage({ sport, gameId, onReadyChange }: GameResearchP
 
   return (
     <div className="space-y-4">
+      {replay ? (
+        // Dev-only: says plainly that this is a finished game replayed, not a live one.
+        <Chip tone="warn">
+          Replay from {replay.from} UTC at {replay.speed}x · dev only
+        </Chip>
+      ) : null}
       <GameHero data={data} />
       {/* F0 — what the ranking job flagged about this game and the players in
           it today. Nothing renders once the slate has moved on. */}

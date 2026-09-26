@@ -120,8 +120,21 @@ function propResults(rows: PropOddsRow[], start: string, box: MlbGameResearchPay
   return { props, altOnly };
 }
 
-export async function readMlbGameResearch(gamePk: number, now: Date = new Date()): Promise<MlbGameResearchPayload | null> {
-  const feed = await getLiveFeed(gamePk);
+/** A StatsAPI timecode (`20260926_002926`, UTC) as a date. */
+export function timecodeDate(timecode: string): Date {
+  const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(timecode);
+  if (!m) throw new Error(`Bad timecode ${timecode}`);
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+}
+
+/**
+ * `replay` (dev only, `/api/game-research?replay=`) reads the game as it stood
+ * at that StatsAPI timecode: the feed, the win probability and the in-game
+ * lines are all cut there, so a finished game renders exactly as it did live.
+ */
+export async function readMlbGameResearch(gamePk: number, now: Date = new Date(), replay?: string): Promise<MlbGameResearchPayload | null> {
+  if (replay) now = timecodeDate(replay);
+  const feed = await getLiveFeed(gamePk, replay);
   // R12d: StatsAPI answers 200 even for a game that does not exist (with empty
   // game data), so a null feed is always a failed request — "couldn't load" —
   // and only an answer with no game in it is "not found".
@@ -135,7 +148,7 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
   const started = state === 'live' || state === 'final';
 
   const [wpRaw, lines, propRows, inGame] = await Promise.all([
-    started ? getWinProbability(gamePk).catch(() => null) : Promise.resolve(null),
+    started ? getWinProbability(gamePk, replay).catch(() => null) : Promise.resolve(null),
     readPreGameOpenClose(String(gamePk), start).catch(() => []),
     readPreGamePropOddsForGame(String(gamePk), start).catch(() => [] as PropOddsRow[]),
     state === 'live' ? readInGameLines(String(gamePk), start, now).catch((): InGameLines => ({ now: [], moneyline: [] })) : Promise.resolve(null),

@@ -1,0 +1,1096 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game page · mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Roboto+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* app/globals.css :root, verbatim */
+  --paper:oklch(94.5% .003 260);--card:oklch(98.5% .002 260);--sunk:oklch(96.5% .002 260);--line:oklch(89% .004 260);--soft:oklch(92.5% .003 260);--hair:oklch(95% .003 260);
+  --ink:oklch(18% .005 260);--ink2:oklch(34% .005 260);--ink3:oklch(47% .005 260);--faint:oklch(72% .004 260);--masters:oklch(20% .006 260);
+  --fb:'Roboto Condensed',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--fd:'Barlow Condensed','Roboto Condensed',ui-sans-serif,system-ui,sans-serif;
+  --good:#00d26a;--bad:#ff4d4f;--warn:#ffb020;--good-ink:#00873f;--bad-ink:#c4161c;--warn-ink:#9a6200;--good-on:#04311a;--bad-on:#3d0405;
+  --char:#1d1f23;--char3:#34373d;--char-rule:#6e727a;--r:12px;--rc:8px;
+  --shadow:0 1px 2px rgba(15,18,24,.05),0 2px 8px -4px rgba(15,18,24,.08);
+  --away:#444;--home:#888;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#d9dce1;color:var(--ink);font:14px/1.5 var(--fb);-webkit-font-smoothing:antialiased}
+/* TYPE SYSTEM 1: headlines, card and section titles, player and team names in the display face */
+.sech h2,.ch h3,.tn2 .nm,.bigsc,.plate .big,.plate .down,.dia .inn,.pc .who,.perf .who{font-family:var(--fd)}
+.tn,.num,td.n,th.n{font-variant-numeric:tabular-nums}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+
+/* ---------- mockup chrome (not the design) ---------- */
+.mk{position:relative;z-index:50;background:#111316;color:#e9ebee;font:13px/1.4 ui-sans-serif,system-ui,sans-serif}
+.mk .row{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 16px}
+.mk b.t{font-size:14px;margin-right:6px}
+.mk .grp{display:flex;gap:2px;background:#24272c;border-radius:8px;padding:2px}
+.mk .grp button{border:0;background:none;color:#c9cdd3;padding:6px 10px;border-radius:6px;cursor:pointer}
+.mk .grp button.on{background:#fff;color:#111;font-weight:600}
+.mk .src{padding:0 16px 8px;color:#aeb3ba;font-size:12px}
+.mk .src b{color:#fff;font-weight:600}
+.mknote{max-width:1280px;margin:12px auto 0;padding:0 16px}
+.mknote div{border:1px dashed #9aa0a8;background:#fffbea;border-radius:8px;padding:9px 12px;font-size:12.5px;color:#3a3d42}
+.mknote div+div{margin-top:6px}
+
+/* ---------- the page frame ---------- */
+.stage{padding:14px 0 80px}
+.frame{container:page/inline-size;background:var(--paper);margin:0 auto;max-width:1280px;min-height:100vh}
+.frame.phone{max-width:390px;border-radius:28px;overflow:hidden;box-shadow:0 0 0 10px #16181b,0 20px 60px rgba(0,0,0,.35)}
+.hdr{position:sticky;top:0;z-index:30;background:color-mix(in oklch,var(--paper) 95%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar{display:flex;align-items:center;gap:12px;height:48px;padding:0 12px}
+.topbar .brand{display:flex;align-items:center;gap:6px;min-width:0}
+.topbar .brand img{height:18px;width:auto}
+.topbar .brand b{font-size:14px;font-weight:600;letter-spacing:-.025em}
+.topbar .sp{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:8px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);font-size:13px;font-weight:500;color:var(--ink2)}
+.topbar .back{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 8px;margin:0 auto;font-size:13px;font-weight:500;color:var(--ink2)}
+.topbar .rt{display:flex;align-items:center;gap:12px}
+.topbar .clk{font-size:12px;font-weight:500;color:var(--ink3);font-variant-numeric:tabular-nums}
+.topbar .slip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:8px;background:var(--masters);color:#fff;font-size:13px;font-weight:600}
+.topbar .slip span{border-radius:2px;background:rgba(255,255,255,.2);padding:0 4px;font-variant-numeric:tabular-nums}
+.topbar .sin{font-size:13px;font-weight:600;color:var(--ink2);padding:0 4px}
+.strip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;border-top:1px solid var(--line);background:color-mix(in oklch,var(--ink) 2%,transparent);padding:6px 12px}
+.strip .all{flex:none;display:grid;place-items:center;height:41px;padding:0 10px;border-radius:8px;background:var(--card);font-size:11px;font-weight:600}
+.strip .gm{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:41px;padding:4px 6px;min-width:96px;border-radius:8px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);font-size:11px}
+.strip .gm.on{box-shadow:inset 0 0 0 2px var(--ink)}
+.strip .gm .m{display:flex;align-items:center;gap:4px;font-weight:600}
+.strip .gm .m img{width:14px;height:14px;object-fit:contain}
+.strip .gm .m i{font-style:normal;font-weight:400;color:var(--ink3)}
+.strip .gm .s{color:var(--ink3)}.strip .gm .s.live{color:var(--good-ink);font-weight:600}
+.strip .gm.ph{min-width:96px;opacity:.55}
+@container page (max-width:639px){.topbar .brand b,.topbar .clk,.topbar .sin{display:none}.topbar{gap:8px;padding:0 8px}}
+.main{--g:24px;padding:12px 24px 40px}
+@container page (max-width:767px){.main{--g:12px;padding:12px 12px 30px}}
+
+/* ---------- HERO ---------- */
+.hero{border-radius:16px;overflow:hidden;background:var(--card);box-shadow:var(--shadow);border:1px solid var(--soft)}
+.band{position:relative;min-height:188px;color:#fff;isolation:isolate}
+.band .half{position:absolute;inset:0;z-index:-1}
+.band .half.a{background:linear-gradient(115deg,var(--a0) 0%,var(--a1) 60%,var(--a2) 100%);clip-path:polygon(0 0,53.5% 0,46.5% 100%,0 100%)}
+.band .half.h{background:linear-gradient(245deg,var(--h0) 0%,var(--h1) 60%,var(--h2) 100%);clip-path:polygon(53.5% 0,100% 0,100% 100%,46.5% 100%)}
+.band .seam{position:absolute;inset:0;z-index:-1;background:linear-gradient(to bottom right,transparent calc(50% - 1.5px),rgba(255,255,255,.55) 50%,transparent calc(50% + 1.5px));clip-path:polygon(46% 0,54% 0,54% 100%,46% 100%);opacity:.0}
+.band .seamline{position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:3px;background:rgba(255,255,255,.28);transform:skewX(-2.1deg) translateX(-50%)}
+.band .wm{position:absolute;z-index:-1;top:50%;width:250px;height:250px;object-fit:contain;opacity:.14;transform:translateY(-50%);filter:saturate(0) brightness(3)}
+.band .wm.a{left:-40px}.band .wm.h{right:-40px}
+.bandrow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px;padding:22px 26px}
+.team{display:flex;align-items:center;gap:14px;min-width:0}
+.team.h{flex-direction:row-reverse;text-align:right}
+.crest{flex:none;width:74px;height:74px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.crest img{width:52px;height:52px;object-fit:contain}
+.crest.flag img{width:74px;height:74px;border-radius:50%;object-fit:cover}
+.tn2{min-width:0;flex:1}
+.tn2 .nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:32px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.tn2 .meta{font-size:13px;color:rgba(255,255,255,.8);margin-top:3px;display:flex;gap:6px;align-items:center}
+.team.h .tn2 .meta{justify-content:flex-end}
+.tn2 .scorers{margin-top:6px;font-size:12px;color:rgba(255,255,255,.8);line-height:1.35}
+.poss{display:inline-block;width:18px;height:11px;border-radius:50%;background:#8b4a1c;border:1.5px solid #fff;position:relative;vertical-align:middle}
+.poss:after{content:'';position:absolute;left:4px;right:4px;top:4px;height:1px;background:#fff}
+.bigsc{font-size:64px;font-weight:700;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;text-shadow:0 2px 12px rgba(0,0,0,.25)}
+.bigsc.dim{opacity:.55}
+.plate{min-width:260px;max-width:340px;background:rgba(8,10,13,.62);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px 16px;text-align:center;backdrop-filter:blur(6px)}
+.plate .st{display:inline-flex;align-items:center;gap:6px;font-size:11px;line-height:1.3;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.15)}
+.plate .st.live{background:#fff;border-color:#fff;color:var(--ink)}
+.plate .st.live i{width:6px;height:6px;border-radius:50%;background:var(--good);animation:pulse 1.8s cubic-bezier(.4,0,.6,1) infinite}
+@keyframes pulse{50%{opacity:.25}}
+.plate .big{font-size:32px;font-weight:700;margin:6px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.plate .mid{font-size:13px;color:rgba(255,255,255,.8)}
+.plate .down{font-size:22px;font-weight:600;margin-top:4px}
+.plate .chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px}
+.plate .chip{font-size:11px;line-height:1.3;font-weight:600;letter-spacing:.04em;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.15);white-space:nowrap}
+.plate .chip.hot{background:#fff;border-color:#fff;color:var(--ink)}
+.dia{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:6px}
+.dia .inn{font-size:32px;font-weight:700;line-height:1}
+.dia .inn small{display:block;font-family:var(--fb);font-size:11px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.04em;text-transform:uppercase;margin-top:2px}
+.cnt{display:grid;grid-template-columns:auto auto;gap:3px 7px;align-items:center;font-size:11px;font-weight:600;letter-spacing:.04em;text-align:left}
+.dots{display:flex;gap:4px}
+.dots i{width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.75)}
+.dots i.on{background:#fff;border-color:#fff}
+.setgrid{border-collapse:collapse;margin:6px auto 0;font-variant-numeric:tabular-nums}
+.setgrid td{padding:3px 8px;font-family:var(--fd);font-size:22px;font-weight:600;text-align:center;opacity:.65}
+.setgrid td.w{opacity:1}
+.setgrid td.nm{font-family:var(--fb);font-size:12px;text-align:left;opacity:.95;font-weight:600;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.setgrid sup{font-size:10px}
+
+.hbody{padding:0}
+.hrow{padding:14px 22px;border-top:1px solid var(--soft)}
+.hrow:first-child{border-top:0}
+.olab{font-size:11px;line-height:1.3;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);margin:0 0 8px}
+/* the matchup / probables / decisions row */
+.duel{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;gap:16px;align-items:center}
+.duel .vs{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.pc{display:flex;align-items:center;gap:12px;min-width:0}
+.pc.r{flex-direction:row-reverse;text-align:right}
+.hs{flex:none;border-radius:50%;background:var(--sunk);object-fit:cover;border:2px solid var(--tc,var(--soft))}
+.hs.l{width:64px;height:64px}.hs.m{width:44px;height:44px}.hs.s{width:28px;height:28px;border-width:1.5px}
+.pc .role{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.pc .who{font-size:17px;font-weight:600;line-height:1.3}
+.pc .who .hand{font-family:var(--fb);font-size:11px;font-weight:600;color:var(--ink2);margin-left:6px;border:1px solid var(--soft);background:var(--sunk);border-radius:999px;padding:1px 7px;vertical-align:2px}
+.pc .ln{font-size:13px;color:var(--ink2);margin-top:2px}
+.tlogo{width:14px;height:14px;object-fit:contain;margin-right:4px;flex:none}
+.tdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tc);margin-right:5px;vertical-align:1px;flex:none}
+.abz{display:flex;gap:12px;align-items:center;border-left:1px solid var(--soft);padding-left:16px}
+.abz .txt{font-size:12px;color:var(--ink2);max-width:170px}
+.abz .txt b{display:block;color:var(--ink);font-size:13px}
+.deck{font-size:12px;color:var(--ink3);margin-top:8px}
+.deck b{color:var(--ink2)}
+.mixbars{display:flex;gap:3px;margin-top:6px}
+.mixbars span{height:6px;border-radius:3px}
+.mixkey{font-size:11px;color:var(--ink3);margin-top:3px}
+.perfs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.perf{display:flex;gap:10px;align-items:center;background:var(--sunk);border-radius:10px;padding:8px 10px;border-left:3px solid var(--tc)}
+.perf .who{font-weight:600;font-size:16px;line-height:1.2}
+.perf .ln{font-size:12px;color:var(--ink2)}
+.dec{display:inline-grid;place-items:center;min-width:22px;height:22px;font-size:12px;font-weight:700;border-radius:6px;padding:0 4px;margin-right:6px;background:var(--sunk);color:var(--ink2);vertical-align:middle}
+.dec.W{background:var(--good);color:var(--good-on)}.dec.L{background:var(--bad);color:#fff}
+/* field strip */
+.fstrip{position:relative}
+.fstrip svg{display:block;width:100%;height:auto}
+.lastplay{font-size:13px;color:var(--ink2);margin-top:8px}
+.lastplay b{color:var(--ink)}
+/* line score */
+.ls{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.ls th{height:28px;font-size:12px;font-weight:600;color:var(--ink3);padding:0 6px;text-align:center;background:var(--sunk);border-bottom:1px solid var(--line)}
+.ls td{height:28px;padding:0 6px;text-align:center;font-size:12px;font-weight:500;color:var(--ink2);border-bottom:1px solid var(--soft)}
+.ls tr:last-child td{border-bottom:0}
+.ls td.t{font-weight:600;color:var(--ink)}
+.ls th.t{color:var(--ink)}
+.ls td.tm{text-align:left;padding-left:8px;font-weight:500;color:var(--ink);white-space:nowrap}
+.ls td.tm .tlogo{vertical-align:-3px;margin-right:6px}
+.ls .cur{background:var(--sunk)}
+.ls th.cur{background:var(--sunk);color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.ls .gap{border-left:1px solid var(--soft)}
+.scroll{overflow-x:auto}
+/* wp / lines */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+.two>div{min-width:0}
+.tug{display:flex;height:28px;border-radius:8px;overflow:hidden;font-size:13px;font-weight:700;color:#fff}
+.tug span{display:flex;align-items:center;padding:0 10px;white-space:nowrap;min-width:0}
+.tug span:last-child{justify-content:flex-end}
+.tugsub{display:flex;justify-content:space-between;font-size:12px;color:var(--ink3);margin-top:5px}
+.lines{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
+.lines th{height:28px;font-size:12px;color:var(--ink3);font-weight:600;text-align:right;padding:0 6px;background:var(--sunk);border-bottom:1px solid var(--line)}
+.lines th:first-child,.lines td:first-child{text-align:left}
+.lines td{height:36px;padding:0 6px;text-align:right;border-bottom:1px solid var(--soft);white-space:nowrap}
+.lines td.now{font-weight:700}
+.lines td .mv{font-size:12px;color:var(--ink3);margin-left:4px}
+.lines tr:last-child td{border-bottom:0}
+.res{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.res span{font-size:11px;line-height:1.3;font-weight:600;letter-spacing:.04em;color:var(--ink2);border-radius:999px;padding:3px 8px;background:var(--sunk);border:1px solid var(--soft)}
+.facts{display:flex;flex-wrap:wrap;gap:6px 18px;padding:12px 24px;border-top:1px solid var(--soft);font-size:13px;color:var(--ink2)}
+.facts span{display:inline-flex;align-items:center;gap:6px}
+.facts svg{width:16px;height:16px;flex:none}
+.facts b{color:var(--ink);font-weight:600}
+.miss{font-size:12px;color:var(--warn-ink);margin-top:6px}
+@container page (max-width:640px){
+  .band{min-height:0}
+  .bandrow{grid-template-columns:1fr;gap:10px;padding:14px}
+  .team,.team.h{flex-direction:row;text-align:left}
+  .team.h .tn2 .meta{justify-content:flex-start}
+  .crest{width:46px;height:46px}.crest img{width:32px;height:32px}.crest.flag img{width:46px;height:46px}
+  .tn2 .nm{font-size:19px}
+  .bigsc{font-size:40px}
+  .plate{order:3;min-width:0;max-width:none;width:100%}
+  .band .half.a{clip-path:polygon(0 0,100% 0,100% 34%,0 52%)}
+  .band .half.h{clip-path:polygon(0 52%,100% 34%,100% 100%,0 100%)}
+  .band .seamline{display:none}
+  .band .wm{width:140px;height:140px}
+  .band .wm.a{top:22%;left:auto;right:-20px}.band .wm.h{top:66%}
+  .hrow{padding:12px 14px}
+  .duel{grid-template-columns:1fr;gap:10px}
+  .duel .vs{display:none}
+  .pc.r{flex-direction:row;text-align:left}
+  .abz{border-left:0;padding-left:0;border-top:1px solid var(--soft);padding-top:10px}
+  .two{grid-template-columns:1fr;gap:14px}
+  .facts{padding:10px 14px}
+  .dia{gap:12px}
+}
+
+/* ---------- sections ---------- */
+.snav{position:sticky;top:var(--hdr,103px);z-index:25;display:flex;gap:16px;overflow-x:auto;background:color-mix(in oklch,var(--paper) 90%,transparent);backdrop-filter:blur(8px);margin:16px 0 0;border-bottom:1px solid var(--char3);scrollbar-width:none}
+.snav a{flex:none;margin-bottom:-1px;border-bottom:2px solid transparent;padding:12px 0 11px;font-size:14px;line-height:1.5;font-weight:600;color:var(--ink3);white-space:nowrap}
+.snav a:hover{color:var(--ink)}
+.snav a.on{border-bottom-color:var(--ink);color:var(--ink)}
+
+.sec{margin-top:32px;scroll-margin-top:110px}
+.sech{position:relative;display:flex;flex-wrap:nowrap;align-items:center;gap:6px 12px;border-bottom:1px solid var(--soft);padding:8px 0 8px 20px;margin:0 calc(var(--g) * -1) 14px}
+.sech:before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:999px;background:var(--char)}
+.sech h2{margin:0;font-size:22px;font-weight:600;line-height:1.2;letter-spacing:.02em;text-transform:uppercase;color:var(--ink)}
+.sech .sub{font-size:13px;line-height:1.45;color:var(--ink3)}
+.sech .hide{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer}
+.sech .hide:hover{background:var(--sunk);color:var(--ink)}
+@container page (max-width:639px){.sech{flex-wrap:wrap;padding-left:16px}.sech h2{font-size:17px;line-height:1.3}.sech .hide{margin-left:0}}
+.secnote{font-size:13px;color:var(--ink2);margin:-4px 0 10px 2px}
+.crow{display:grid;grid-template-columns:repeat(var(--n,1),minmax(0,1fr));gap:14px;margin-bottom:14px}
+@container page (max-width:900px){.crow{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--soft);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;min-width:0}
+.card.acc{border-top:3px solid var(--tc)}
+.ch{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:44px;padding:6px 8px 6px 16px;border-bottom:1px solid var(--soft)}
+.ch h3{margin:0;font-size:16px;line-height:1.3;font-weight:600;letter-spacing:.03em;text-transform:uppercase;flex:1;display:flex;align-items:center;gap:6px;min-width:9em}
+.ch h3 img{width:20px;height:20px;object-fit:contain}
+.ch .badge{font-family:var(--fb);font-size:11px;line-height:1.3;font-weight:600;letter-spacing:.04em;color:var(--ink2);border-radius:6px;padding:1px 6px;box-shadow:inset 0 0 0 1px var(--line);font-variant-numeric:tabular-nums}
+.ch .scope{font-size:12px;line-height:1.35;font-weight:500;color:var(--ink3);text-align:right;padding-right:8px}
+.cap{font-size:12px;line-height:1.35;font-weight:500;color:var(--ink3);padding:8px 16px 12px}
+.empty{padding:24px 16px;text-align:center;color:var(--ink3);font-size:13px}
+.empty b{display:block;color:var(--ink2);margin-bottom:4px}
+.tabs{display:flex;width:max-content;max-width:calc(100% - 32px);overflow-x:auto;gap:2px;margin:12px 16px 0;padding:3px;border-radius:10px;background:var(--sunk);scrollbar-width:none}
+.tabs button{flex:none;border:0;background:none;border-radius:7px;padding:4px 10px;font-size:12px;line-height:1.35;font-weight:500;color:var(--ink3);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.tabs button:hover{color:var(--ink)}
+.tabs button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tabs button img{width:16px;height:16px;object-fit:contain}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:12px 16px 0}
+.legend span{display:inline-flex;align-items:center;gap:6px;font-size:13px;line-height:1.45;font-weight:600;border:1px solid var(--masters);border-radius:999px;padding:4px 10px;background:var(--masters);color:#fff;font-variant-numeric:tabular-nums}
+.legend span.k{border:0;background:none;color:var(--ink2);font-size:12px;font-weight:500;padding:0 4px}
+.legend i{width:10px;height:10px;border-radius:50%;background:var(--tc)}
+.legend i.ring{background:transparent;border:2px solid var(--tc)}
+
+table.t{width:100%;border-collapse:collapse;font-size:13px;line-height:1.45}
+table.t th{height:34px;background:var(--sunk);font-size:12px;line-height:1.35;font-weight:600;color:var(--ink3);text-align:left;padding:0 12px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;z-index:1}
+table.t th:first-child,table.t td:first-child{padding-left:14px;padding-right:14px}
+table.t th.n,table.t td.n{text-align:right}
+table.t th img{width:16px;height:16px;object-fit:contain;vertical-align:-3px;margin-right:4px}
+table.t td{height:36px;padding:4px 12px;border-bottom:1px solid var(--soft);vertical-align:middle;color:var(--ink2)}
+table.t td.n{color:var(--ink);font-variant-numeric:tabular-nums}
+table.t td:first-child{font-weight:500;color:var(--ink)}
+table.t tbody tr:hover td{background:var(--sunk)}
+table.t tr:last-child td{border-bottom:0}
+table.t td.txt{color:var(--ink2);min-width:180px}
+table.t tr.hl td{background:var(--sunk);font-weight:600;border-top:1px solid var(--line)}
+table.t tr.grp td{height:30px;background:none;font-size:11px;line-height:1.3;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);padding:12px 14px 0;border-bottom:0}
+table.t tr.score td{background:color-mix(in srgb,var(--tc) 7%,white)}
+table.t tr.score td:first-child{box-shadow:inset 3px 0 0 var(--tc)}
+.who2{display:flex;align-items:center;gap:9px;min-width:150px}
+.who2 .nm{font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap}
+.who2 .nt{font-size:12px;font-weight:500;color:var(--ink3);display:flex;align-items:center;white-space:nowrap}
+.who2 .nt .tlogo{width:14px;height:14px}
+.who2 img.lg{width:20px;height:20px;object-fit:contain;flex:none}
+.tall{max-height:420px;overflow:auto}
+.mark{display:inline-grid;place-items:center;min-width:22px;height:22px;font-size:12px;font-weight:700;border-radius:6px;padding:0 6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mark.good{background:var(--good);color:var(--good-on)}
+.mark.bad{background:var(--bad);color:#fff}
+.mark.neu{background:var(--sunk);color:var(--ink2)}
+/* StatusMark (components/ui/Pieces.tsx) */
+.smk{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;font-weight:700}
+.smk.ok{color:var(--good-ink)}.smk.no{color:var(--ink3)}
+.smk svg{flex:none}
+.rk{display:inline-block;min-width:38px;text-align:center;font-size:12px;font-weight:600;border-radius:6px;padding:2px 6px}
+.rk.good{background:var(--good);color:var(--good-on)}.rk.bad{background:var(--bad);color:#fff}.rk.mid{background:var(--sunk);color:var(--ink2)}
+.cellbar{position:relative;display:inline-block;min-width:64px;text-align:right}
+.cellbar i{position:absolute;right:0;top:50%;height:16px;transform:translateY(-50%);border-radius:3px;background:var(--tc,#c9ccd1);opacity:.28}
+.cellbar b{position:relative;font-weight:600}
+.pct{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+.pct .trk{width:58px;height:6px;background:var(--hair);border-radius:3px;overflow:hidden}
+.pct .trk i{display:block;height:100%;background:var(--tc,#8a8f98)}
+/* mirrored comparison (team stats) */
+.cmp{padding:8px 16px 12px}
+.cmp .hd{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;padding:6px 0 8px;font-weight:600;font-size:13px;align-items:center}
+.cmp .hd span{display:flex;align-items:center;gap:6px}
+.cmp .hd span:last-child{justify-content:flex-end}
+.cmp .hd img{width:20px;height:20px;object-fit:contain}
+.cmp .r{display:grid;grid-template-columns:1fr minmax(110px,auto) 1fr;gap:10px;align-items:center;padding:5px 0;border-top:1px solid var(--hair)}
+.cmp .lab{text-align:center;font-size:12px;color:var(--ink2);white-space:nowrap}
+.cmp .side{display:flex;align-items:center;gap:8px}
+.cmp .side.a{flex-direction:row-reverse}
+.cmp .side .bar{flex:1;height:8px;background:var(--hair);border-radius:4px;overflow:hidden;display:flex}
+.cmp .side.a .bar{justify-content:flex-end}
+.cmp .side .bar i{display:block;height:100%;border-radius:4px}
+.cmp .side b{min-width:44px;font-variant-numeric:tabular-nums;font-size:13px}
+.cmp .side.a b{text-align:right}
+.cmp .side b{font-weight:500}.cmp .side b.lead{font-weight:700;color:var(--ink)}
+/* props tracker */
+.prog{display:flex;align-items:center;gap:8px;min-width:150px}
+.prog .trk{position:relative;flex:1;height:8px;border-radius:4px;background:var(--hair)}
+.prog .trk i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--tc)}
+.prog .trk u{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);border-radius:1px}
+.prog b{font-variant-numeric:tabular-nums;min-width:48px;text-align:right;font-size:13px;font-weight:600;color:var(--ink)}
+/* form */
+.form{display:flex;align-items:flex-end;gap:5px;padding:12px 16px 4px;height:170px}
+.form .g{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;min-width:18px;height:100%}
+.form .g .b{width:100%;max-width:30px;border-radius:5px 5px 2px 2px;display:flex;align-items:flex-start;justify-content:center;font-size:11px;font-weight:700;padding-top:2px}
+.form .g .b.good{background:var(--good);color:var(--good-on)}.form .g .b.bad{background:var(--bad);color:#fff}
+.form .g img{width:18px;height:18px;object-fit:contain}
+.formrec{display:flex;gap:4px;padding:0 16px 6px}
+.formrec span{font-size:11px;font-weight:700;width:18px;height:18px;display:grid;place-items:center;border-radius:50%}
+.formrec span.W{background:var(--good);color:var(--good-on)}.formrec span.L{background:var(--bad);color:#fff}
+/* drilldown */
+.dd{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:380px}
+.dd .list{border-right:1px solid var(--soft);max-height:560px;overflow:auto}
+.dd .list .g{position:sticky;top:0;background:var(--sunk);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);padding:5px 12px;border-bottom:1px solid var(--soft)}
+.dd .it{display:flex;gap:9px;align-items:center;width:100%;border:0;background:none;text-align:left;padding:8px 12px;border-bottom:1px solid var(--hair);cursor:pointer}
+.dd .it.on{background:var(--sunk);box-shadow:inset 3px 0 0 var(--tc,var(--char))}
+.dd .it .l{font-weight:600;font-size:13px;color:var(--ink)}
+.dd .it .s{font-size:12px;color:var(--ink3)}
+.dd .it .bd{margin-left:auto;font-size:11px;color:var(--ink2);font-weight:600;letter-spacing:.04em}
+.dd .detail{padding:12px;display:grid;gap:12px;align-content:start}
+.dd .detail .card{box-shadow:none}
+@container page (max-width:639px){.ch .scope{text-align:left}}
+@container page (max-width:640px){.dd{grid-template-columns:1fr}.dd .list{max-height:220px;border-right:0;border-bottom:1px solid var(--soft)}}
+.oddsph{padding:18px 16px;color:var(--ink2);font-size:13px;background:repeating-linear-gradient(135deg,var(--card),var(--card) 10px,var(--sunk) 10px,var(--sunk) 20px)}
+.oddsph b{color:var(--ink)}
+.svgw{padding:12px 16px 4px}
+.svgw svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:fixed;z-index:100;pointer-events:none;background:var(--masters);color:#fff;border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.35;max-width:300px;box-shadow:0 8px 28px -8px rgba(15,18,24,.28),0 2px 6px rgba(15,18,24,.08);display:none}
+.tip div:first-child{font-size:14px;font-weight:700}
+.tip div+div{color:rgba(255,255,255,.7);margin-top:2px}
+</style>
+</head>
+<body>
+<div class="mk" id="mk"></div>
+<div class="mknote" id="mknote"></div>
+<div class="stage"><div class="frame" id="frame"></div></div>
+<div class="tip" id="tip"></div>
+<script src="data.js"></script>
+<script>
+// A missing face or crest (ESPN has no photo for most tennis players) is hidden, never a broken-image icon.
+document.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.style.visibility = 'hidden'; }, true);
+</script>
+<script>
+const G = window.GP;
+const SPORTS = [['mlb','MLB'],['nfl','NFL'],['cfb','CFB'],['nba','NBA'],['nhl','NHL'],['soccer','Soccer'],['tennis','Tennis']];
+const STATES = [['pre','Pregame'],['live','Live'],['final','Final']];
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const attr = (o) => esc(JSON.stringify(o));
+let S = { sport: 'mlb', state: 'live', view: 'desktop' };
+try { const [a, b, c] = location.hash.slice(1).split('/'); if (G.pages[a]) S.sport = a; if (b) S.state = b; if (c) S.view = c; } catch {}
+const PICK = {}; // drilldown and tab choices, by card key
+
+/* ---------------- the app's header (components/AppShell.tsx TopBar + DateGameStrip) ---------------- */
+function headerHtml(P) {
+  const h = P.hero;
+  const sport = SPORTS.find((s) => s[0] === S.sport)[1];
+  const st = h.state === 'live'
+    ? `<span class="s live">${esc(`${h.away.score ?? 0}–${h.home.score ?? 0}`)} ${esc(h.statusText ?? 'Live')}</span>`
+    : h.state === 'final'
+      ? `<span class="s">${esc(`${h.away.score ?? ''}–${h.home.score ?? ''}`)} Final</span>`
+      : `<span class="s">${esc(new Date(h.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))}</span>`;
+  const crest = (t) => (t.logo ? `<img src="${esc(t.logo)}" alt="">` : '');
+  const me = `<span class="gm on"><span class="m">${crest(h.away)}<span>${esc(h.away.abbr)}</span><i>@</i><span>${esc(h.home.abbr)}</span>${crest(h.home)}</span>${st}</span>`;
+  const ph = '<span class="gm ph"><span class="m"><span>···</span></span><span class="s">other games</span></span>';
+  return `<header class="hdr"><div class="topbar">
+      <span class="brand"><img src="linesmith-mark.png" alt=""><b>Linesmith</b></span>
+      <span class="sp">${esc(sport)}<svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="back"><span aria-hidden>←</span>Slate</span>
+      <span class="rt"><span class="clk">12:47 PM</span><span class="slip">Slip<span>0</span></span><span class="sin">Sign in</span></span>
+    </div>
+    <div class="strip"><span class="all">All</span>${ph}${me}${ph}${ph}${ph}</div></header>`;
+}
+
+/* ---------------- mockup chrome ---------------- */
+function chrome() {
+  const P = G.pages[S.sport][S.state];
+  const grp = (items, key) => `<div class="grp">${items.map(([k, l]) => `<button data-set="${key}:${k}" class="${S[key] === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  document.getElementById('mk').innerHTML = `<div class="row"><b class="t">Game page · mockup</b>${grp(SPORTS, 'sport')}${grp(STATES, 'state')}${grp([['desktop', 'Desktop'], ['phone', 'Phone 390'], ['heroes', 'All heroes']], 'view')}</div>
+    <div class="src">Real data: <b>${esc(P.source)}</b> · built through the app's own adapters ${new Date(G.builtAt).toISOString().slice(0, 16).replace('T', ' ')} UTC</div>`;
+  const notes = [];
+  if (P.note) notes.push(P.note);
+  if (P.hero.missing) notes.push(`Not in our data today, so not drawn: ${P.hero.missing.join('; ')}.`);
+  if (P.hero.away.clash && S.sport !== 'tennis') notes.push(`${P.hero.away.abbr} and ${P.hero.home.abbr} wear near-identical colours, so the away half switches to its second colour, or charcoal when that does not carry white text.`);
+  document.getElementById('mknote').innerHTML = notes.map((n) => `<div>${esc(n)}</div>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-set]');
+  if (b) { const [k, v] = b.dataset.set.split(':'); S[k] = v; location.hash = `${S.sport}/${S.state}/${S.view}`; render(); return; }
+  const p = e.target.closest('[data-pick]');
+  if (p) { const [k, v] = p.dataset.pick.split('|'); PICK[k] = v; const host = document.getElementById('card-' + k); if (host) host.outerHTML = cardHtml(CARDS[k], CTX); return; }
+  const n = e.target.closest('.snav a');
+  if (n) { e.preventDefault(); document.getElementById(n.getAttribute('href').slice(1))?.scrollIntoView({ behavior: 'smooth' }); }
+});
+
+/* ---------------- tooltips ---------------- */
+const tip = document.getElementById('tip');
+document.addEventListener('mousemove', (e) => {
+  const t = e.target.closest('[data-tip]');
+  if (!t) { tip.style.display = 'none'; return; }
+  const lines = JSON.parse(t.dataset.tip);
+  tip.innerHTML = lines.filter(Boolean).map((l) => `<div>${esc(l)}</div>`).join('');
+  tip.style.display = 'block';
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  tip.style.left = x + 'px';
+  tip.style.top = e.clientY + 16 + 'px';
+});
+
+/* ---------------- colours ---------------- */
+let CTX = null;
+function ctxFor(P) {
+  const h = P.hero;
+  let a = h.away.band[0], hm = h.home.band[0];
+  if (a === hm) hm = '#7a808a';
+  const byAbbr = { [h.away.abbr]: a, [h.home.abbr]: hm };
+  const logoByAbbr = { [h.away.abbr]: h.away.logo, [h.home.abbr]: h.home.logo };
+  return { P, h, sport: S.sport, away: a, home: hm, col: (k) => (k === 'away' ? a : k === 'home' ? hm : byAbbr[k] ?? null), byAbbr, logoByAbbr };
+}
+// components/charts/tokens.ts CATEGORICAL — the app's six pitch-type hues. Each pitch keeps
+// its hue on every card; related pitches share one (sweeper with slider, knuckle curve with
+// curve, splitter with changeup); anything rarer is grouped as grey, never a seventh hue.
+const CAT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
+const PITCH = { FF: CAT[0], SI: CAT[1], SL: CAT[2], ST: CAT[2], CH: CAT[3], FS: CAT[3], CU: CAT[4], KC: CAT[4], SV: CAT[4], FC: CAT[5], KN: 'oklch(47% 0.005 260)', EP: 'oklch(47% 0.005 260)', FO: CAT[3], unknown: 'oklch(47% 0.005 260)' };
+const PITCH_ALT = CAT;
+const pitchCol = (t, i) => PITCH[t] ?? PITCH_ALT[i % PITCH_ALT.length];
+const PITCH_NAME = { 'four-seam fastball': 'FF', 'four-seam': 'FF', sinker: 'SI', cutter: 'FC', slider: 'SL', sweeper: 'ST', curveball: 'CU', 'knuckle curve': 'KC', changeup: 'CH', splitter: 'FS', 'split-finger': 'FS', slurve: 'SV', knuckleball: 'KN', eephus: 'EP', forkball: 'FO' };
+const pitchDot = (name) => { const k = PITCH_NAME[String(name).toLowerCase()]; return k ? `<i class="tdot" style="--tc:${PITCH[k]}"></i>` : ''; };
+
+/* ---------------- icons ---------------- */
+function weatherIcon(text) {
+  const t = (text || '').toLowerCase();
+  if (/rain|shower|drizzle/.test(t)) return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b6fb6" stroke-width="2"><path d="M7 15a4 4 0 1 1 1-7.9A5 5 0 0 1 18 9a3.5 3.5 0 0 1-1 6.9H7z" fill="#dfe7f2"/><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3"/></svg>';
+  if (/dome|roof closed/.test(t)) return '<svg viewBox="0 0 24 24" fill="none" stroke="oklch(47% 0.005 260)" stroke-width="2"><path d="M3 17a9 9 0 0 1 18 0z" fill="oklch(92.5% 0.003 260)"/><path d="M3 17h18"/></svg>';
+  if (/cloud|overcast/.test(t)) return '<svg viewBox="0 0 24 24" fill="#e3e6ea" stroke="#7b8088" stroke-width="1.6"><path d="M7 18a4.5 4.5 0 1 1 1.2-8.8A5.5 5.5 0 0 1 19 11a3.5 3.5 0 0 1-.5 7z"/></svg>';
+  return '<svg viewBox="0 0 24 24" fill="#ffb020" stroke="#c98200" stroke-width="1.5"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" fill="none"/></svg>';
+}
+const pinIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="oklch(47% 0.005 260)" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+const clockIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="oklch(47% 0.005 260)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const parkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="#2f7d3a" stroke-width="2"><path d="M12 20L3 11a12.7 12.7 0 0 1 18 0z" fill="#dff0e0"/><path d="M12 20l-3.5-3.5L12 13l3.5 3.5z" fill="#e9d6b8" stroke="#a07a45"/></svg>';
+
+/* ================= HERO ================= */
+function teamBlock(t, side, P, h) {
+  const flag = /countries/.test(t.logo || '');
+  const poss = h.situation?.kind === 'field' && h.situation.possession === side ? ' <span class="poss" title="Has the ball"></span>' : '';
+  const sideLabel = S.sport === 'tennis' ? '' : side === 'away' ? 'Away' : 'Home';
+  const meta = [t.record, sideLabel].filter(Boolean).join(' · ');
+  const scorers = (h.goals || []).filter((g) => g.side === side);
+  const scoreText = scorers.length && (S.sport === 'soccer' || S.sport === 'nhl')
+    ? `<div class="scorers">${scorers.map((g) => esc(`${(g.name || '').split(' ').slice(-1)[0]} ${g.minute ?? (g.period ? `P${g.period} ${g.time}` : '')}`)).join(' · ')}</div>` : '';
+  const showScore = P.state !== 'pre' && t.score != null;
+  const other = side === 'away' ? h.home.score : h.away.score;
+  return `<div class="team ${side === 'home' ? 'h' : ''}">
+    <span class="crest ${flag ? 'flag' : ''}"><img src="${esc(t.logo)}" alt=""></span>
+    <div class="tn2"><a class="nm" href="#">${esc(t.name)}</a><div class="meta">${poss && side === 'home' ? poss : ''}${esc(meta)}${poss && side === 'away' ? poss : ''}</div>${scoreText}</div>
+    ${showScore ? `<div class="bigsc ${P.state === 'final' && t.score < other ? 'dim' : ''}">${esc(t.score)}</div>` : ''}
+  </div>`;
+}
+
+function whenParts(h) {
+  const d = new Date(h.start);
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+  const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+  return { time: `${time} ET`, day };
+}
+
+function plate(P, h) {
+  const s = h.situation;
+  if (P.state === 'pre') {
+    const w = whenParts(h);
+    let cd = '';
+    if (P.asOf) {
+      const ms = new Date(h.start) - new Date(P.asOf);
+      if (ms > 0 && ms < 36 * 3600e3) cd = `<div class="chips"><span class="chip hot">Starts in ${Math.floor(ms / 3600e3)}h ${String(Math.floor((ms % 3600e3) / 60e3)).padStart(2, '0')}m</span></div>`;
+    }
+    return `<div class="plate"><span class="st">Pregame</span><div class="big">${esc(w.time)}</div><div class="mid">${esc(w.day)}${h.round ? ' · ' + esc(h.round) : ''}</div>${cd}</div>`;
+  }
+  const live = P.state === 'live';
+  const st = live ? '<span class="st live"><i></i>Live</span>' : `<span class="st">${esc(h.statusText === 'FT' ? 'Full time' : h.statusText)}</span>`;
+  if (s?.kind === 'sets') return `<div class="plate">${st}${setGrid(h)}${h.resultNote && !live ? `<div class="mid" style="margin-top:6px">${esc(h.resultNote)}</div>` : ''}</div>`;
+  if (!live) {
+    const sub = h.notes?.length ? h.notes.join(' · ') : '';
+    return `<div class="plate">${st}<div class="big">Final</div>${sub ? `<div class="mid">${esc(sub)}</div>` : ''}</div>`;
+  }
+  if (s?.kind === 'diamond') {
+    const on = (b) => (b ? '#fff' : 'transparent');
+    const dia = `<svg width="74" height="58" viewBox="0 0 74 58"><g stroke="#fff" stroke-width="1.8">
+      <rect x="29" y="4" width="16" height="16" transform="rotate(45 37 12)" fill="${on(s.bases.second)}"/>
+      <rect x="49" y="24" width="16" height="16" transform="rotate(45 57 32)" fill="${on(s.bases.first)}"/>
+      <rect x="9" y="24" width="16" height="16" transform="rotate(45 17 32)" fill="${on(s.bases.third)}"/></g></svg>`;
+    const dots = (n, max) => `<span class="dots">${Array.from({ length: max }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`;
+    return `<div class="plate">${st}<div class="dia"><div class="inn">${s.half === 'top' ? '▲' : '▼'} ${s.inning}<small>${s.half === 'top' ? 'Top' : 'Bottom'}</small></div>${dia}
+      <div class="cnt"><span>B</span>${dots(s.balls, 4)}<span>S</span>${dots(Math.min(s.strikes, 3), 3)}<span>O</span>${dots(s.outs, 3)}</div></div>
+      <div class="mid" style="margin-top:6px">${s.lastPitch ? esc(`${s.lastPitch.speed ?? ''} mph ${s.lastPitch.type ?? ''} · ${s.lastPitch.call ?? ''}`) : ''}</div></div>`;
+  }
+  if (s?.kind === 'field') {
+    const down = (s.downText || '').split(' at ');
+    return `<div class="plate">${st}<div class="big">Q${s.period} · ${esc(s.clock)}</div><div class="down">${esc(down[0] || '')}</div><div class="mid">${down[1] ? 'Ball on ' + esc(down[1]) : ''}</div>${s.redZone ? '<div class="chips"><span class="chip hot">Red zone</span></div>' : ''}</div>`;
+  }
+  if (s?.kind === 'clock') {
+    const chips = [s.strength ? `<span class="chip hot">${esc(s.strength.label)}</span>` : '', s.run ? `<span class="chip">${esc(`${h[s.run.side].abbr} ${s.run.points}-0 run`)}</span>` : ''].join('');
+    return `<div class="plate">${st}<div class="big">${esc(s.clock)}</div><div class="mid">${esc(s.period)}</div>${chips ? `<div class="chips">${chips}</div>` : ''}</div>`;
+  }
+  if (s?.kind === 'minute') return `<div class="plate">${st}<div class="big">${esc(s.minute)}</div><div class="mid">Second half</div></div>`;
+  return `<div class="plate">${st}<div class="big">${esc(h.statusText)}</div></div>`;
+}
+
+function setGrid(h) {
+  const sets = h.situation.sets || [];
+  if (!sets.length) return '';
+  const row = (side) => `<tr><td class="nm">${esc(h[side].abbr)}</td>${sets.map((x) => `<td class="${x.winner === side || (!x.winner && x[side] > x[side === 'away' ? 'home' : 'away']) ? 'w' : ''}">${x[side]}${x[side + 'Tiebreak'] != null ? `<sup>${x[side + 'Tiebreak']}</sup>` : ''}</td>`).join('')}</tr>`;
+  return `<table class="setgrid">${row('away')}${row('home')}</table>`;
+}
+
+function heroHtml(P) {
+  const h = P.hero;
+  const b = (t, p) => `--${p}0:${t.band[0]};--${p}1:${t.band[1]};--${p}2:${t.band[2]}`;
+  return `<section class="hero" aria-label="${esc(h.away.name)} at ${esc(h.home.name)}">
+    <div class="band" style="${b(h.away, 'a')};${b(h.home, 'h')}">
+      <div class="half a"></div><div class="half h"></div><div class="seamline"></div>
+      ${h.away.logo && !/countries/.test(h.away.logo) ? `<img class="wm a" src="${esc(h.away.logo)}" alt="">` : ''}
+      ${h.home.logo && !/countries/.test(h.home.logo) ? `<img class="wm h" src="${esc(h.home.logo)}" alt="">` : ''}
+      <div class="bandrow">${teamBlock(h.away, 'away', P, h)}${plate(P, h)}${teamBlock(h.home, 'home', P, h)}</div>
+    </div>
+    <div class="hbody">${momentRow(P, h)}${lineScore(P, h)}${wpLinesRow(P, h)}</div>
+    ${factsRow(P, h)}
+  </section>`;
+}
+
+function person(p, side, role, right) {
+  if (!p) return '<div></div>';
+  return `<div class="pc ${right ? 'r' : ''}" style="--tc:${CTX.col(side)}"><img class="hs l" src="${esc(p.img)}" alt="" style="--tc:${CTX.col(side)}">
+    <div><div class="role">${esc(role)}</div><div class="who">${esc(p.name)}${p.hand ? `<span class="hand">${p.hand === 'L' ? (role === 'Pitching' ? 'LHP' : 'Bats L') : p.hand === 'R' ? (role === 'Pitching' ? 'RHP' : 'Bats R') : 'Switch'}</span>` : ''}</div><div class="ln">${esc(p.line)}</div></div></div>`;
+}
+
+function miniZone(pitches) {
+  if (!pitches?.length) return '';
+  const top = pitches[0].top ?? 3.4, bot = pitches[0].bot ?? 1.6;
+  const X = (x) => 50 + x * 34, Y = (z) => 118 - z * 30;
+  const types = [...new Set(pitches.map((p) => p.type))];
+  return `<svg width="100" height="118" viewBox="0 0 100 118"><rect x="${X(-0.83)}" y="${Y(top)}" width="${0.83 * 2 * 34}" height="${(top - bot) * 30}" fill="oklch(96.5% 0.002 260)" stroke="oklch(18% 0.005 260)" stroke-width="1.5"/>
+    ${pitches.map((p) => `<g data-tip="${attr([`${p.n}. ${p.name ?? p.type} ${p.speed ?? ''} mph`, p.call])}"><circle cx="${X(p.x)}" cy="${Y(p.z)}" r="8" fill="${pitchCol(p.type, types.indexOf(p.type))}"/><text x="${X(p.x)}" y="${Y(p.z) + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${p.n}</text></g>`).join('')}</svg>`;
+}
+
+function momentRow(P, h) {
+  const s = h.situation;
+  const sp = S.sport;
+  // MLB live: the at-bat as a face-off, with this plate appearance's pitches
+  if (s?.kind === 'diamond' && P.state === 'live') {
+    return `<div class="hrow"><div class="duel">${person(s.batter, s.batter?.side, 'At bat', false)}<span class="vs">VS</span>${person(s.pitcher, s.pitcher?.side, 'Pitching', true)}
+      <div class="abz">${miniZone(s.pitchesThisAb)}<div class="txt"><b>This plate appearance</b>${s.result ? esc(s.result) : esc(`${s.pitchesThisAb.length} pitches, ${s.balls}-${s.strikes}`)}</div></div></div>
+      ${s.onDeck ? `<div class="deck">On deck: <b>${esc(s.onDeck.name)}</b> · ${esc(s.onDeck.line)}</div>` : ''}</div>`;
+  }
+  if (sp === 'mlb' && P.state === 'pre' && h.probables) {
+    const card = (p, right, side) => {
+      if (!p) return `<div class="pc ${right ? 'r' : ''}"><div class="hs l" style="display:grid;place-items:center;color:var(--faint);font-weight:700">?</div><div><div class="role">Probable starter</div><div class="who" style="color:var(--ink3)">${esc(h[side].abbr)} had not named one</div><div class="ln">when the research was kept</div></div></div>`;
+      const types = p.mix.map((m) => m.type);
+      const mix = `<div class="mixbars" style="${right ? 'justify-content:flex-end' : ''}">${p.mix.map((m, i) => `<span style="width:${m.share * 1.4}px;background:${pitchCol(m.type, i)}" data-tip="${attr([`${m.type} ${m.share}%`, `${m.velo} mph`])}"></span>`).join('')}</div><div class="mixkey">${p.mix.map((m) => `${m.type} ${Math.round(m.share)}%`).join(' · ')}</div>`;
+      return `<div class="pc ${right ? 'r' : ''}"><img class="hs l" src="${esc(p.img)}" alt="" style="--tc:${CTX.col(p.side)}"><div><div class="role">Probable starter</div><div class="who">${esc(p.name)}</div><div class="ln">${esc(p.last)}${p.era ? ` · ${p.era} ERA` : ''}</div>${mix}</div></div>`;
+    };
+    return `<div class="hrow"><div class="duel" style="grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)">${card(h.probables[0], false, 'away')}<span class="vs">VS</span>${card(h.probables[1], true, 'home')}</div></div>`;
+  }
+  if (sp === 'mlb' && P.state === 'final' && h.decisions) {
+    const decs = h.decisions.map((d) => `<div class="perf" style="--tc:${CTX.col(d.side)}"><img class="hs m" src="${esc(d.img)}" alt="" style="--tc:${CTX.col(d.side)}"><div><div class="who"><span class="dec ${d.label}">${d.label}</span>${esc(d.name)}</div><div class="ln">${esc(d.line)}${d.season ? ' · ' + esc(d.season) : ''}</div></div></div>`).join('');
+    const perfs = (h.performers || []).map((d) => `<div class="perf" style="--tc:${CTX.col(d.side)}"><img class="hs m" src="${esc(d.img)}" alt="" style="--tc:${CTX.col(d.side)}"><div><div class="who">${esc(d.name)}</div><div class="ln">${esc(d.line)}</div></div></div>`).join('');
+    return `<div class="hrow"><div class="olab">Decisions</div><div class="perfs">${decs}</div><div class="olab" style="margin-top:12px">Top performers</div><div class="perfs">${perfs}</div></div>`;
+  }
+  if (s?.kind === 'field') {
+    return `<div class="hrow">${fieldStrip(h, s)}${s.lastPlay ? `<div class="lastplay"><b>Last play</b> · ${esc(s.lastPlay)}</div>` : ''}</div>`;
+  }
+  if ((sp === 'nfl' || sp === 'cfb') && P.state === 'final') {
+    const leaders = cardByKey(P, 'leaders');
+    if (leaders) return `<div class="hrow"><div class="olab">Leaders</div><div class="perfs">${leaders.rows.map((r) => `<div class="perf" style="--tc:${CTX.col(r.labelNote)}"><img class="hs m" src="${esc(r.imageUrl)}" alt="" style="--tc:${CTX.col(r.labelNote)}"><div><div class="who">${esc(r.label)} <span style="font-weight:600;color:var(--ink3);font-size:12px">${esc(r.values.cat)}</span></div><div class="ln">${esc(r.values.line)}</div></div></div>`).join('')}</div></div>`;
+  }
+  if (s?.kind === 'clock') {
+    const shots = s.shots ? `<div style="margin-top:10px">${tugBar(s.shots.away, s.shots.home, 'shots on goal')}</div>` : '';
+    return `<div class="hrow">${s.lastPlay ? `<div class="lastplay" style="margin-top:0"><b>Last play</b> · ${esc(s.lastPlay)}</div>` : ''}${shots}</div>`;
+  }
+  if (sp === 'nba' && P.state === 'final') {
+    const box = cardByKey(P, 'box');
+    const views = box ? (box.views?.length ? box.views : [box]) : [];
+    const key = (v, lab) => v.columns.find((c) => c.label === lab)?.key;
+    const rows = views.flatMap((v) => v.rows.map((r) => ({ r, team: v.label, pts: Number(r.values[key(v, 'PTS')] ?? 0), reb: r.values[key(v, 'REB')], ast: r.values[key(v, 'AST')] })));
+    const top = rows.sort((a, b) => b.pts - a.pts).slice(0, 4);
+    if (top.length) return `<div class="hrow"><div class="olab">Top scorers</div><div class="perfs">${top.map(({ r, team, pts, reb, ast }) => `<div class="perf" style="--tc:${CTX.col(team)}"><img class="hs m" src="${esc(r.imageUrl)}" alt="" style="--tc:${CTX.col(team)}"><div><div class="who">${esc(r.label)}</div><div class="ln">${esc(`${team} · ${pts} PTS · ${reb ?? '—'} REB · ${ast ?? '—'} AST`)}</div></div></div>`).join('')}</div></div>`;
+  }
+  if (s?.kind === 'minute' && s.lastPlay) return `<div class="hrow"><div class="lastplay" style="margin-top:0"><b>Last event</b> · ${esc(s.lastPlay)}</div></div>`;
+  if (sp === 'tennis' && h.missing) return `<div class="hrow"><div class="miss" style="margin:0">Who is serving and the point score are not in our data yet, so the plate shows games only.</div></div>`;
+  return '';
+}
+
+function fieldStrip(h, s) {
+  const W = 1000, H = 92, ez = 70, X = (y) => ez + (y / 100) * (W - 2 * ez);
+  const lines = [];
+  for (let y = 10; y < 100; y += 10) lines.push(`<line x1="${X(y)}" x2="${X(y)}" y1="8" y2="${H - 8}" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/><text x="${X(y)}" y="${H / 2 + 5}" text-anchor="middle" font-size="14" font-weight="700" fill="rgba(255,255,255,.55)">${y <= 50 ? y : 100 - y}</text>`);
+  const ball = s.ballOn != null ? X(s.ballOn) : null;
+  const fd = s.ballOn != null && s.toGo != null ? X(Math.max(0, Math.min(100, s.ballOn + s.toGo * s.direction))) : null;
+  return `<div class="fstrip"><svg viewBox="0 0 ${W} ${H}">
+    <rect x="0" y="0" width="${W}" height="${H}" rx="10" fill="#2f7d3a"/>
+    <rect x="0" y="0" width="${ez}" height="${H}" rx="10" fill="${CTX.away}"/><rect x="${W - ez}" y="0" width="${ez}" height="${H}" rx="10" fill="${CTX.home}"/>
+    <text x="${ez / 2}" y="${H / 2 + 6}" text-anchor="middle" font-size="17" font-weight="700" fill="#fff" transform="rotate(-90 ${ez / 2} ${H / 2})">${esc(h.away.abbr)}</text>
+    <text x="${W - ez / 2}" y="${H / 2 + 6}" text-anchor="middle" font-size="17" font-weight="700" fill="#fff" transform="rotate(90 ${W - ez / 2} ${H / 2})">${esc(h.home.abbr)}</text>
+    ${lines.join('')}
+    ${fd != null ? `<line x1="${fd}" x2="${fd}" y1="4" y2="${H - 4}" stroke="#ffd43b" stroke-width="4"/>` : ''}
+    ${ball != null ? `<line x1="${ball}" x2="${ball}" y1="4" y2="${H - 4}" stroke="#4dabf7" stroke-width="4"/><ellipse cx="${ball}" cy="${H / 2}" rx="13" ry="8" fill="#8b4a1c" stroke="#fff" stroke-width="2"/><path d="M${ball + 18 * s.direction} ${H / 2} l${-7 * s.direction} -6 v12z" fill="#fff"/>` : ''}
+  </svg></div>`;
+}
+
+function lineScore(P, h) {
+  const ls = h.lineScore;
+  if (!ls || P.state === 'pre') return '';
+  const s = h.situation;
+  const n = ls.periods.length;
+  // The period under way, from the game's own situation where it says; else the last one with a score in it.
+  let cur = -1;
+  if (P.state === 'live') {
+    for (let i = 0; i < n; i++) if (ls.away[i] != null || ls.home[i] != null) cur = i;
+    const per = s?.kind === 'diamond' ? s.inning : s?.kind === 'field' ? s.period : typeof s?.period === 'string' ? Number((s.period.match(/\d+/) || [])[0]) : null;
+    if (per && per <= n) cur = per - 1;
+  }
+  const row = (side) => `<tr><td class="tm">${h[side].logo ? `<img class="tlogo" src="${esc(h[side].logo)}" alt="">` : ''}${esc(h[side].abbr)}</td>${ls[side].map((v, i) => `<td class="${i === cur ? 'cur' : ''} ${i >= n ? (i === n ? 't gap' : 'gap') : ''}">${v ?? ''}</td>`).join('')}</tr>`;
+  return `<div class="hrow scroll"><table class="ls"><thead><tr><th></th>${ls.periods.map((p, i) => `<th class="${i === cur ? 'cur' : ''}">${esc(p)}</th>`).join('')}${ls.totals.map((t, i) => `<th class="gap ${i === 0 ? 't' : ''}">${esc(t)}</th>`).join('')}</tr></thead><tbody>${row('away')}${row('home')}</tbody></table></div>`;
+}
+
+function tugBar(a, b, what, fmt = (x) => x) {
+  const tot = (Number(a) || 0) + (Number(b) || 0) || 1;
+  const pa = Math.max(8, Math.round(((Number(a) || 0) / tot) * 100));
+  return `<div class="tug"><span style="width:${pa}%;background:${CTX.away}">${esc(CTX.h.away.abbr)} ${esc(fmt(a))}</span><span style="width:${100 - pa}%;background:${CTX.home}">${esc(fmt(b))} ${esc(CTX.h.home.abbr)}</span></div><div class="tugsub"><span></span><span>${esc(what)}</span><span></span></div>`;
+}
+
+function wpLinesRow(P, h) {
+  let left = '';
+  if (h.wp?.length && P.state !== 'pre') {
+    const home = h.wp[h.wp.length - 1] * (h.wp[h.wp.length - 1] <= 1 ? 100 : 1);
+    const spark = sparkWp(h.wp.map((v) => (v <= 1 ? v * 100 : v)));
+    const src = S.sport === 'mlb' ? 'MLB Stats API, after every plate appearance' : 'ESPN, after every play';
+    left = P.state === 'final'
+      ? `<div><div class="olab">Win probability · how it went</div>${sparkWp(h.wp.map((v) => (v <= 1 ? v * 100 : v)), 96)}<div class="tugsub"><span style="color:${CTX.away};font-weight:700">▼ ${esc(h.away.abbr)}</span><span>${esc(src)}</span><span style="color:${CTX.home};font-weight:700">▲ ${esc(h.home.abbr)}</span></div></div>`
+      : `<div><div class="olab">Win probability · now</div>${tugBar((100 - home).toFixed(0), home.toFixed(0), src, (x) => x + '%')}${spark}</div>`;
+  } else if (S.sport === 'soccer' && P.state !== 'pre') {
+    const card = cardByKey(P, 'team-stats');
+    const poss = card?.rows?.find((r) => /possession/i.test(r.label)) ?? (card?.views || []).flatMap((v) => v.rows).find((r) => /possession/i.test(r.label));
+    if (poss) left = `<div><div class="olab">Possession</div>${tugBar(poss.values.away, poss.values.home, P.state === 'live' ? 'the final match stats (a cut page)' : 'full match', (x) => String(x).replace('%', '') + '%')}</div>`;
+  } else if (S.sport === 'nhl' && P.state === 'final' && h.lineScore) {
+    const i = h.lineScore.totals.indexOf('SOG');
+    if (i >= 0) left = `<div><div class="olab">Shots on goal</div>${tugBar(h.lineScore.away[h.lineScore.periods.length + i], h.lineScore.home[h.lineScore.periods.length + i], 'the NHL publishes no win probability')}</div>`;
+  }
+  const L = h.lines || [];
+  let right = '';
+  if (L.length) {
+    const cell = (m, k) => {
+      const v = m[k];
+      if (!v) return '—';
+      if (m.market === 'total') return v.total != null ? `${v.total} <span class="mv">o${esc(v.over ?? '')}</span>` : '—';
+      return `${esc(v.away ?? '—')} / ${esc(v.home ?? '—')}${v.draw ? ` / ${esc(v.draw)}` : ''}`;
+    };
+    const live = P.state === 'live' && L.some((m) => m.now);
+    const name = { moneyline: `Moneyline ${h.away.abbr} / ${h.home.abbr}${L[0]?.close?.draw ? ' / draw' : ''}`, spread: `Spread ${h.away.abbr} / ${h.home.abbr}`, total: 'Total' };
+    right = `<div><div class="olab">Lines ${P.state === 'final' ? '· closing' : P.state === 'live' ? '· close and now' : '· open and now'}</div><div class="scroll"><table class="lines"><thead><tr><th>Market</th><th>Open</th><th>${P.state === 'pre' ? 'Now' : 'Close'}</th>${live ? '<th>Live</th>' : ''}</tr></thead><tbody>
+      ${L.map((m) => `<tr><td>${esc(name[m.market])}</td><td>${cell(m, 'open')}</td><td class="${live ? '' : 'now'}">${cell(m, 'close')}</td>${live ? `<td class="now">${cell(m, 'now')}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+      ${P.state === 'final' ? resultChips(P) : ''}</div>`;
+  }
+  if (!left && !right) return '';
+  return `<div class="hrow"><div class="two" style="${!left || !right ? 'grid-template-columns:1fr' : ''}">${left}${right}</div></div>`;
+}
+
+function resultChips(P) {
+  const chips = (P.data.hero.chips || []).map((c) => c.label).filter((l) => /covered|over|under|push|won|lost/i.test(l));
+  return chips.length ? `<div class="res">${chips.map((c) => `<span>${esc(c)}</span>`).join('')}</div>` : '';
+}
+
+function sparkWp(vals, px = 56) {
+  const W = 520, H = 70, n = vals.length;
+  const X = (i) => (i / Math.max(1, n - 1)) * W, Y = (v) => H - (v / 100) * H;
+  const pts = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="display:block;width:100%;height:${px}px;margin-top:8px">
+    <defs><clipPath id="spA"><rect x="0" y="${H / 2}" width="${W}" height="${H / 2}"/></clipPath><clipPath id="spH"><rect x="0" y="0" width="${W}" height="${H / 2}"/></clipPath></defs>
+    <polygon points="0,${H / 2} ${pts} ${W},${H / 2}" fill="${CTX.home}" opacity=".85" clip-path="url(#spH)"/>
+    <polygon points="0,${H / 2} ${pts} ${W},${H / 2}" fill="${CTX.away}" opacity=".85" clip-path="url(#spA)"/>
+    <line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="#fff" stroke-width="1.5"/></svg>`;
+}
+
+function factsRow(P, h) {
+  const w = whenParts(h);
+  const items = [];
+  if (h.venue) items.push(`<span>${pinIcon}<b>${esc(h.venue)}</b></span>`);
+  if (h.conditions) items.push(`<span>${weatherIcon(h.conditions)}${esc(h.conditions)}</span>`);
+  if (S.sport === 'mlb' && G.park) items.push(`<span>${parkIcon}${esc(`${G.park.roofType} roof · ${G.park.turfType.toLowerCase()} · ${G.park.leftLine}-${G.park.center}-${G.park.rightLine} ft`)}</span>`);
+  if (S.sport === 'tennis' && h.tournament && !(h.venue || '').includes(h.tournament)) items.push(`<span><b>${esc(h.tournament)}</b>${h.round ? ' · ' + esc(h.round) : ''}</span>`);
+  if (P.state !== 'pre') items.push(`<span>${clockIcon}${esc(`${w.day} · ${w.time}`)}</span>`);
+  return items.length ? `<div class="facts">${items.join('')}</div>` : '';
+}
+
+/* ================= SECTIONS ================= */
+const CARDS = {};
+function cardByKey(P, key) { return P.data.sections.flatMap((s) => s.rows.flat()).find((c) => c.key === key); }
+// Moved into the hero: the label/value "The game now" table is gone from the sections.
+const MOVED = new Set(['situation']);
+
+function sectionsHtml(P) {
+  const secs = P.data.sections.map((s) => ({ ...s, rows: s.rows.map((r) => r.filter((c) => !MOVED.has(c.key))).filter((r) => r.length) }));
+  const nav = [...secs.map((s) => [s.id, s.navLabel]), ['sources', 'Sources']];
+  return `<nav class="snav">${nav.map(([id, l], i) => `<a href="#${id}" class="${i === 0 ? 'on' : ''}">${esc(l)}</a>`).join('')}</nav>
+    ${secs.map((s) => `<section class="sec" id="${s.id}"><div class="sech"><h2>${esc(s.title)}</h2><span class="sub">${esc(s.sub ?? '')}</span><span class="hide"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Hide</span></div>
+      ${s.note ? `<div class="secnote">${esc(s.note)}</div>` : ''}
+      ${s.state.kind === 'empty' ? `<div class="card"><div class="empty"><b>${esc(s.state.title)}</b>${esc(s.state.reason)}</div></div>` : s.rows.map((r) => `<div class="crow" style="--n:${r.length}">${r.map((c) => cardHtml(c, CTX)).join('')}</div>`).join('')}
+    </section>`).join('')}
+    <section class="sec" id="sources"><div class="sech"><h2>Sources</h2><span class="sub"></span></div><div class="card"><table class="t"><tbody>${P.data.sources.map((s) => `<tr><td style="font-weight:600;white-space:nowrap">${esc(s.label)}</td><td class="txt">${esc(s.detail)}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+
+function head(c, extra = '') {
+  const count = c.rows?.length && c.kind === 'table' ? `<span class="badge">${c.rows.length}</span>` : '';
+  return `<div class="ch"><h3>${extra}${esc(c.title)} ${count}</h3>${c.scope ? `<span class="scope">${esc(c.scope)}</span>` : ''}</div>`;
+}
+
+function cardHtml(c, ctx) {
+  CARDS[c.key] = c;
+  let inner = '';
+  let cls = 'card';
+  let style = '';
+  const teamKey = (c.key.match(/-(\w+)$/) || [])[1];
+  if (/^form-/.test(c.key) && ctx.byAbbr[teamKey]) { cls += ' acc'; style = `--tc:${ctx.byAbbr[teamKey]}`; }
+  try {
+    switch (c.kind) {
+      case 'table': inner = tableCard(c, ctx); break;
+      case 'series': inner = head(c) + seriesSvg(c, ctx); break;
+      case 'scatter': inner = scatterCard(c, ctx); break;
+      case 'field': inner = head(c) + fieldCard(c, ctx); break;
+      case 'drilldown': inner = drillCard(c, ctx); break;
+      case 'histogram': inner = formCard(c, ctx); break;
+      case 'timeline': inner = head(c) + timelineSvg(c, ctx); break;
+      case 'odds': inner = `<div class="ch"><h3>Odds</h3><span class="scope">P8 odds section</span></div><div class="oddsph"><b>The odds section renders here unchanged.</b> It has its own approved design (odds build P8) and reads /api/odds/game in the page, so it is not redrawn in this mockup. The hero's Lines block above is new.</div>`; break;
+      case 'status': inner = `<div class="ch"><h3>${esc(c.title)}</h3></div><div class="empty"><b>${esc(c.headline)}</b>${esc(c.reason)}</div>`; break;
+      case 'percentiles': inner = head(c) + `<table class="t"><tbody>${c.rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="n">${esc(r.valueText)}</td><td>${r.percentile != null ? `<div class="pct"><div class="trk"><i style="width:${r.percentile}%"></i></div>${r.percentile}</div>` : ''}</td></tr>`).join('')}</tbody></table>`; break;
+      default: inner = head(c) + `<div class="empty">${esc(c.kind)}</div>`;
+    }
+  } catch (e) { inner = head(c) + `<div class="empty">render error: ${esc(e.message)}</div>`; }
+  if (c.caption && !['drilldown'].includes(c.kind)) inner += `<div class="cap">${esc(c.caption)}</div>`;
+  return `<div class="${cls}" id="card-${c.key}" style="${style}">${inner}</div>`;
+}
+
+/* ---------- tables ---------- */
+const num = (v) => (typeof v === 'number' ? v : v != null && v !== '' && !isNaN(Number(String(v).replace('%', ''))) ? Number(String(v).replace('%', '')) : null);
+function fmtVal(v, col) {
+  if (v == null || v === '') return '—';
+  if (typeof v !== 'number') return esc(v);
+  if (col.format === 'rate3') return v.toFixed(3).replace(/^0/, '');
+  if (col.format === 'percent') return v.toFixed(col.decimals) + '%';
+  if (col.format === 'ip') return `${Math.floor(v / 3)}.${v % 3}`;
+  return v.toFixed(col.decimals);
+}
+function whoCell(r, ctx) {
+  const tcol = ctx.byAbbr[r.labelNote];
+  const img = r.imageUrl ? (r.imageKind === 'player' ? `<img class="hs s" src="${esc(r.imageUrl)}" alt="" style="--tc:${tcol ?? 'var(--soft)'}">` : `<img class="lg" src="${esc(r.imageUrl)}" alt="">`) : '';
+  const tlogo = ctx.logoByAbbr?.[r.labelNote];
+  const note = r.labelNote ? `<span class="nt">${tlogo ? `<img class="tlogo" src="${esc(tlogo)}" alt="">` : ''}${esc(r.labelNote)}</span>` : '';
+  return `<div class="who2">${img}<div><div class="nm">${esc(r.label)}</div>${note}</div></div>`;
+}
+function tableCard(c, ctx) {
+  if (c.key === 'team-stats' || (c.compare === 'row' && c.columns.length === 2)) return compareCard(c, ctx);
+  if (c.key === 'props-tracker') return head(c) + propsTracker(c, ctx);
+  if (c.key === 'lines-now') return head(c) + linesNow(c);
+  let view = c;
+  let tabs = '';
+  if (c.views?.length) {
+    const pick = PICK[c.key] ?? c.views[0].key;
+    view = c.views.find((v) => v.key === pick) ?? c.views[0];
+    tabs = `<div class="tabs">${c.views.map((v) => { const logo = v.label === ctx.h.away.abbr ? ctx.h.away.logo : v.label === ctx.h.home.abbr ? ctx.h.home.logo : null; return `<button data-pick="${c.key}|${v.key}" class="${v.key === view.key ? 'on' : ''}">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${esc(v.label)}</button>`; }).join('')}</div>`;
+  }
+  const cols = view.columns;
+  const rows = view.rows;
+  // A view that IS one team (a box score's CIN / TOR switch) colours its rows with that team.
+  const viewTeam = ctx.byAbbr[view.label] ? view.label : null;
+  const maxOf = {};
+  for (const col of cols) if (col.bar || col.leader || viewTeam) maxOf[col.key] = Math.max(...rows.map((r) => num(r.values[col.key]) ?? 0), 1);
+  const isBox = /^(box|batting|skaters|goalies)$/.test(c.key);
+  // Plays: group by inning / quarter, and mark the plays that changed the score.
+  const isPlays = c.key === 'plays' || c.key === 'commentary';
+  let lastGroup = null, lastScore = null;
+  const scoreCol = cols.find((col) => col.key === 'score');
+  const body = rows.map((r) => {
+    let pre = '';
+    if (isPlays && r.labelNote && /^(Top|Bot|Bottom|Q\d|P\d|OT)/.test(r.labelNote) && r.labelNote !== lastGroup) { lastGroup = r.labelNote; pre = `<tr class="grp"><td colspan="${cols.length + 1}">${esc(r.labelNote)}</td></tr>`; }
+    let cls = r.highlight ? 'hl' : '';
+    let rs = '';
+    if (isPlays && scoreCol) { const sc = r.values.score; if (lastScore != null && sc !== lastScore) { cls += ' score'; const half = /^Top/.test(r.labelNote || '') ? 'away' : 'home'; rs = `--tc:${ctx.col(half)}`; } lastScore = sc; }
+    const cells = cols.map((col) => {
+      const v = r.values[col.key];
+      const tone = r.tones?.[col.key];
+      if (col.streak && r.streaks?.[col.key]) return `<td><span class="formrec" style="padding:0">${r.streaks[col.key].outcomes.map((o) => `<span class="${o === true ? 'W' : o === false ? 'L' : ''}" style="${o == null ? 'background:var(--hair)' : ''}">${o === true ? '✓' : o === false ? '✕' : ''}</span>`).join('')}</span></td>`;
+      if (tone) return `<td class="${col.text ? '' : 'n'}"><span class="${/rank/i.test(col.key) ? 'rk' : 'mark'} ${tone}">${fmtVal(v, col)}</span></td>`;
+      if (/rank/i.test(col.key) && typeof v === 'string') return `<td class="n"><span class="rk mid">${esc(v)}</span></td>`;
+      if (col.bar && num(v) != null) return `<td class="n"><span class="cellbar" style="--tc:${ctx.byAbbr[r.labelNote] ?? ctx.byAbbr[viewTeam] ?? 'oklch(72% 0.004 260)'}"><i style="width:${(num(v) / maxOf[col.key]) * 100}%"></i><b>${fmtVal(v, col)}</b></span></td>`;
+      if (isBox && !col.format && num(v) != null && num(v) > 0 && num(v) === maxOf[col.key] && !/^(ab|pa|min|toi|lob|k|pf|to)$/i.test(col.key + col.label)) return `<td class="n"><b class="lead" style="box-shadow:inset 0 -3px 0 ${ctx.byAbbr[viewTeam] ?? 'var(--char)'};padding:0 2px">${fmtVal(v, col)}</b></td>`;
+      if (typeof v === 'string' && num(v) == null && !col.text) return `<td>${/type|pitch/i.test(col.key) ? pitchDot(v) : ''}${esc(v)}</td>`;
+      if (c.key === 'longest' && (col.key === 'dist' || col.key === 'ev') && num(v) != null) { const lo = col.key === 'dist' ? 150 : 70, hi = col.key === 'dist' ? 460 : 118; const p = Math.max(4, Math.min(100, ((num(v) - lo) / (hi - lo)) * 100)); return `<td class="n"><div class="pct"><div class="trk" style="--tc:${ctx.byAbbr[r.labelNote]}"><i style="width:${p}%"></i></div><b>${fmtVal(v, col)}</b></div></td>`; }
+      if (col.key === 'result' || col.key === 'event') { const hit = /single|double|triple|home run|homer|goal|touchdown/i.test(String(v)); return `<td>${hit ? `<span class="mark" style="background:${ctx.byAbbr[r.labelNote] ?? ctx.col(/^Top/.test(r.labelNote || '') ? 'away' : 'home')};color:#fff">${esc(v)}</span>` : `<span style="color:var(--ink2)">${esc(v ?? '—')}</span>`}</td>`; }
+      return `<td class="${col.text ? 'txt' : 'n'}">${fmtVal(v, col)}</td>`;
+    }).join('');
+    const who = r.imageUrl || r.labelNote ? whoCell(viewTeam && !r.labelNote ? r : r, viewTeam ? { ...ctx, byAbbr: { ...ctx.byAbbr, [r.labelNote]: ctx.byAbbr[r.labelNote] ?? ctx.byAbbr[viewTeam] } } : ctx) : `<b style="font-weight:600">${pitchDot(r.label)}${esc(r.label)}</b>`;
+    return `${pre}<tr class="${cls}" style="${rs}"><td>${who}</td>${cells}</tr>`;
+  }).join('');
+  const strCol = (col) => rows.some((r) => typeof r.values[col.key] === 'string' && num(r.values[col.key]) == null);
+  const colHead = cols.map((col) => `<th class="${col.text || strCol(col) ? '' : 'n'}">${col.imageUrl ? `<img src="${esc(col.imageUrl)}" alt="">` : ''}${esc(col.label)}</th>`).join('');
+  const tall = rows.length > 14 ? 'tall' : '';
+  return head(c) + tabs + `<div class="scroll ${tall}" style="margin-top:${tabs ? 8 : 0}px"><table class="t"><thead><tr><th>${esc(view.labelHeader)}</th>${colHead}</tr></thead><tbody>${body || `<tr><td class="empty" colspan="9">${esc(c.emptyText ?? 'Nothing yet')}</td></tr>`}</tbody></table></div>`;
+}
+
+function compareCard(c, ctx) {
+  const views = c.views?.length ? c.views : [c];
+  const pick = PICK[c.key] ?? views[0].key;
+  const v = views.find((x) => x.key === pick) ?? views[0];
+  const tabs = c.views?.length ? `<div class="tabs">${c.views.map((x) => `<button data-pick="${c.key}|${x.key}" class="${x.key === v.key ? 'on' : ''}">${esc(x.label)}</button>`).join('')}</div>` : '';
+  const [ca, chh] = v.columns;
+  // Each column is one team, in whatever order the adapter wrote them (soccer puts home first).
+  const teamOfCol = (col, fallback) => (col.label === ctx.h.away.abbr ? ctx.h.away : col.label === ctx.h.home.abbr ? ctx.h.home : fallback);
+  const tA = teamOfCol(ca, ctx.h.away), tB = teamOfCol(chh, ctx.h.home);
+  const colA = ctx.byAbbr[tA.abbr] ?? ctx.away, colB = ctx.byAbbr[tB.abbr] ?? ctx.home;
+  const rows = v.rows.map((r) => {
+    const a = num(r.values[ca.key]), b = num(r.values[chh.key]);
+    const tot = (a ?? 0) + (b ?? 0) || 1;
+    const pa = a != null ? ((a / tot) * 100).toFixed(1) : 0, pb = b != null ? ((b / tot) * 100).toFixed(1) : 0;
+    return `<div class="r"><div class="side a"><b class="${a != null && b != null && a > b ? 'lead' : ''}">${esc(r.values[ca.key] ?? '—')}</b><div class="bar"><i style="width:${pa}%;background:${colA}"></i></div></div><div class="lab">${esc(r.label)}</div><div class="side"><div class="bar"><i style="width:${pb}%;background:${colB}"></i></div><b class="${a != null && b != null && b > a ? 'lead' : ''}">${esc(r.values[chh.key] ?? '—')}</b></div></div>`;
+  }).join('');
+  const lg = (col, t) => `<span>${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ''}${esc(col.label)}</span>`;
+  return head(c) + tabs + `<div class="cmp"><div class="hd">${lg(ca, tA)}<span></span>${lg(chh, tB)}</div>${rows}</div>`;
+}
+
+function propsTracker(c, ctx) {
+  const rows = c.rows.map((r) => {
+    const line = num(r.values.line) ?? 0, so = num(r.values.so) ?? 0;
+    const max = Math.max(line * 2, so, 1);
+    const tcol = ctx.byAbbr[r.labelNote] ?? 'oklch(72% 0.004 260)';
+    const over = /over already/i.test(r.values.status ?? '');
+    const status = over ? '<span class="smk ok"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="var(--good)"/><path d="M4.5 8.2 7 10.6l4.6-5" stroke="var(--good-on)" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Over</span>' : `<span class="smk no"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.2" fill="none" stroke="var(--faint)" stroke-width="1.6"/><path d="M5.5 8h5" stroke="var(--ink3)" stroke-width="1.8" stroke-linecap="round"/></svg>${esc(String(r.values.status ?? '').replace(' to go over', ' to go'))}</span>`;
+    return `<tr><td>${whoCell(r, ctx)}</td><td>${esc(r.values.market)}</td><td><div class="prog" style="--tc:${tcol}"><div class="trk"><i style="width:${Math.min(100, (so / max) * 100)}%"></i><u style="left:${(line / max) * 100}%"></u></div><b>${so} / ${line}</b></div></td><td class="n">${status}</td></tr>`;
+  }).join('');
+  return `<div class="scroll tall"><table class="t"><thead><tr><th>Player</th><th>Market</th><th>So far vs the line</th><th class="n">Status</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">${esc(c.emptyText)}</td></tr>`}</tbody></table></div>`;
+}
+
+function linesNow(c) {
+  const rows = c.rows.map((r) => {
+    const a = num(String(r.values.close).split(' ').pop()), b = num(String(r.values.now).split(' ').pop());
+    const arrow = a != null && b != null && a !== b ? (b > a ? '▲' : '▼') : '';
+    return `<tr><td><b style="font-weight:600">${esc(r.label)}</b></td><td class="n" style="color:var(--ink3)">${esc(r.values.close)}</td><td class="n" style="color:var(--ink3)">→</td><td class="n" style="font-weight:700">${esc(r.values.now)} <span style="font-size:10px;color:var(--ink3)">${arrow}</span></td><td class="n" style="color:var(--ink3)">${esc(r.values.books)} books · ${esc(r.values.at)}</td></tr>`;
+  }).join('');
+  return `<table class="t"><thead><tr><th>Market</th><th class="n">At the start</th><th></th><th class="n">Now</th><th class="n">Captured</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">${esc(c.emptyText)}</td></tr>`}</tbody></table>`;
+}
+
+/* ---------- form (histogram) ---------- */
+function formCard(c, ctx) {
+  const max = Math.max(...c.bars.map((b) => Math.abs(b.value)), 1);
+  const bars = c.bars.map((b) => `<div class="g" data-tip="${attr([b.tip])}"><div class="b ${b.tone ?? ''}" style="height:${Math.max(14, (Math.abs(b.value) / max) * 120)}px">${b.tone ? (b.tone === 'good' ? 'W' : 'L') : ''}</div>${b.imageUrl ? `<img src="${esc(b.imageUrl)}" alt="">` : `<span style="font-size:10px;color:var(--ink3)">${esc(b.axisLabel)}</span>`}</div>`).join('');
+  const team = (c.key.match(/-(\w+)$/) || [])[1];
+  const logo = team === ctx.h.away.abbr ? ctx.h.away.logo : team === ctx.h.home.abbr ? ctx.h.home.logo : null;
+  return head(c, logo ? `<img src="${esc(logo)}" alt="">` : '') + `<div class="form">${bars}</div>`;
+}
+
+/* ---------- series ---------- */
+function seriesSvg(c, ctx) {
+  const W = 640, H = 230, L = 44, R = 70, T = 14, B = 26;
+  const vals = c.values;
+  const all = [...vals, ...(c.context ?? [])].filter((v) => v != null);
+  let lo = c.min ?? (c.zeroBased ? Math.min(0, ...all) : Math.min(...all));
+  let hi = c.max ?? Math.max(...all);
+  if (c.reference && c.reference.value === 0) { const m = Math.max(Math.abs(lo), Math.abs(hi), 1); lo = -m; hi = m; }
+  if (hi === lo) hi = lo + 1;
+  const n = Math.max(vals.length, c.context?.length ?? 0);
+  const X = (i) => L + (i / Math.max(1, n - 1)) * (W - L - R), Y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  // Two-sided: a reference line (50%, a tied game) with a team named on each side.
+  const txt = `${c.title} ${c.caption ?? ''}`;
+  const abbrs = [ctx.h.away.abbr, ctx.h.home.abbr];
+  const firstIn = (s) => abbrs.map((a) => [a, s.indexOf(a)]).filter(([, i]) => i >= 0).sort((a, b) => a[1] - b[1])[0]?.[0];
+  const aboveMatch = /Above (?:zero|50)[^A-Z]*([A-Z]{2,4})/.exec(c.caption ?? '');
+  const above = firstIn(c.title) ?? aboveMatch?.[1] ?? firstIn(txt);
+  const below = above ? abbrs.find((a) => a !== above) : null;
+  const ref = c.reference?.value;
+  const grid = [];
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) { const v = lo + ((hi - lo) * i) / ticks; grid.push(`<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="oklch(92.5% 0.003 260)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="oklch(47% 0.005 260)">${Math.abs(v).toFixed(c.decimals)}${c.unit}</text>`); }
+  const xl = (c.xLabels || []).map((l, i) => (l ? `<text x="${X(i)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="oklch(47% 0.005 260)">${esc(l)}</text><line x1="${X(i)}" x2="${X(i)}" y1="${T}" y2="${H - B}" stroke="oklch(92.5% 0.003 260)"/>` : '')).join('');
+  const path = (vs) => vs.map((v, i) => (v == null ? '' : `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`)).join('');
+  let body = '';
+  const id = 'c' + Math.random().toString(36).slice(2, 8);
+  if (ref != null && above && below && !c.context) {
+    const aCol = ctx.byAbbr[above], bCol = ctx.byAbbr[below];
+    const area = `M${X(0)},${Y(ref)} ${vals.map((v, i) => `L${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')} L${X(vals.length - 1)},${Y(ref)} Z`;
+    body = `<defs><clipPath id="${id}u"><rect x="0" y="0" width="${W}" height="${Y(ref)}"/></clipPath><clipPath id="${id}d"><rect x="0" y="${Y(ref)}" width="${W}" height="${H}"/></clipPath></defs>
+      <path d="${area}" fill="${aCol}" opacity=".78" clip-path="url(#${id}u)"/><path d="${area}" fill="${bCol}" opacity=".78" clip-path="url(#${id}d)"/>
+      <line x1="${L}" x2="${W - R}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="oklch(18% 0.005 260)" stroke-dasharray="3 3"/>
+      <path d="${path(vals)}" fill="none" stroke="oklch(18% 0.005 260)" stroke-width="1.6"/>
+      <text x="${L + 6}" y="${T + 13}" font-size="11.5" font-weight="700" fill="${aCol}">▲ ${esc(above)}</text><text x="${L + 6}" y="${H - B - 6}" font-size="11.5" font-weight="700" fill="${bCol}">▼ ${esc(below)}</text>`;
+    const last = vals[vals.length - 1];
+    const pct = c.unit === '%' || c.max === 100;
+    const endA = pct ? `${esc(above)} ${last.toFixed(0)}%` : last > ref ? `${esc(above)} +${Math.abs(last - ref).toFixed(0)}` : '';
+    const endB = pct ? `${esc(below)} ${(100 - last).toFixed(0)}%` : last < ref ? `${esc(below)} +${Math.abs(last - ref).toFixed(0)}` : '';
+    body += `<circle cx="${X(vals.length - 1)}" cy="${Y(last)}" r="4" fill="oklch(18% 0.005 260)"/>${endA ? `<text x="${W - R + 8}" y="${Y(last) - 4}" font-size="12" font-weight="700" fill="${aCol}">${endA}</text>` : ''}${endB ? `<text x="${W - R + 8}" y="${Y(last) + 12}" font-size="12" font-weight="700" fill="${bCol}">${endB}</text>` : ''}`;
+  } else if (c.context && c.legend?.length === 2) {
+    // Two cumulative lines (NHL attempts): each in its team's colour.
+    const dark = c.legend.find((l) => l.dark)?.label, light = c.legend.find((l) => !l.dark)?.label;
+    const dc = ctx.byAbbr[dark] ?? 'oklch(18% 0.005 260)', lc = ctx.byAbbr[light] ?? 'oklch(72% 0.004 260)';
+    body = `<path d="${path(c.context)}" fill="none" stroke="${lc}" stroke-width="2.4"/><path d="${path(vals)}" fill="none" stroke="${dc}" stroke-width="2.4"/>
+      <text x="${X(c.context.length - 1) + 8}" y="${Y(c.context[c.context.length - 1]) + 4}" font-size="12" font-weight="700" fill="${lc}">${esc(light)} ${c.context[c.context.length - 1]}</text>
+      <text x="${X(vals.length - 1) + 8}" y="${Y(vals[vals.length - 1]) + 4}" font-size="12" font-weight="700" fill="${dc}">${esc(dark)} ${vals[vals.length - 1]}</text>`;
+  } else {
+    body = `${ref != null ? `<line x1="${L}" x2="${W - R}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="oklch(47% 0.005 260)" stroke-dasharray="3 3"/>` : ''}<path d="${path(vals)}" fill="none" stroke="oklch(18% 0.005 260)" stroke-width="2"/>`;
+  }
+  const hits = vals.map((v, i) => (c.tips?.[i] ? `<rect x="${X(i) - (W - L - R) / n / 2}" y="${T}" width="${Math.max(2, (W - L - R) / n)}" height="${H - T - B}" fill="transparent" data-tip="${attr(c.tips[i])}"/>` : '')).join('');
+  return `<div class="svgw"><svg viewBox="0 0 ${W} ${H}">${grid.join('')}${xl}${body}${hits}</svg></div>`;
+}
+
+/* ---------- scatter surfaces ---------- */
+function scatterCard(c, ctx) {
+  const types = c.groups.map((g) => g.key);
+  const colOf = (k, i) => (c.surface === 'zone' ? pitchCol(k, types.indexOf(k)) : ctx.col(k) ?? ctx.byAbbr[k] ?? PITCH_ALT[types.indexOf(k) % 8]);
+  const legend = `<div class="legend">${c.groups.map((g, i) => `<span><i style="--tc:${colOf(g.key, i)}"></i>${CTX.logoByAbbr?.[g.label] ? `<img class="tlogo" style="margin:0;background:#fff;border-radius:50%;padding:1px" src="${esc(CTX.logoByAbbr[g.label])}" alt="">` : ''}${esc(g.label)} · ${g.count}</span>`).join('')}${c.surface === 'spray' ? `<span class="k"><i style="--tc:var(--ink3)"></i>Hit</span><span class="k"><i class="ring" style="--tc:var(--ink3)"></i>Out</span>` : ''}</div>`;
+  let svg = '';
+  if (c.surface === 'spray') svg = spraySvg(c, colOf);
+  else if (c.surface === 'zone') svg = zoneSvg(c, colOf);
+  else if (c.surface === 'court') svg = courtSvg(c, colOf);
+  else if (c.surface === 'rink') svg = rinkSvg(c, colOf);
+  else if (c.surface === 'fullpitch') svg = pitchSvg(c, colOf);
+  else svg = `<div class="empty">${esc(c.surface)}</div>`;
+  const cap = c.surface === 'spray' && G.park ? { ...c, caption: `${G.park.name}'s own walls, from MLB's park dimensions: ${G.park.leftLine} ft down the lines, ${G.park.leftCenter} to the gaps, ${G.park.center} to centre. ${G.park.turfType}, ${G.park.roofType.toLowerCase()} roof.` } : null;
+  if (cap) c.caption = cap.caption;
+  return head(c) + legend + `<div class="svgw">${svg}</div>`;
+}
+
+function dot(x, y, r, col, filled, tip, label) {
+  return `<g ${tip ? `data-tip="${attr(tip)}"` : ''}><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${filled ? col : '#fff'}" fill-opacity="${filled ? 0.92 : 1}" stroke="${filled ? '#fff' : col}" stroke-width="${filled ? 1.2 : 2.2}"/>${label ? `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${esc(label)}</text>` : ''}</g>`;
+}
+
+function spraySvg(c, colOf) {
+  const P = G.park || { leftLine: 330, leftCenter: 375, center: 400, rightCenter: 375, rightLine: 330 };
+  const S2 = 1.05, W = 620, H = 520, ox = W / 2, oy = H - 40;
+  const XY = (x, y) => [ox + x * S2, oy - y * S2];
+  const ang = [-45, -22.5, 0, 22.5, 45].map((a) => (a * Math.PI) / 180);
+  const dists = [P.leftLine, P.leftCenter, P.center, P.rightCenter, P.rightLine];
+  const wall = ang.map((a, i) => XY(dists[i] * Math.sin(a), dists[i] * Math.cos(a)));
+  // A smooth wall through the five measured points (Catmull-Rom → Bezier).
+  const pts = [wall[0], ...wall, wall[4]];
+  let d = `M${wall[0][0]},${wall[0][1]}`;
+  for (let i = 1; i < pts.length - 2; i++) {
+    const [p0, p1, p2, p3] = [pts[i - 1], pts[i], pts[i + 1], pts[i + 2]];
+    d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+  }
+  const home = XY(0, 0);
+  const field = `M${home[0]},${home[1]} L${wall[0][0]},${wall[0][1]} ${d.slice(d.indexOf('C') - 1)} Z`;
+  const turf = /artificial/i.test(P.turfType || '') ? ['#3f9150', '#357f45'] : ['#5aa55f', '#4c9451'];
+  const inf = 95 * S2;
+  const b1 = XY(63.6, 63.6), b2 = XY(0, 127.3), b3 = XY(-63.6, 63.6);
+  const labels = ang.map((a, i) => { const [x, y] = XY((dists[i] + 16) * Math.sin(a), (dists[i] + 16) * Math.cos(a)); return `<text x="${x}" y="${y}" text-anchor="middle" font-size="12" font-weight="700" fill="oklch(47% 0.005 260)">${dists[i]}</text>`; }).join('');
+  const w = c.weights ?? [];
+  const dots = c.points.map(([g, x, y], i) => { const [px, py] = XY(x, y); return dot(px, py, 3.5 + Math.max(0, ((w[i] ?? 80) - 60) / 9), colOf(g), c.emphasis?.[i], c.tips?.[i]); }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}">
+    <path d="${field}" fill="${turf[0]}"/>
+    <path d="${d}" fill="none" stroke="#b08a57" stroke-width="${14 * S2}" stroke-opacity=".55" transform="translate(0,${7 * S2 * 0.7})"/>
+    <path d="${d}" fill="none" stroke="#1d3a24" stroke-width="3"/>
+    <path d="M${home[0]},${home[1]} L${XY(-inf / S2 * Math.sin(Math.PI / 4), inf / S2 * Math.cos(Math.PI / 4)).join(',')} A${inf},${inf} 0 0 1 ${XY(inf / S2 * Math.sin(Math.PI / 4), inf / S2 * Math.cos(Math.PI / 4)).join(',')} Z" fill="#c9a26b"/>
+    <path d="M${home[0]},${home[1]} L${b1.join(',')} L${b2.join(',')} L${b3.join(',')} Z" fill="${turf[1]}"/>
+    ${[b1, b2, b3].map(([x, y]) => `<rect x="${x - 4}" y="${y - 4}" width="8" height="8" fill="#fff" transform="rotate(45 ${x} ${y})"/>`).join('')}
+    <line x1="${home[0]}" y1="${home[1]}" x2="${wall[0][0]}" y2="${wall[0][1]}" stroke="#fff" stroke-width="2"/><line x1="${home[0]}" y1="${home[1]}" x2="${wall[4][0]}" y2="${wall[4][1]}" stroke="#fff" stroke-width="2"/>
+    ${labels}${dots}</svg>`;
+}
+
+function zoneSvg(c, colOf) {
+  const W = 340, H = 380, X = (x) => W / 2 + x * 100, Y = (z) => H - 24 - z * 82;
+  const top = 3.4, bot = 1.6;
+  const pts = c.points.map(([g, x, z], i) => dot(X(x), Y(z), 11, colOf(g), true, c.tips?.[i], c.labels?.[i])).join('');
+  const third = (0.83 * 2) / 3, h3 = (top - bot) / 3;
+  return `<svg viewBox="0 0 ${W} ${H}" style="max-width:340px;margin:0 auto">
+    <rect x="${X(-0.83)}" y="${Y(top)}" width="${0.83 * 2 * 100}" height="${(top - bot) * 82}" fill="oklch(96.5% 0.002 260)" stroke="oklch(18% 0.005 260)" stroke-width="2"/>
+    ${[1, 2].map((k) => `<line x1="${X(-0.83 + third * k)}" x2="${X(-0.83 + third * k)}" y1="${Y(top)}" y2="${Y(bot)}" stroke="oklch(92.5% 0.003 260)"/><line x1="${X(-0.83)}" x2="${X(0.83)}" y1="${Y(bot + h3 * k)}" y2="${Y(bot + h3 * k)}" stroke="oklch(92.5% 0.003 260)"/>`).join('')}
+    <path d="M${X(-0.71)},${H - 8} L${X(0.71)},${H - 8} L${X(0.71)},${H - 4} L${X(0)},${H} L${X(-0.71)},${H - 4}Z" fill="#fff" stroke="oklch(72% 0.004 260)"/>
+    ${pts}</svg>`;
+}
+
+function courtSvg(c, colOf) {
+  // Half court, rim at the origin: x 0-50 across, y feet out from the rim.
+  const S2 = 11, W = 50 * S2, H = 36 * S2, X = (x) => x * S2, Y = (y) => H - (y + 5.25) * S2;
+  const arc = `M${X(3)},${Y(-5.25)} L${X(3)},${Y(9)} A${23.75 * S2},${23.75 * S2} 0 0 1 ${X(47)},${Y(9)} L${X(47)},${Y(-5.25)}`;
+  const pts = c.points.map(([g, x, y], i) => dot(X(x), Y(y), 5.5, colOf(g), c.emphasis?.[i] ?? false, c.tips?.[i])).join('');
+  return `<svg viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#e9c99a" rx="8"/><rect x="${X(17)}" y="${Y(13.75)}" width="${16 * S2}" height="${19 * S2}" fill="#d9b37c" stroke="#fff" stroke-width="2"/>
+    <circle cx="${X(25)}" cy="${Y(13.75)}" r="${6 * S2}" fill="none" stroke="#fff" stroke-width="2"/><path d="${arc}" fill="none" stroke="#fff" stroke-width="2"/>
+    <circle cx="${X(25)}" cy="${Y(0)}" r="${0.75 * S2}" fill="none" stroke="#e8590c" stroke-width="2.5"/><line x1="${X(22)}" x2="${X(28)}" y1="${Y(-1.25)}" y2="${Y(-1.25)}" stroke="#fff" stroke-width="3"/>${pts}</svg>`;
+}
+
+function rinkSvg(c, colOf) {
+  const S2 = 6, W = 85 * S2, H = 100 * S2, X = (x) => W / 2 + x * S2, Y = (y) => H - y * S2 - 20;
+  // Points are [side, feet across, feet from centre ice]; the goal line is 89 ft out, so the net sits at the bottom.
+  const pts = c.points.map(([g, x, y], i) => dot(X(x), Y(89 - y), 5.5, colOf(g), c.emphasis?.[i] ?? false, c.tips?.[i])).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="max-width:460px;margin:0 auto"><rect width="${W}" height="${H}" rx="40" fill="#f4f8fb" stroke="#9fb3c4" stroke-width="2"/>
+    <line x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}" stroke="#e03131" stroke-width="2"/><line x1="0" x2="${W}" y1="${Y(64)}" y2="${Y(64)}" stroke="#1f6feb" stroke-width="5"/>
+    <path d="M${X(-4)},${Y(0)} A${4 * S2},${4 * S2} 0 0 0 ${X(4)},${Y(0)}" fill="#cfe3f7" stroke="#e03131"/><rect x="${X(-3)}" y="${Y(-3.3)}" width="${6 * S2}" height="${3.3 * S2}" fill="none" stroke="#e03131" stroke-width="2"/>
+    ${[-22, 22].map((x) => `<circle cx="${X(x)}" cy="${Y(20)}" r="${15 * S2}" fill="none" stroke="#e03131" stroke-opacity=".5"/><circle cx="${X(x)}" cy="${Y(20)}" r="3" fill="#e03131"/>`).join('')}${pts}</svg>`;
+}
+
+function pitchSvg(c, colOf) {
+  const W = 700, H = 460, X = (x) => 10 + (x / 100) * (W - 20), Y = (y) => 10 + (y / 100) * (H - 20);
+  const w = c.weights ?? [];
+  const pts = c.points.map(([g, x, y], i) => dot(X(x), Y(y), 5 + (w[i] ?? 0) * 16, colOf(g), c.filled?.[i] ?? c.emphasis?.[i], c.tips?.[i])).join('');
+  return `<svg viewBox="0 0 ${W} ${H}"><rect x="10" y="10" width="${W - 20}" height="${H - 20}" fill="#4c9451" rx="6"/>
+    ${Array.from({ length: 10 }, (_, i) => (i % 2 ? `<rect x="${X(i * 10)}" y="10" width="${(W - 20) / 10}" height="${H - 20}" fill="#468a4b"/>` : '')).join('')}
+    <g fill="none" stroke="#fff" stroke-width="2"><rect x="10" y="10" width="${W - 20}" height="${H - 20}"/><line x1="${W / 2}" x2="${W / 2}" y1="10" y2="${H - 10}"/><circle cx="${W / 2}" cy="${H / 2}" r="55"/>
+    <rect x="10" y="${Y(21)}" width="${X(17) - 10}" height="${Y(79) - Y(21)}"/><rect x="${X(83)}" y="${Y(21)}" width="${W - 10 - X(83)}" height="${Y(79) - Y(21)}"/>
+    <rect x="10" y="${Y(37)}" width="${X(6) - 10}" height="${Y(63) - Y(37)}"/><rect x="${X(94)}" y="${Y(37)}" width="${W - 10 - X(94)}" height="${Y(63) - Y(37)}"/></g>
+    ${c.ends ? `<text x="${X(25)}" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">← ${esc(c.ends.left)}</text><text x="${X(75)}" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${esc(c.ends.right)} →</text>` : ''}${pts}</svg>`;
+}
+
+/* ---------- football field lanes ---------- */
+function fieldCard(c, ctx) {
+  const W = 700, lane = 16, T = 8, n = c.rows.length, H = T * 2 + n * lane, ez = 40, X = (y) => ez + (y / 100) * (W - 2 * ez);
+  const yards = Array.from({ length: 9 }, (_, i) => (i + 1) * 10).map((y) => `<line x1="${X(y)}" x2="${X(y)}" y1="0" y2="${H}" stroke="rgba(255,255,255,.3)"/>`).join('');
+  const rows = c.rows.map((r, i) => {
+    const y = T + i * lane + lane / 2, col = ctx.col(r.side);
+    const x1 = X(Math.min(r.from, r.to)), x2 = X(Math.max(r.from, r.to));
+    return `<g data-tip="${attr(r.tip)}"><line x1="${X(r.from)}" x2="${X(r.to)}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="${r.strong ? 9 : 5}" stroke-linecap="round" ${r.dashed ? 'stroke-dasharray="5 4"' : ''}/>
+      <path d="M${X(r.to)} ${y} l${r.to >= r.from ? -6 : 6} -5 v10z" fill="${col}"/>${r.mark === 'turnover' ? `<text x="${X(r.to) + (r.to >= r.from ? 8 : -8)}" y="${y + 4}" font-size="11" font-weight="700" fill="#ff4d4f" text-anchor="${r.to >= r.from ? 'start' : 'end'}">✕</text>` : ''}
+      ${r.label ? `<text x="${Math.max(x2 + 10, 0)}" y="${y + 4}" font-size="10.5" font-weight="700" fill="#fff">${esc(r.label)}</text>` : ''}<rect x="0" y="${y - lane / 2}" width="${W}" height="${lane}" fill="transparent"/></g>`;
+  }).join('');
+  return `<div class="svgw"><svg viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#2f7d3a" rx="8"/><rect width="${ez}" height="${H}" fill="${ctx.away}" rx="8"/><rect x="${W - ez}" width="${ez}" height="${H}" fill="${ctx.home}" rx="8"/>
+    <text x="${ez / 2}" y="${H / 2}" fill="#fff" font-size="12" font-weight="700" text-anchor="middle" transform="rotate(-90 ${ez / 2} ${H / 2})">${esc(c.ends.left)}</text><text x="${W - ez / 2}" y="${H / 2}" fill="#fff" font-size="12" font-weight="700" text-anchor="middle" transform="rotate(90 ${W - ez / 2} ${H / 2})">${esc(c.ends.right)}</text>
+    ${yards}${rows}</svg></div>`;
+}
+
+/* ---------- soccer timeline ---------- */
+function timelineSvg(c, ctx) {
+  const W = 700, H = 150, L = 50, R = 20, X = (m) => L + (Math.min(m, 95) / 95) * (W - L - R);
+  const laneY = { away: 45, home: 105 };
+  const ev = c.events.map((e) => {
+    const x = X(e.minute), y = laneY[e.side], col = ctx.col(e.side);
+    const g = e.kind === 'goal' ? `<circle cx="${x}" cy="${y}" r="11" fill="${col}" stroke="#fff" stroke-width="2"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">G</text>`
+      : e.kind === 'yellow' || e.kind === 'red' ? `<rect x="${x - 5}" y="${y - 8}" width="10" height="14" rx="2" fill="${e.kind === 'yellow' ? '#ffd43b' : '#e03131'}" stroke="oklch(18% 0.005 260)" stroke-width=".8"/>`
+      : e.kind === 'sub' ? `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">⇄</text>`
+      : `<circle cx="${x}" cy="${y + (e.side === 'away' ? -16 : 16)}" r="4" fill="${e.kind === 'shot-on' ? col : '#fff'}" stroke="${col}" stroke-width="1.6"/>`;
+    return `<g data-tip="${attr(e.tip)}">${g}</g>`;
+  }).join('');
+  const ticks = [0, 15, 30, 45, 60, 75, 90].map((m) => `<line x1="${X(m)}" x2="${X(m)}" y1="20" y2="130" stroke="oklch(92.5% 0.003 260)"/><text x="${X(m)}" y="146" font-size="11" text-anchor="middle" fill="oklch(47% 0.005 260)">${m}'</text>`).join('');
+  return `<div class="svgw"><svg viewBox="0 0 ${W} ${H}">${ticks}
+    <line x1="${L}" x2="${W - R}" y1="45" y2="45" stroke="${ctx.away}" stroke-width="3" opacity=".35"/><line x1="${L}" x2="${W - R}" y1="105" y2="105" stroke="${ctx.home}" stroke-width="3" opacity=".35"/>
+    <text x="4" y="49" font-size="12" font-weight="700" fill="${ctx.away}">${esc(c.teams.away)}</text><text x="4" y="109" font-size="12" font-weight="700" fill="${ctx.home}">${esc(c.teams.home)}</text>${ev}</svg></div>`;
+}
+
+/* ---------- drilldown ---------- */
+function drillCard(c, ctx) {
+  const pick = PICK[c.key] ?? c.defaultKey ?? c.items[0]?.key;
+  const item = c.items.find((i) => i.key === pick) ?? c.items[0];
+  let g = null;
+  const list = c.items.map((i) => {
+    const hd = i.group !== g ? ((g = i.group), `<div class="g">${esc(i.group)}</div>`) : '';
+    const side = /^Top/.test(i.group) ? 'away' : /^Bot/.test(i.group) ? 'home' : i.label.startsWith(ctx.h.away.abbr) ? 'away' : 'home';
+    return `${hd}<button class="it ${i.key === item?.key ? 'on' : ''}" data-pick="${c.key}|${i.key}" style="--tc:${ctx.col(side)}">${i.imageUrl ? `<img class="hs s" src="${esc(i.imageUrl)}" alt="" style="--tc:${ctx.col(side)}">` : ''}<span><span class="l">${esc(i.label)}</span><br><span class="s">${esc(i.sub ?? '')}</span></span>${i.badge ? `<span class="bd">${esc(i.badge)}</span>` : ''}</button>`;
+  }).join('');
+  return head(c) + `<div class="dd"><div class="list">${list}</div><div class="detail">${item ? item.cards.map((x) => cardHtml({ ...x, key: `${c.key}-${item.key}-${x.key}` }, ctx)).join('') : ''}</div></div>`;
+}
+
+/* ================= render ================= */
+function render() {
+  const P = G.pages[S.sport][S.state];
+  CTX = ctxFor(P);
+  chrome();
+  const f = document.getElementById('frame');
+  if (S.view === 'heroes') {
+    // Every sport's hero in every state, one above the next, for comparing the frame across sports.
+    f.className = 'frame';
+    f.innerHTML = `<div class="main">${SPORTS.flatMap(([sp, lab]) => STATES.map(([st, sl]) => {
+      const Q = G.pages[sp][st];
+      const keep = S.sport; S.sport = sp; CTX = ctxFor(Q);
+      const html = `<div class="olab" style="margin:22px 0 8px">${lab} · ${sl} — ${esc(Q.source)}</div>${heroHtml(Q)}`;
+      S.sport = keep; return html;
+    })).join('')}</div>`;
+    CTX = ctxFor(P);
+    return;
+  }
+  f.className = 'frame ' + (S.view === 'phone' ? 'phone' : '');
+  f.innerHTML = `${headerHtml(P)}
+    <div class="main">${heroHtml(P)}${sectionsHtml(P)}</div>`;
+}
+addEventListener('hashchange', () => { const [a, b, c] = location.hash.slice(1).split('/'); if (G.pages[a]) S.sport = a; if (b) S.state = b; if (c) S.view = c; render(); });
+render();
+// The nav follows the reader: the section under the sticky bars is the one marked.
+addEventListener('scroll', () => {
+  const secs = [...document.querySelectorAll('.sec')];
+  let cur = secs[0]?.id;
+  for (const s of secs) if (s.getBoundingClientRect().top < 160) cur = s.id;
+  document.querySelectorAll('.snav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + cur));
+}, { passive: true });
+</script>
+</body>
+</html>

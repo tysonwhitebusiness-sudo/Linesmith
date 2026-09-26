@@ -226,9 +226,11 @@ export interface MlbLiveFeed {
   decisions?: any;
 }
 
-export async function getLiveFeed(gamePk: number): Promise<MlbLiveFeed | null> {
+export async function getLiveFeed(gamePk: number, timecode?: string): Promise<MlbLiveFeed | null> {
   // Deliberately uncached: this is the only genuinely live data in the app.
-  const json = await getJson(`${BASE}/v1.1/game/${gamePk}/feed/live`);
+  // `timecode` (yyyymmdd_hhmmss UTC) asks StatsAPI for the feed as it stood then,
+  // snapped to the capture before it — the dev replay of a finished game.
+  const json = await getJson(`${BASE}/v1.1/game/${gamePk}/feed/live${timecode ? `?timecode=${timecode}` : ''}`);
   if (!json) return null;
   return {
     gamePk,
@@ -267,8 +269,8 @@ export async function getGameStatus(gamePk: number): Promise<MlbGameStatus | nul
  * Uncached here for the same reason as the live feed: during a game it changes
  * every plate appearance. A route serving a FINAL game caches the parsed result.
  */
-export async function getWinProbability(gamePk: number): Promise<unknown | null> {
-  return getJson(`${BASE}/v1/game/${gamePk}/winProbability`);
+export async function getWinProbability(gamePk: number, timecode?: string): Promise<unknown | null> {
+  return getJson(`${BASE}/v1/game/${gamePk}/winProbability${timecode ? `?timecode=${timecode}` : ''}`);
 }
 
 // ---------------------------------------------------------------------------

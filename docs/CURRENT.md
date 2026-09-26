@@ -1,5 +1,21 @@
 # CURRENT — pick up here
 
+> **GAME PAGE REDESIGN — MOCKUP BUILT, AWAITING REVIEW (2026-09-26):
+> `docs/design/game-page/` (open `http://localhost:8125/game-page/`; README
+> there lists what changed and the operator's questions).** Seven sports ×
+> pre/live/final × desktop/phone, all real payloads through the app's adapters;
+> NFL/NBA/NHL/soccer live are finished games cut at a real play (no live game
+> today). Hero = option A (team-colour split band + situation plate) with the
+> MLB at-bat face-off. Order: operator review → gameplan → build; historical
+> pages after approval (`docs/design/game-page-notes-2026-09-26.md`). Also
+> built: dev-only MLB replay `/mlb/game/<pk>?replay=<yyyymmdd_hhmmss UTC>&speed=<n>`.
+> 2026-09-26 later: mockup restyled to the app's real design, measured from the
+> live page (fonts, palette, SectionBand/SectionNav, Card, DataTable,
+> SegmentedToggle, Chip, StatusMark, TopBar + game strip, chart tokens); README
+> lists the three things that are new (64px score, richer surfaces, team colour
+> in cards). **Capitalisation (Title Case) audit is parked until the mockups are
+> approved** (operator, 2026-09-26).
+
 > **SLATE POLISH + TYPE SYSTEM 1 — BUILT (2026-09-26, `9608acf`…`10be1bb`).**
 > Built to the approved mockup v4 (`docs/design/slate-polish/index.html`): one
 > row anatomy (`components/slate/SlateSubject.tsx`); kit `ClampText`,
