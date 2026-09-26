@@ -65,11 +65,11 @@ export function TeamVs({ team, opp }: { team?: TeamRef | null; opp?: TeamRef | n
 
 function NameLink({ name, href }: { name: string; href?: string | null }) {
   return href ? (
-    <a href={href} className="truncate text-body-sm font-semibold text-ink underline-offset-2 hover:underline">
+    <a href={href} className="truncate font-display text-body font-semibold text-ink underline-offset-2 hover:underline">
       {name}
     </a>
   ) : (
-    <span className="truncate text-body-sm font-semibold text-ink">{name}</span>
+    <span className="truncate font-display text-body font-semibold text-ink">{name}</span>
   );
 }
 
@@ -143,7 +143,7 @@ export function GameSubject({ away, home, sub, href, read }: { away: TeamRef; ho
 /** "LAA @ SEA" inline with both logos — a game in a table cell or a list line. */
 export function GameMark({ away, home, href, className }: { away: TeamRef; home: TeamRef; href?: string | null; className?: string }) {
   const body = (
-    <span className={cx('inline-flex items-center gap-1 whitespace-nowrap font-semibold text-ink', className)}>
+    <span className={cx('inline-flex items-center gap-1 whitespace-nowrap font-display font-semibold text-ink', className)}>
       {away.logoUrl ? <TeamLogo logoUrl={away.logoUrl} size={15} /> : null}
       {away.abbr}
       <span className="font-normal text-ink-muted">@</span>

@@ -262,7 +262,7 @@ export function ClampText({ children, className }: { children: ReactNode; classN
         setOpen((v) => !v);
       }}
       className={cx(
-        'mt-1 block w-[290px] max-w-full cursor-pointer text-left text-label text-ink-secondary',
+        'mt-1 block w-[290px] max-w-[62vw] cursor-pointer text-left text-label text-ink-secondary',
         !open && 'line-clamp-2',
         className,
       )}

@@ -60,7 +60,7 @@ export function SectionBand({
       style={{ marginInline: 'calc(var(--lb-gutter, 0px) * -1)' }}
     >
       <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] rounded-full bg-char" />
-      <h2 className="text-title text-ink sm:text-heading">{title}</h2>
+      <h2 className="text-title uppercase tracking-[0.02em] text-ink sm:text-heading">{title}</h2>
       {count != null ? <span className="rounded-full bg-card-sunk px-2 py-0.5 text-label tabular-nums text-ink-secondary">{count}</span> : null}
       {sub ? <span className="text-body-sm text-ink-muted">{sub}</span> : null}
       {right ? <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap">{right}</div> : null}

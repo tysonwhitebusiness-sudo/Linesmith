@@ -37,7 +37,7 @@ export const CONTEXT = INK5;
 export const CONTEXT_OPACITY = 0.5;
 
 /** Matches the app's own body stack; SVG does not inherit it from CSS reliably across renderers. */
-export const FONT_STACK = 'ui-sans-serif, system-ui, sans-serif';
+export const FONT_STACK = 'var(--font-roboto-condensed), ui-sans-serif, system-ui, sans-serif';
 
 export const MIDDOT = '·';
 

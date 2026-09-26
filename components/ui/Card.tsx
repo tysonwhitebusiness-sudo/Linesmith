@@ -74,7 +74,7 @@ export function Card({ title, scope, info, onExpand, caption, dense, state = { k
       className={cx('min-w-0 border border-line-soft bg-card shadow-card', hero ? 'rounded-card-hero' : 'rounded-card', className)}
     >
       <header className="flex min-h-[44px] flex-wrap items-center gap-x-2 gap-y-1 border-b border-line-soft py-1.5 pl-4 pr-2">
-        <h3 className="flex min-w-[9em] flex-1 items-center gap-1.5 text-card-title text-ink">
+        <h3 className="flex min-w-[9em] flex-1 items-center gap-1.5 text-card-title uppercase tracking-[0.03em] text-ink">
           {title}
           {count != null ? (
             <span className="rounded-[6px] px-1.5 py-px text-overline font-semibold text-ink-secondary ring-1 ring-line ring-inset tabular-nums">
