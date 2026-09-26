@@ -27,7 +27,7 @@ import { LiveProvider, STILL } from '@/components/odds/live';
 import { Card, DataTable, FlashValue, LiveDot } from '@/components/ui';
 import { boardRows } from '@/lib/odds/section/board';
 import { fmtAmerican } from '@/lib/odds/section/format';
-import { KIT_NOW, kitEdges, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
+import { KIT_NOW, kitEdgeView, kitEdges, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
 import { marketSpec } from '@/lib/odds/section/types';
 
 /**
@@ -107,6 +107,9 @@ export function KitOdds() {
         {/* P11: the Edge card — passing (the mockup's London edge), the honest empty state, and no sharp at this line. */}
         <EdgeCard edges={kitEdges()} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
         <EdgeCard edges={[]} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
+        <EdgeCard edges={[]} view={kitEdgeView('on')} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
+        <EdgeCard edges={undefined} view={kitEdgeView('paused')} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
+        <EdgeCard edges={undefined} view={kitEdgeView('off')} marketKey="receiving-yards" spec={sp} line={65.5} sideLabels={labels} sharpAtLine sharpMainLine={65.5} now={KIT_NOW} />
         <EdgeCard edges={[]} marketKey="receiving-yards" spec={sp} line={69.5} sideLabels={['Over 69.5', 'Under 69.5']} sharpAtLine={false} sharpMainLine={65.5} onGoToLine={() => undefined} now={KIT_NOW} />
         <Card title="Scan edge cell" scope="P11">
           <div className="flex gap-6 text-label"><ScanEdgeCell edge={{ book: 'underdog', side: 'over', price: 110, ev: 0.016 }} /><ScanEdgeCell edge={null} /></div>

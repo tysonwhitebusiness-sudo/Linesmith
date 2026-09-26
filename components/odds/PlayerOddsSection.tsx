@@ -115,7 +115,7 @@ export function PlayerOddsSection({ sport, gameId, subjectId, teams, userBook, m
       <SharpPrices market={market} spec={spec} line={L} sideLabels={labels} now={now} onGoToLine={setL} />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <BestPrice marketKey={market.key} rows={rows} spec={spec} line={L} sideLabels={labels} userBook={userBook} now={now} />
-        <EdgeCard edges={odds.data?.edges} marketKey={market.key} spec={spec} line={L} sideLabels={labels}
+        <EdgeCard edges={odds.data?.edges} view={odds.data?.edgeView} marketKey={market.key} spec={spec} line={L} sideLabels={labels}
           sharpAtLine={!!pinnacleAt(market, spec, L)} sharpMainLine={pinnacleMain(market, spec)} onGoToLine={setL} now={now} />
       </div>
       <Card title="Every book" scope={`at ${fmtLine(L)}`} flush

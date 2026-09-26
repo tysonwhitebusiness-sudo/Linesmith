@@ -6,7 +6,7 @@
  * best prices that cross (negative hold). Not real data, and never shown
  * outside `/kit` and tests.
  */
-import type { MarketEdge } from './types';
+import type { EdgeView, MarketEdge } from './types';
 import type { SlateOddsGame } from './slate';
 import type { OddsMarket, OddsQuote } from './types';
 
@@ -103,4 +103,19 @@ export function kitEdges(): MarketEdge[] {
       softSince: at(120), passingSince: at(12),
       reference: { book: 'pinnacle', prices: { home: -113, away: 102 }, limit: 2500, priceTime: at(1.5), second: null } },
   ];
+}
+
+/** P11 follow-up: the Edge card's NO EDGE state with numbers (Python's evaluation), for /kit. */
+export function kitEdgeView(status: EdgeView['status'] = 'on'): EdgeView {
+  const g = (fail: number) => ['g1_reference', 'g2_time', 'g3_corroboration', 'g4_settled', 'g5_pregame', 'g6_conservative',
+    'g7_copies', 'g8_cap_outlier', 'g9_self_check'].map((gate, i) => ({ gate, ok: i + 1 !== fail, detail: i + 1 === fail ? 'min EV -2.40%' : '' }));
+  return {
+    status, reason: status === 'paused' ? '2 of 27 passing edges above 5% EV' : status === 'off' ? 'Edges are switched off.' : null,
+    candidates: status === 'off' || status === 'stale' ? undefined : [{
+      marketKey: 'receiving-yards', subjectId: 'london', line: 65.5, reason: null,
+      sharp: { book: 'pinnacle', prices: { over: -118, under: -104 }, limit: 500 },
+      best: { side: 'over', book: 'draftkings', price: -125, fair: 0.531, fairPrice: -113, implied: 0.5556, edgePts: -0.0246, ev: -0.024,
+        passed: false, firstFailure: 'g6_conservative', gates: g(6) },
+    }],
+  };
 }

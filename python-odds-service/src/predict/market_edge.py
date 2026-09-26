@@ -369,7 +369,8 @@ def gate_reference(m: Market, lat: Latency) -> tuple[Gate, Reference | None]:
                       lambda q: q.provider == "scraper:vsin" and lat.proven_fast(m.sport, q.provider, "circa"))
         if circa:
             return Gate(name, True, "circa via vsin (proven fast)"), _reference(m, circa, "circa", None)
-        return Gate(name, False, circa_fallback), None
+        # Failed, but Pinnacle's pair still prices the line: judged against it for the card, never shown as an edge.
+        return Gate(name, False, circa_fallback), (_reference(m, pin, "pinnacle", None) if pin else None)
 
     seconds = _second_sources(m, lat)
     if pin:
@@ -381,7 +382,7 @@ def gate_reference(m: Market, lat: Latency) -> tuple[Gate, Reference | None]:
                     second = {"book": book, "provider": next(iter(pair.values())).provider,
                               "fair": round(f2[m.sides[0]], 5), "side": m.sides[0]}
                     return Gate(name, True, f"pinnacle + {book} agree"), _reference(m, pin, "pinnacle", second)
-            return Gate(name, False, "pinnacle with no agreeing second source"), None
+            return Gate(name, False, "pinnacle with no agreeing second source"), _reference(m, pin, "pinnacle", None)
     for i in range(len(seconds)):
         for j in range(i + 1, len(seconds)):
             (b1, p1, f1), (b2, p2, f2) = seconds[i], seconds[j]
@@ -589,6 +590,50 @@ def self_check(results: list[EdgeResult], state: dict | None) -> dict:
             return {"on": False, "clean_runs": clean, "at": now, "reason": f"cleared after {clean} clean runs"}
         return {**state, "clean_runs": clean}
     return {**state, "on": False}      # unchanged, so a quiet run writes nothing
+
+
+def candidates(results: list[EdgeResult]) -> dict[tuple, dict]:
+    """The Edge card's content for EVERY evaluated market line, passing or not
+    (operator, 2026-09-26: the card is never blank — it shows the best soft
+    price against the fair price and which gates fail, as the mockup does).
+
+    {(kind, game, subject, period, market, side-A line): {"sport", "best",
+    "reason", "sharp"}}. `best` is the side/book to show: a passing one first,
+    then the highest EV. `reason` is set, and `best` is None, when the line has
+    no sharp reference at all (gate 1 failed before any price could be judged).
+    """
+    out: dict[tuple, dict] = {}
+    for r in results:
+        m = r.market
+        k = (m.kind, m.game_id, m.subject_id, m.period, m.market, m.line)
+        cur = out.get(k)
+        if r.soft is None or r.reference is None:
+            if cur is None:
+                out[k] = {"sport": m.sport, "best": None, "reason": r.gates[0].detail if r.gates else "", "sharp": None}
+            continue
+        cand = {
+            "side": r.side, "book": r.soft.book, "provider": r.soft.provider, "price": r.soft.american,
+            "fair": round(r.fair, 5), "implied": round(r.fair - r.edge_pts, 5), "edge_pts": round(r.edge_pts, 5),
+            "ev": round(r.ev, 5), "method": r.method, "passed": r.passed, "first_failure": r.first_failure,
+            "gates": [[g.name, g.ok, g.detail] for g in r.gates],
+        }
+        best = cur["best"] if cur else None
+        if best is None or (cand["passed"], cand["ev"]) > (best["passed"], best["ev"]):
+            ref = r.reference.as_json()
+            out[k] = {"sport": m.sport, "best": cand, "reason": None,
+                      "sharp": {"book": ref["book"], "prices": ref["prices"], "limit": ref["limit"],
+                                "price_time": ref["price_time"], "second": ref["second"]}}
+    return out
+
+
+def candidate_fingerprint(c: dict) -> str:
+    """What makes a row worth rewriting: prices, EV, verdicts — not the gate
+    details' ages ("checked 250 s ago"), which change every run."""
+    import json
+    b = c.get("best")
+    core = None if b is None else {**{k: v for k, v in b.items() if k != "gates"},
+                                   "gates": [[g[0], g[1]] for g in b["gates"]]}
+    return json.dumps([core, c.get("reason"), (c.get("sharp") or {}).get("prices")], sort_keys=True, default=str)
 
 
 def apply_self_check(results: list[EdgeResult], auto_off: dict) -> None:
@@ -804,6 +849,7 @@ async def run(now: datetime | None = None) -> dict:
     apply_self_check(results, auto_off)
     display = bool((flags.get("edge_display") or {}).get("enabled", True)) and not auto_off.get("on")
     written = await db.write_market_edges(results, displayed=display, now=now)
+    written["candidates_written"] = await db.write_market_edge_candidates(candidates(results), now)
     if auto_off != flags.get("edge_auto_off"):
         await db.write_app_flag("edge_auto_off", auto_off, "python:marketEdgeJob")
     by_gate: dict[str, int] = {}

@@ -5865,6 +5865,47 @@ async def write_market_edges(results, displayed: bool, now) -> dict:
     return {"edges": len(passing), "log_opened": len(opens), "log_closed": len(ends)}
 
 
+_candidate_fp: dict[tuple, str] = {}
+
+
+async def write_market_edge_candidates(rows: dict, now) -> int:
+    """`market_edge_candidates` = exactly `rows` (predict.market_edge.candidates).
+
+    Only rows whose fingerprint changed are rewritten, and keys that left the
+    set are deleted, so a quiet run writes almost nothing. A fresh process
+    knows no fingerprints: it replaces the whole table once."""
+    from predict.market_edge import candidate_fingerprint
+
+    fresh = not _candidate_fp
+    fps = {k: candidate_fingerprint(v) for k, v in rows.items()}
+    changed = [k for k, fp in fps.items() if _candidate_fp.get(k) != fp]
+    gone = [k for k in _candidate_fp if k not in rows]
+    pool = await get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        async with conn.transaction():
+            if fresh:
+                await conn.execute("DELETE FROM market_edge_candidates")
+            elif gone:
+                await conn.executemany(
+                    """DELETE FROM market_edge_candidates WHERE kind = $1 AND game_id = $2 AND subject_id = $3
+                         AND period = $4 AND market = $5 AND line IS NOT DISTINCT FROM $6""", gone)
+            if changed:
+                await conn.executemany(
+                    """INSERT INTO market_edge_candidates (kind, sport, game_id, subject_id, period, market, line,
+                         best, reason, sharp, updated_at)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11)
+                       ON CONFLICT ON CONSTRAINT market_edge_candidates_key DO UPDATE SET
+                         sport = excluded.sport, best = excluded.best, reason = excluded.reason,
+                         sharp = excluded.sharp, updated_at = excluded.updated_at""",
+                    [(k[0], rows[k]["sport"] or "", k[1], k[2], k[3], k[4], k[5],
+                      json.dumps(rows[k]["best"]) if rows[k]["best"] is not None else None, rows[k]["reason"],
+                      json.dumps(rows[k]["sharp"]) if rows[k]["sharp"] is not None else None, now) for k in changed])
+    for k in gone:
+        _candidate_fp.pop(k, None)
+    _candidate_fp.update({k: fps[k] for k in changed})
+    return len(changed)
+
+
 def _edge_reference(r) -> dict:
     out = r.reference.as_json()
     out["subject_name"] = r.market.subject_name or None

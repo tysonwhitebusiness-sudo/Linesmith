@@ -19,6 +19,8 @@ import { bookGroup } from '@/lib/odds/books/registry';
 import type {
   GameOddsPayload, HistPoint, MarketSpec, OddsMarket, OddsQuote, OpenerRow, PlayerOddsPayload, PullRow, SourceLatencyRow,
   MarketEdge,
+  EdgeCandidate,
+  EdgeView,
 } from '@/lib/odds/section/types';
 import { marketSpec } from '@/lib/odds/section/types';
 import { detectSteam, lineMoves } from '@/lib/odds/section/steam';
@@ -159,7 +161,7 @@ export async function readMoney(gameId: string, subjectId = ''): Promise<MoneyPa
 export async function readPlayerOdds(sport: string, gameId: string, subjectId: string): Promise<PlayerOddsPayload> {
   const now = new Date();
   const since = new Date(now.getTime() - HISTORY_DAYS * 86400e3).toISOString();
-  const [rows, checks, changes, openers, pulls, lat, money, edges, linkRows] = await Promise.all([
+  const [rows, checks, changes, openers, pulls, lat, money, edges, edgeView, linkRows] = await Promise.all([
     pgAll<{ provider_id: string; market_key: string; line: number | null; side: string; bookmaker: string;
       american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT provider_id, market_key, line, side, bookmaker, american_odds, fetched_at, changed_at, extra
@@ -179,6 +181,7 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     latency(sport),
     readMoney(gameId, subjectId),
     readEdges({ gameIds: [gameId], subjectId }),
+    readEdgeView({ gameIds: [gameId], subjectId }),
     pgAll<{ subject: string; data: Record<string, unknown> }>(
       `SELECT subject, data FROM game_reference WHERE game_id = ? AND kind = 'book_link'`, [gameId]),
   ]);
@@ -221,7 +224,7 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     if (typeof d?.url === 'string') links[l.subject] = d.url;
   }
   return { sport, gameId, subjectId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat, money,
-    ...(edges ? { edges } : {}), links };
+    ...(edges ? { edges } : {}), edgeView, links };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +319,7 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
   const pullsSince = live ? new Date(now.getTime() - 3600e3).toISOString() : since;
   const none = Promise.resolve([] as never[]);
   const g = genericSport(sport);
-  const [lines, legacy, checks, changes, openers, pulls, power, lat, money, edges] = await Promise.all([
+  const [lines, legacy, checks, changes, openers, pulls, power, lat, money, edges, edgeView] = await Promise.all([
     pgAll<{ period: string; market: string; side: string; point: number | null; is_main: boolean; bookmaker: string;
       source: string; american_odds: number; fetched_at: unknown; changed_at: unknown; extra: Record<string, unknown> | null }>(
       `SELECT period, market, side, point, is_main, bookmaker, source, american_odds, fetched_at, changed_at, extra
@@ -346,10 +349,11 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
     live ? none : latency(sport),
     readMoney(gameId),
     readEdges({ gameIds: [gameId], kind: 'game' }),
+    readEdgeView({ gameIds: [gameId], kind: 'game' }),
   ]);
   const byMarket = assembleGameMarkets(lines, legacy, checks, changes, openers, pulls);
   return { sport, gameId, asOf: now.toISOString(), markets: [...byMarket.values()], latency: lat,
-    powerRatings: power.map(p => ({ subject: p.subject, data: p.data })), money, ...(edges ? { edges } : {}) };
+    powerRatings: power.map(p => ({ subject: p.subject, data: p.data })), money, ...(edges ? { edges } : {}), edgeView };
 }
 
 // ---------------------------------------------------------------------------
@@ -589,4 +593,50 @@ export async function readEdges(scope: { gameIds: string[]; subjectId?: string; 
       },
     } satisfies MarketEdge;
   });
+}
+
+/** The job's own breadcrumb: when marketEdgeJob last finished. */
+async function edgeJobAge(): Promise<number | null> {
+  const [row] = await pgAll<{ at: unknown }>(
+    `SELECT fetched_at AS at FROM snapshot_cache WHERE cache_key = 'python-harness:job-run:marketEdgeJob'`);
+  return row ? (Date.now() - Date.parse(iso(row.at))) / 1000 : null;
+}
+
+/**
+ * Why edges show or not, and Python's evaluation of every market line for the
+ * Edge card (P11 follow-up, operator 2026-09-26: the card is never blank).
+ * `off` = the operator's kill switch; `paused` = the gate-9 self-check (the
+ * card shows the held numbers, marked NO EDGE, with the self-check failing);
+ * `stale` = the job has not run for 5 minutes (nothing is current, so no
+ * numbers). Read only: every number here is Python's.
+ */
+export async function readEdgeView(scope: { gameIds: string[]; subjectId?: string; kind?: 'prop' | 'game' }): Promise<EdgeView> {
+  const f = await readFlags();
+  if (f.edge_display?.enabled === false) return { status: 'off', reason: 'Edges are switched off.' };
+  const age = await edgeJobAge();
+  if (age == null || age > 300) {
+    return { status: 'stale', reason: age == null ? 'The edge check has not run yet.' : `The edge check last ran ${Math.round(age / 60)} min ago.` };
+  }
+  const paused = f.edge_auto_off?.on === true;
+  const rows = await pgAll<{ kind: string; subject_id: string; period: string; market: string; line: number | null;
+    best: Record<string, any> | string | null; reason: string | null; sharp: Record<string, any> | string | null }>(
+    `SELECT kind, subject_id, period, market, line, best, reason, sharp FROM market_edge_candidates
+      WHERE game_id = ANY(?) AND (?::text IS NULL OR subject_id = ?) AND (?::text IS NULL OR kind = ?)`,
+    [scope.gameIds, scope.subjectId ?? null, scope.subjectId ?? null, scope.kind ?? null, scope.kind ?? null]);
+  const obj = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v) as Record<string, any> | null;
+  const candidates: EdgeCandidate[] = rows.map(r => {
+    const b = obj(r.best);
+    const sh = obj(r.sharp);
+    return {
+      marketKey: r.kind === 'game' ? `${r.period}_${r.market}` : r.market,
+      subjectId: r.subject_id, line: r.line, reason: r.reason,
+      sharp: sh ? { book: sh.book ?? 'pinnacle', prices: sh.prices ?? {}, limit: sh.limit ?? null } : null,
+      best: b ? {
+        side: b.side, book: b.book, price: b.price, fair: b.fair, fairPrice: americanOf(b.fair), implied: b.implied,
+        edgePts: b.edge_pts, ev: b.ev, passed: !!b.passed, firstFailure: b.first_failure ?? null,
+        gates: (b.gates ?? []).map((g: [string, boolean, string]) => ({ gate: g[0], ok: g[1], detail: g[2] ?? '' })),
+      } : null,
+    };
+  });
+  return { status: paused ? 'paused' : 'on', reason: paused ? String(f.edge_auto_off?.reason ?? 'The self-check is holding edges back.') : null, candidates };
 }

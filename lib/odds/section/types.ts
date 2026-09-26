@@ -123,6 +123,8 @@ export interface PlayerOddsPayload {
   money?: MoneyPayload;
   /** P11: market edges passing every gate (Python, `market_edges`); absent while the kill switch or the self-check hides them. */
   edges?: MarketEdge[];
+  /** P11: why edges show or not, and every market line's evaluation for the Edge card. */
+  edgeView?: EdgeView;
   /** P12: the game's links to each book's event page (`game_reference` kind `book_link`, via the bridge), by book. */
   links?: Record<string, string>;
 }
@@ -139,6 +141,43 @@ export interface GameOddsPayload {
   money?: MoneyPayload;
   /** P11: market edges passing every gate; absent while hidden. */
   edges?: MarketEdge[];
+  /** P11: why edges show or not, and every market line's evaluation for the Edge card. */
+  edgeView?: EdgeView;
+}
+
+/**
+ * What the Edge card shows when no edge passes (P11 follow-up, operator
+ * 2026-09-26: "never blank"): Python's evaluation of every market line with a
+ * sharp price — the best soft price, its fair price and EV (negative
+ * included), and each gate's verdict (`market_edge_candidates`). Read only.
+ */
+export interface EdgeCandidate {
+  marketKey: string;
+  subjectId: string;
+  line: number | null;       // side A's line (a spread's home point)
+  reason: string | null;     // no sharp reference at all: why
+  sharp: { book: string; prices: Record<string, number>; limit: number | null } | null;
+  best: {
+    side: string;
+    book: string;
+    price: number;
+    fair: number;
+    fairPrice: number;
+    implied: number;
+    edgePts: number;
+    ev: number;
+    passed: boolean;
+    firstFailure: string | null;
+    gates: { gate: string; ok: boolean; detail: string }[];
+  } | null;
+}
+
+/** Whether edges show, and why not: the operator's switch, the self-check, or a stopped job. */
+export interface EdgeView {
+  status: 'on' | 'paused' | 'off' | 'stale';
+  reason: string | null;
+  /** Absent when `off` or `stale` (no numbers are shown then). */
+  candidates?: EdgeCandidate[];
 }
 
 /**

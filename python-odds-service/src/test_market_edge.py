@@ -76,7 +76,8 @@ ok("passes gate 9 with the self-check off", r.passed)
 
 print("gate 1 — reference")
 r = result(swap(base, "pinnacle", "home", extra={"limit": 400, "cache_age_s": 60}))
-ok("a limit under $500 fails only gate 1", r.soft is None and failing(r) == ["g1_reference"], failing(r))
+ok("a limit under $500 fails only gate 1", failing(r) == ["g1_reference"], failing(r))
+ok("... and is still judged against Pinnacle for the card (never shown as an edge)", r.soft is not None and r.ev is not None and not r.passed)
 r = result(replace(base, quotes=[x for x in base.quotes if not (x.book == "pinnacle" and x.side == "away")]))
 ok("a one-sided Pinnacle fails gate 1", failing(r) == ["g1_reference"], failing(r))
 relayed = replace(base, quotes=[replace(x, provider="propline") if x.book == "pinnacle" else x for x in base.quotes])
@@ -202,6 +203,22 @@ ok("the EV shown is gate 6's minimum (power, ~ +1.6%)", r.method == "power" and 
 ok("the second source is recorded", (r.reference.second or {}).get("book") == "novig")
 r = result(london, LAT, "underdog", "over")
 ok("Novig's relay not proven fast -> not shown (gate 1)", failing(r) == ["g1_reference"], failing(r))
+
+print("candidates — the card is never blank")
+from predict.market_edge import candidates, candidate_fingerprint  # noqa: E402
+two = replace(base, quotes=base.quotes + [q("fanduel", "scraper:fanduel", "home", -115), q("fanduel", "scraper:fanduel", "away", -105)])
+c = candidates(evaluate([two], LAT, NOW))
+row = c[("game", "401", "", "fg", "sp", -4.5)]
+ok("one row per market line, the passing book first", row["best"]["book"] == "betmgm" and row["best"]["passed"], row["best"])
+ok("... every gate's verdict kept", len(row["best"]["gates"]) == 8 and all(g[1] for g in row["best"]["gates"]))
+neg = candidates(evaluate([swap(base, "betmgm", "home", american=-125)], LAT, NOW))[("game", "401", "", "fg", "sp", -4.5)]
+ok("nothing passes: the highest EV is shown, negative, with gate 6 failing",
+   neg["best"]["ev"] < 0 and neg["best"]["first_failure"] == "g6_conservative", neg["best"])
+nosharp = replace(base, quotes=[x for x in base.quotes if x.book != "pinnacle"])
+ns = candidates(evaluate([nosharp], LAT, NOW))
+ok("no sharp price at all: no numbers, a reason", all(v["best"] is None and v["reason"] for v in ns.values()) and ns, ns)
+ok("a gate detail's age does not change the fingerprint",
+   candidate_fingerprint(row) == candidate_fingerprint({**row, "best": {**row["best"], "gates": [[g[0], g[1], "x"] for g in row["best"]["gates"]]}}))
 
 print("gate 9 — the self-check")
 fake = []

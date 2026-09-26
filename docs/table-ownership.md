@@ -170,6 +170,7 @@ from `golfPredictionsJob`) as their sole writer.
 > | table | owner |
 > |---|---|
 > | `market_edges` | Python — `predict/market_edge.py` via `db.write_market_edges` (`marketEdgeJob`, every 2 min); TypeScript reads it (`lib/db/oddsRead.ts` `readEdges`) and never computes an edge |
+> | `market_edge_candidates` | Python — the same job (`db.write_market_edge_candidates`, changed rows only): every evaluated market line's best soft price, fair price, EV and gate verdicts, so the Edge card is never blank; TypeScript reads it (`readEdgeView`) |
 > | `market_edge_log` | Python — the same writer: a row when a market-side first passes, `ended_at`/`end_reason` when a gate first fails; P13's `edge_clv_report.py` reads it |
 > | `app_flags` | **two writers, named (deliberate exception):** the operator by hand (`edge_display`: `UPDATE app_flags SET value = '{"enabled": false}', updated_by = 'operator' WHERE key = 'edge_display'`), and Python (`edge_auto_off` only, `db.write_app_flag` refuses any other key) |
 >
