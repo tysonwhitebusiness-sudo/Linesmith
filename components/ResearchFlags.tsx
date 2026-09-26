@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Chip, Tooltip } from './ui';
+import { Card, Chip, DataTable, PercentileCell, Tooltip, cx } from './ui';
+import { GameSubject, PlayerSubject } from './slate/SlateSubject';
+import { headshotFor, teamLogoFor } from '@/lib/sports/shared/identity';
 import { groupFlags, type FlagsData, type ResearchFlag } from '@/lib/slate/flags';
 import { formatFactor, SOURCE_CREDIT } from '@/lib/slate/specialsFormat';
 
@@ -95,27 +97,55 @@ export function ResearchFlagChips({ flags, subjectName, label = 'Flags today' }:
   );
 }
 
-function FlagLine({ flag, showSubject }: { flag: ResearchFlag; showSubject: boolean }) {
-  const measured = flag.factors.filter((f) => f.value != null);
+/** The flag's place, big, over its title (slate-polish v4). */
+function Place({ flag }: { flag: ResearchFlag }) {
   return (
-    <li className="border-t border-line-soft py-2 first:border-t-0 first:pt-0">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-semibold text-ink text-body-sm">{showSubject ? flag.subjectName : flag.title}</span>
-        <span className="text-label text-ink-muted">{showSubject ? `${flag.title} · ${rankText(flag)}` : rankText(flag)}</span>
-      </div>
-      {flag.read ? <p className="mt-0.5 text-body-sm text-ink-secondary">{flag.read}</p> : null}
-      {measured.length > 0 ? (
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          {measured.map((f) => (
-            <Tooltip key={f.key} content={f.info}>
-              <span className="text-label text-ink-muted">
-                {f.label} <span className="font-semibold tabular-nums text-ink-secondary">{formatFactor(f.key, f.value)}</span>
-              </span>
-            </Tooltip>
-          ))}
-        </div>
-      ) : null}
-    </li>
+    <span className="flex flex-col">
+      <span className="whitespace-nowrap">
+        <b className={cx('text-title font-bold tabular-nums', flag.rank <= 3 ? 'text-good-ink' : 'text-ink')}>{ordinal(flag.rank)}</b>
+        {flag.of > 1 ? <span className="text-label text-ink-muted"> of {flag.of}</span> : null}
+      </span>
+      <span className="text-label text-ink-secondary">{flag.title}</span>
+    </span>
+  );
+}
+
+/** Each measured factor as its label beside the number, with the bar and percentile under it. */
+function Factors({ flag }: { flag: ResearchFlag }) {
+  const measured = flag.factors.filter((f) => f.value != null);
+  if (measured.length === 0) return <span className="text-ink-muted">—</span>;
+  return (
+    <span className="flex flex-wrap gap-x-5 gap-y-2">
+      {measured.map((f) => (
+        <Tooltip key={f.key} content={f.info}>
+          <span className="w-[128px]">
+            <PercentileCell value={formatFactor(f.key, f.value)} percentile={f.percentile ?? null} label={f.label} align="left" />
+          </span>
+        </Tooltip>
+      ))}
+    </span>
+  );
+}
+
+function flagSubject(flag: ResearchFlag, sport: string | null | undefined) {
+  const s = sport ?? '';
+  if (flag.subjectKind === 'game' && flag.team && flag.opponent) {
+    return (
+      <GameSubject
+        away={{ abbr: flag.team, logoUrl: teamLogoFor(s, flag.teamId, flag.team) }}
+        home={{ abbr: flag.opponent, logoUrl: teamLogoFor(s, flag.opponentId, flag.opponent) }}
+        read={flag.read}
+      />
+    );
+  }
+  return (
+    <PlayerSubject
+      name={flag.subjectName}
+      headshot={flag.subjectKind === 'player' ? headshotFor(s, flag.subjectId) : null}
+      team={flag.team ? { abbr: flag.team, logoUrl: teamLogoFor(s, flag.teamId, flag.team) } : null}
+      opp={flag.opponent ? { abbr: flag.opponent, logoUrl: teamLogoFor(s, flag.opponentId, flag.opponent) } : null}
+      read={flag.read}
+    />
   );
 }
 
@@ -133,12 +163,15 @@ export function ResearchFlagsCard({
   /** A team or game page lists several subjects, so each line leads with a name. */
   showSubject = false,
   id,
+  sport,
 }: {
   flags: ResearchFlag[];
   loading: boolean;
   title?: string;
   showSubject?: boolean;
   id?: string;
+  /** For the faces and team logos (the flag carries ids, not image URLs). */
+  sport?: string | null;
 }) {
   if (flags.length === 0) return null;
   const groups = groupFlags(flags);
@@ -153,11 +186,28 @@ export function ResearchFlagsCard({
         ...[...new Set(groups.map((g) => SOURCE_CREDIT[g.rankingId]).filter(Boolean))],
       ].join(' ')}
     >
-      <ul>
-        {flags.map((f) => (
-          <FlagLine key={`${f.rankingId}:${f.subjectId}`} flag={f} showSubject={showSubject} />
-        ))}
-      </ul>
+      {/* slate-polish v4: the Slate's row anatomy — the subject with its
+          sentence under the name, the flag's place, then each factor as its
+          label and number with the percentile. The factors differ by flag, so
+          the label rides beside the number rather than in a header. */}
+      <DataTable<ResearchFlag>
+        caption={title}
+        density="compact"
+        rows={flags}
+        rowKey={(f) => `${f.rankingId}:${f.subjectId}`}
+        columns={[
+          ...(showSubject
+            ? [{ key: 'subject', label: 'Subject', sortable: false, wrap: true, render: (f: ResearchFlag) => flagSubject(f, sport) }]
+            : []),
+          { key: 'flag', label: 'Flag', sortable: false, render: (f) => <Place flag={f} /> },
+          { key: 'factors', label: 'Factors', sortable: false, wrap: true, render: (f) => (
+            <span className="flex flex-col gap-1">
+              {showSubject ? null : f.read ? <span className="text-label text-ink-secondary">{f.read}</span> : null}
+              <Factors flag={f} />
+            </span>
+          ) },
+        ]}
+      />
     </Card>
   );
 }
@@ -190,5 +240,5 @@ export function ResearchFlags({
 }) {
   const { flags, loading } = useResearchFlags(sport, who, league);
   if (variant === 'chips') return <ResearchFlagChips flags={flags} />;
-  return <ResearchFlagsCard flags={flags} loading={loading} title={title} showSubject={showSubject} id={id} />;
+  return <ResearchFlagsCard flags={flags} loading={loading} title={title} showSubject={showSubject} id={id} sport={sport} />;
 }
