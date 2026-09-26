@@ -575,10 +575,16 @@ def self_check(results: list[EdgeResult], state: dict | None) -> dict:
     """Gate 9. Returns the new `edge_auto_off` value. Trips when >= 20
     market-sides were evaluated and more than 5% of those passing gates 1-8
     have EV > 5%; clears after 3 consecutive runs under the threshold."""
-    state = dict(state or {"on": False})
     evaluated = len({(r.key()[:-1]) for r in results})
-    passing = [r for r in results if r.passes_through(8)]
-    hot = [r for r in passing if (r.ev or 0) > SELF_CHECK_EV]
+    return self_check_counts(evaluated, [r.ev or 0 for r in results if r.passes_through(8)], state)
+
+
+def self_check_counts(evaluated: int, passing_evs: list[float], state: dict | None) -> dict:
+    """`self_check` on counts: how many market-sides were evaluated, and the EV
+    of each one passing gates 1-8 (run() evaluates in chunks and keeps only these)."""
+    state = dict(state or {"on": False})
+    hot = [ev for ev in passing_evs if ev > SELF_CHECK_EV]
+    passing = passing_evs
     tripped = evaluated >= SELF_CHECK_MIN_EVALUATED and passing and len(hot) / len(passing) > SELF_CHECK_SHARE
     now = datetime.now(timezone.utc).isoformat()
     if tripped:
@@ -740,8 +746,9 @@ def build_markets(game_rows, prop_rows, starts) -> list[Market]:
     return out
 
 
-async def _read(pool, game_ids: list[str]):
-    lat_rows = await pool.fetch("SELECT sport, measure, source, book, market_group, median_s, proven_fast FROM source_latency")
+async def _read(pool, game_ids: list[str], lat_rows=None):
+    if lat_rows is None:
+        lat_rows = await pool.fetch("SELECT sport, measure, source, book, market_group, median_s, proven_fast FROM source_latency")
     # A game line is read only at a line a reference prices: Pinnacle first-hand,
     # Circa via VSiN once P7 proves it fast, or a first-hand exchange (gate 2's
     # fast sharp sources ride along at the same line).
@@ -828,7 +835,32 @@ async def _attach_exchange_history(pool, results: list[EdgeResult]) -> list[Mark
     return ms
 
 
+CHUNK_GAMES = 10   # games evaluated at once: memory, not speed (the worker has 512 MB; 2026-09-26 it was OOM-killed)
+
+
+def _patch_gate9(cands: dict, auto_off: dict) -> None:
+    """Gate 9 is known only after every chunk; add its verdict to the stored candidates."""
+    on, reason = bool(auto_off.get("on")), auto_off.get("reason") or ""
+    for c in cands.values():
+        b = c.get("best")
+        if not b:
+            continue
+        b["gates"].append(["g9_self_check", not on, reason if on else ""])
+        if on and b["passed"]:
+            b["passed"], b["first_failure"] = False, "g9_self_check"
+
+
 async def run(now: datetime | None = None) -> dict:
+    """Read, evaluate and write, a chunk of games at a time.
+
+    One pass over every upcoming game held ~150k price rows and every result
+    object at once, and on 2026-09-26 — running nested inside another job's
+    yield — pushed the 512 MB worker over its limit, crash-looping it. Only
+    small aggregates cross chunks: the passing results, each failing key's
+    first failed gate, the candidates (one small dict per market line), and
+    the self-check's counts.
+    """
+    import gc
     import time
     import db
     t0 = time.monotonic()
@@ -836,28 +868,52 @@ async def run(now: datetime | None = None) -> dict:
     pool = await db.get_pool()
     starts = await game_starts(now)
     upcoming = sorted(g for g, (_, st) in starts.items() if now < st < now + timedelta(days=4))
-    game_rows, prop_rows, lat = await _read(pool, upcoming) if upcoming else ([], [], Latency())
-    t_read = time.monotonic() - t0
-    markets = build_markets(game_rows, prop_rows, starts)
-    results = evaluate(markets, lat, now)
-    redo = await _attach_exchange_history(pool, results)
-    if redo:
-        ids = {id(m) for m in redo}
-        results = [r for r in results if id(r.market) not in ids] + evaluate(redo, lat, now)
+    lat_rows = await pool.fetch("SELECT sport, measure, source, book, market_group, median_s, proven_fast FROM source_latency")
+    passing8: list[EdgeResult] = []
+    fail_first: dict[tuple, str] = {}
+    cands: dict[tuple, dict] = {}
+    sides: set = set()
+    by_gate: dict[str, int] = {}
+    n_markets = n_results = 0
+    t_read = 0.0
+    for i in range(0, len(upcoming), CHUNK_GAMES):
+        chunk = upcoming[i:i + CHUNK_GAMES]
+        tr = time.monotonic()
+        game_rows, prop_rows, lat = await _read(pool, chunk, lat_rows)
+        t_read += time.monotonic() - tr
+        markets = build_markets(game_rows, prop_rows, starts)
+        del game_rows, prop_rows
+        results = evaluate(markets, lat, now)
+        redo = await _attach_exchange_history(pool, results)
+        if redo:
+            ids = {id(m) for m in redo}
+            results = [r for r in results if id(r.market) not in ids] + evaluate(redo, lat, now)
+        n_markets += len(markets)
+        n_results += len(results)
+        cands.update(candidates(results))
+        for r in results:
+            sides.add(r.key()[:-1])
+            f = r.first_failure
+            if f:
+                by_gate[f] = by_gate.get(f, 0) + 1
+            if r.passes_through(8):
+                passing8.append(r)
+            elif r.soft is not None:
+                fail_first[r.key()] = f or "unknown"
+        del results, markets, redo
+        gc.collect()
     flags = await db.read_app_flags(["edge_display", "edge_auto_off"])
-    auto_off = self_check(results, flags.get("edge_auto_off"))
-    apply_self_check(results, auto_off)
+    auto_off = self_check_counts(len(sides), [r.ev or 0 for r in passing8], flags.get("edge_auto_off"))
+    apply_self_check(passing8, auto_off)
+    _patch_gate9(cands, auto_off)
+    if auto_off.get("on"):
+        by_gate["g9_self_check"] = by_gate.get("g9_self_check", 0) + len(passing8)
     display = bool((flags.get("edge_display") or {}).get("enabled", True)) and not auto_off.get("on")
-    written = await db.write_market_edges(results, displayed=display, now=now)
-    written["candidates_written"] = await db.write_market_edge_candidates(candidates(results), now)
+    written = await db.write_market_edges(passing8, displayed=display, now=now, fail_reasons=fail_first)
+    written["candidates_written"] = await db.write_market_edge_candidates(cands, now)
     if auto_off != flags.get("edge_auto_off"):
         await db.write_app_flag("edge_auto_off", auto_off, "python:marketEdgeJob")
-    by_gate: dict[str, int] = {}
-    for r in results:
-        f = r.first_failure
-        if f:
-            by_gate[f] = by_gate.get(f, 0) + 1
-    return {"games": len(upcoming), "markets": len(markets), "evaluated": len(results),
-            "passing": sum(r.passed for r in results), "first_failure_by_gate": by_gate,
+    return {"games": len(upcoming), "markets": n_markets, "evaluated": n_results,
+            "passing": sum(r.passed for r in passing8), "first_failure_by_gate": by_gate,
             "auto_off": bool(auto_off.get("on")), "displayed": display, **written,
             "read_s": round(t_read, 2), "runtime_s": round(time.monotonic() - t0, 2)}

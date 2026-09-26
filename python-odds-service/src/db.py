@@ -5793,7 +5793,7 @@ async def write_app_flag(key: str, value: dict, updated_by: str) -> None:
         key, json.dumps(value), updated_by)
 
 
-async def write_market_edges(results, displayed: bool, now) -> dict:
+async def write_market_edges(results, displayed: bool, now, fail_reasons: dict | None = None) -> dict:
     """Gates 10 + the current table, in one transaction.
 
     `market_edges` becomes exactly the passing market-sides. `market_edge_log`
@@ -5811,6 +5811,9 @@ async def write_market_edges(results, displayed: bool, now) -> dict:
             continue
         k = key(r.market, r.side, side_line(r.market, r.side), r.soft.book)
         (passing if r.passed else failing)[k] = r
+    # run() evaluates in chunks and passes each failing key's first failed gate instead of the results.
+    fail_first = {k: r.first_failure for k, r in failing.items()}
+    fail_first.update(fail_reasons or {})
     pool = await get_pool()
     async with pool.acquire(timeout=30.0) as conn:
         async with conn.transaction():
@@ -5826,8 +5829,7 @@ async def write_market_edges(results, displayed: bool, now) -> dict:
                 if r is not None and r.soft.american == o["soft_american"]:
                     since[k] = o["shown_at"]
                     continue
-                reason = "price_changed" if r is not None else \
-                    (failing[k].first_failure if k in failing else "not_evaluated")
+                reason = "price_changed" if r is not None else fail_first.get(k, "not_evaluated")
                 ends.append((o["id"], now, reason))
             if ends:
                 await conn.executemany("UPDATE market_edge_log SET ended_at = $2, end_reason = $3 WHERE id = $1", ends)
