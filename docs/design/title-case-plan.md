@@ -1,8 +1,11 @@
 # Title Case — gameplan (2026-09-26)
 
-**Status: PLAN, awaiting the operator's answers to §7.** Parked behind the game
-page mockups, which were approved 2026-09-26. This work lands **before** the game
-page build, so the build is written in Title Case from its first line.
+**Status: T0 and T1 DONE (2026-09-26). The audit is waiting on the operator:
+`http://localhost:8125/title-case/` (`docs/design/title-case/`).** 976 distinct
+changes in 1,478 places, 171 marked "needs a look". The operator marks
+Keep/Edit, presses *Copy my decisions* and pastes the result. T2 applies it.
+This work lands **before** the game page build, which is written in Title Case
+from its first line.
 
 ## 1. The ask
 
@@ -61,7 +64,10 @@ What this does **not** need:
   Python's own `RankingDef` titles are never rendered; they will be matched
   anyway so the two stay alike. The audit confirms no other stored text is
   shown as a label.
-- **No test rewrites.** No test pins a multi-word label today (measured: 0).
+- ~~No test rewrites~~ **Corrected in T1:** 42 distinct labels are named in
+  20 test files (the first measure only looked for `toContain`/`toBe`). T2/T3
+  update each test in the same commit as its label, by applying the approved
+  list to `tests/` too, never by loosening an assertion.
 - **Card and section titles look the same**, because CSS already draws them in
   capitals. Their source text still changes, which is what tooltips, screen
   readers and page titles use.
@@ -112,20 +118,28 @@ Then the game page build starts.
   they start, so Python-side word changes appear after they restart. Harmless,
   since Python titles are not rendered.
 
-## 7. Questions for the operator
+## 7. The operator's answers (2026-09-26)
 
-a. **"Red sats"** from the original ask: is that **stat labels** (column headers
-   and factor names such as "Hit rate", "Staff HR%")? The plan assumes yes.
+a. "Red sats" means **stat labels**.
+b. **Scan is included.** Its own words change too, and T4 re-cuts the
+   `slate-shell` content-hash pin for `ScanTable.tsx` and `ScanCard.tsx` for
+   this change only.
+c. **Section subtitles start with a capital** and otherwise stay sentence case
+   (`sentenceStart`).
+d. **"vs" stays as it is.** It is lowercase even as the first word, and so are
+   "v" and the units (mph, ft, yds, lbs, x).
 
-b. **Scan.** Its table and card files are frozen and hash-pinned. Market names
-   reach Scan through `marketLabel`, so they change with everything else. Scan's
-   own words ("Hit rate, last 5 games", "Current streak", "Add to slip") only
-   change if the pin is re-cut. **Include Scan's own words (re-cut the pin),
-   or leave them?**
+## 8. What T0/T1 found that the plan did not expect
 
-c. **Section subtitles** such as "win probability after every plate
-   appearance" start lowercase today. They're captions, so they stay sentence
-   case, but should they at least **start with a capital** ("Win probability
-   after every plate appearance")?
-
-d. **"vs" or "vs."?** The plan keeps "vs" as it is today.
+- **The Specials' titles are pinned across languages:** `specials.ts` says a
+  test reads `slate_rankings.py` and compares the titles. The audit lists
+  Python's `RankingDef` titles (46) beside the TypeScript ones, and T2 changes
+  both in one commit.
+- **Tests name labels:** 42 labels are named across 20 test files (see §3).
+  The audit flags each one ("a test names this text").
+- **Units and "v":** the first dry run made "mph" into "Mph" and tennis's "v"
+  into "V". The rule now keeps them lowercase (tested).
+- **Words split by values in JSX** ("Back to {name}") are read as one string,
+  or the pieces came out as "Back To".
+- **/kit is left out:** it is dev-only, and its demo text ("sm pill") is not a
+  label anyone reads.

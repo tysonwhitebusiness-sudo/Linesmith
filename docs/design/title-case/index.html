@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Title Case audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Roboto+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:oklch(94.5% .003 260);--card:oklch(98.5% .002 260);--sunk:oklch(96.5% .002 260);--line:oklch(89% .004 260);--soft:oklch(92.5% .003 260);--hair:oklch(95% .003 260);
+  --ink:oklch(18% .005 260);--ink2:oklch(34% .005 260);--ink3:oklch(47% .005 260);--faint:oklch(72% .004 260);--masters:oklch(20% .006 260);--char3:#34373d;
+  --good:#00d26a;--good-ink:#00873f;--bad-ink:#c4161c;--warn:#ffb020;--warn-ink:#9a6200;
+  --fb:'Roboto Condensed',ui-sans-serif,system-ui,sans-serif;--fd:'Barlow Condensed','Roboto Condensed',ui-sans-serif,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--fb);-webkit-font-smoothing:antialiased}
+main{max-width:1180px;margin:0 auto;padding:16px 24px 80px}
+@media (max-width:767px){main{padding:12px 12px 80px}}
+h1{font:700 32px/1.1 var(--fd);margin:8px 0 4px}
+.lede{color:var(--ink2);max-width:760px;margin:0 0 14px}
+.rule{background:var(--card);border:1px solid var(--soft);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--ink2)}
+.rule b{color:var(--ink)}
+.rule ul{margin:6px 0 0;padding-left:18px}
+.bar{position:sticky;top:0;z-index:20;background:color-mix(in oklch,var(--paper) 94%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--char3);padding:10px 0;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.tally{font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.tally b{color:var(--ink)}
+.sp{flex:1}
+input.q{height:32px;border:0;border-radius:8px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);padding:0 10px;font:inherit;font-size:13px;min-width:200px}
+@media (max-width:767px){input.q{font-size:16px;min-width:0;flex:1}}
+.btn{height:32px;border:0;border-radius:8px;padding:0 12px;font:600 13px var(--fb);cursor:pointer;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink2)}
+.btn.pri{background:var(--masters);color:#fff;box-shadow:none}
+.chk{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--ink2);cursor:pointer}
+.nav{display:flex;gap:16px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:14px;scrollbar-width:none}
+.nav button{flex:none;border:0;background:none;margin-bottom:-1px;border-bottom:2px solid transparent;padding:10px 0 9px;font:600 14px var(--fb);color:var(--ink3);cursor:pointer;white-space:nowrap}
+.nav button.on{border-bottom-color:var(--ink);color:var(--ink)}
+.nav button span{margin-left:6px;border-radius:6px;padding:1px 6px;font-size:11px;background:var(--sunk);color:var(--ink3)}
+.card{background:var(--card);border:1px solid var(--soft);border-radius:12px;box-shadow:0 1px 2px rgba(15,18,24,.05),0 2px 8px -4px rgba(15,18,24,.08);overflow:hidden;margin-bottom:14px}
+.ch{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 8px 6px 16px;border-bottom:1px solid var(--soft)}
+.ch h2{margin:0;flex:1;font:600 16px/1.3 var(--fd);letter-spacing:.03em;text-transform:uppercase}
+.ch .n{font-size:11px;font-weight:600;color:var(--ink2);border-radius:6px;padding:1px 6px;box-shadow:inset 0 0 0 1px var(--line)}
+.ch .all{font-size:12px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--soft)}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--sunk)}
+@media (max-width:767px){.row{grid-template-columns:1fr}.dec{justify-self:start}}
+.old{color:var(--ink3);text-decoration:line-through;text-decoration-color:var(--faint);word-break:break-word}
+.new{font-weight:600;word-break:break-word}
+.new input{width:100%;height:30px;border:0;border-radius:6px;box-shadow:inset 0 0 0 2px var(--ink);padding:0 8px;font:600 14px var(--fb)}
+.meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--ink3)}
+.meta code{font:12px ui-monospace,Consolas,monospace;color:var(--ink2)}
+.meta .more{cursor:pointer;text-decoration:underline;text-decoration-color:var(--faint)}
+.flag{font-size:11px;font-weight:600;letter-spacing:.04em;border-radius:999px;padding:1px 8px;background:color-mix(in oklch,var(--warn) 12%,transparent);color:var(--warn-ink);border:1px solid color-mix(in oklch,var(--warn) 30%,transparent)}
+.kind{font-size:11px;font-weight:600;letter-spacing:.04em;border-radius:999px;padding:1px 8px;background:var(--sunk);color:var(--ink2);border:1px solid var(--soft)}
+.dec{display:inline-flex;gap:2px;padding:3px;border-radius:10px;background:var(--sunk)}
+.dec button{border:0;background:none;border-radius:7px;padding:4px 10px;font:500 12px var(--fb);color:var(--ink3);cursor:pointer}
+.dec button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.dec button.on.c{color:var(--good-ink)}.dec button.on.k{color:var(--bad-ink)}
+.row.kept .new{color:var(--ink3);font-weight:400}
+.empty{padding:24px;text-align:center;color:var(--ink3)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--masters);color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Title Case audit</h1>
+  <p class="lede">Every label the app would change, found by the audit script (<code>scripts/title-case-audit.ts</code>). Nothing has changed in the app yet. Each change is set to <b>Change</b> unless it's flagged as reading like a sentence. Mark the ones you don't want with <b>Keep</b>, or <b>Edit</b> to type your own. Your choices save as you go. When you're done, press <b>Copy my decisions</b> and paste the result into the chat.</p>
+  <div class="rule"><b>The rule</b> (<code>lib/text/titleCase.ts</code>, tests in <code>tests/title-case-rule.test.ts</code>):
+    <ul>
+      <li>Every plain lowercase word gets a capital: "Hit rate" → <b>Hit Rate</b>.</li>
+      <li>Small words stay lowercase unless first or last: a, an, the, and, or, of, to, in, on, at, per, by, for. <b>Pitcher to Hit a Home Run</b>.</li>
+      <li>"vs", "v" and units (mph, ft, yds, lbs, x) are always lowercase.</li>
+      <li>Anything with a capital, digit or symbol is left alone: HR/PA, K/9, aDOT, xwOBA, L10, +EV. Hyphens capitalise each part: <b>HR-Friendly</b>.</li>
+      <li>A separator (·, :, →) starts a new run: <b>Matchup · At the Start</b>.</li>
+      <li>Section subtitles stay sentence case but start with a capital: "Win probability after every plate appearance".</li>
+      <li>Captions, tooltip text, notes and a book's own promo wording aren't touched, and aren't in this list.</li>
+    </ul>
+  </div>
+  <div class="bar">
+    <span class="tally" id="tally"></span><span class="sp"></span>
+    <label class="chk"><input type="checkbox" id="flagged"> Flagged only</label>
+    <input class="q" id="q" placeholder="Search text or file">
+    <button class="btn pri" id="copy">Copy my decisions</button>
+  </div>
+  <nav class="nav" id="nav"></nav>
+  <div id="list"></div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="audit.js"></script>
+<script>
+const A = window.AUDIT;
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const KIND = { label: 'label', 'jsx-attr': 'label', map: 'name list', 'jsx-text': 'button / heading text', sub: 'subtitle', python: 'Python ranking title' };
+const SOFT_DEFAULT_KEEP = (flags) => flags.some((f) => f === 'reads like a sentence' || f.startsWith('starts lowercase'));
+
+// One row per distinct change (old → new): the same label in six files is one decision.
+const groups = new Map();
+for (const e of A.entries) {
+  const k = e.old + '\u0000' + e.new;
+  let g = groups.get(k);
+  if (!g) groups.set(k, (g = { key: k, old: e.old, new: e.new, kinds: new Set(), surfaces: new Set(), where: [], flags: new Set() }));
+  g.kinds.add(e.kind); g.surfaces.add(e.surface); g.where.push(`${e.file}:${e.line}`); e.flags.forEach((f) => g.flags.add(f));
+}
+const G = [...groups.values()].map((g, i) => ({ ...g, id: String(i), flags: [...g.flags], surface: [...g.surfaces][0] }));
+const byId = new Map(G.map((g) => [g.id, g]));
+const SURFACES = ['Needs a look', ...[...new Set(G.map((g) => g.surface))].sort()];
+
+let D = {};
+try { D = JSON.parse(localStorage.getItem('tc-decisions') || '{}'); } catch {}
+const save = () => { try { localStorage.setItem('tc-decisions', JSON.stringify(D)); } catch {} };
+const decisionOf = (g) => D[g.key] ?? { d: SOFT_DEFAULT_KEEP(g.flags) ? 'keep' : 'change' };
+let tab = 'Needs a look', q = '', flaggedOnly = false;
+
+function inTab(g) {
+  if (tab === 'Needs a look') return g.flags.length > 0;
+  return g.surfaces.has(tab) && (!flaggedOnly || g.flags.length > 0);
+}
+function matches(g) {
+  if (!q) return true;
+  const s = q.toLowerCase();
+  return g.old.toLowerCase().includes(s) || g.new.toLowerCase().includes(s) || g.where.some((w) => w.toLowerCase().includes(s));
+}
+function tally() {
+  let c = 0, k = 0, e = 0;
+  for (const g of G) { const d = decisionOf(g).d; if (d === 'change') c++; else if (d === 'keep') k++; else e++; }
+  document.getElementById('tally').innerHTML = `<b>${G.length}</b> distinct changes (${A.entries.length} places) · <b>${c}</b> change · <b>${k}</b> keep · <b>${e}</b> edited`;
+}
+function nav() {
+  document.getElementById('nav').innerHTML = SURFACES.map((s) => {
+    const n = s === 'Needs a look' ? G.filter((g) => g.flags.length).length : G.filter((g) => g.surfaces.has(s)).length;
+    return `<button class="${s === tab ? 'on' : ''}" data-tab="${esc(s)}">${esc(s)}<span>${n}</span></button>`;
+  }).join('');
+}
+function rowHtml(g) {
+  const dec = decisionOf(g);
+  const newCell = dec.d === 'edit' ? `<input data-edit="${g.id}" value="${esc(dec.text ?? g.new)}">` : esc(dec.d === 'keep' ? g.old : g.new);
+  const where = g.where.length > 1 ? `<code>${esc(g.where[0])}</code> <span class="more" data-more="${g.id}">+${g.where.length - 1} more</span>` : `<code>${esc(g.where[0])}</code>`;
+  return `<div class="row ${dec.d === 'keep' ? 'kept' : ''}" data-id="${g.id}">
+    <div class="old">${esc(g.old)}</div>
+    <div class="new">${newCell}</div>
+    <div class="dec">${[['change', 'Change', 'c'], ['keep', 'Keep', 'k'], ['edit', 'Edit', 'e']].map(([v, l, c]) => `<button class="${c} ${dec.d === v ? 'on' : ''}" data-d="${v}">${l}</button>`).join('')}</div>
+    <div class="meta">${[...g.kinds].map((k) => `<span class="kind">${esc(KIND[k])}</span>`).join('')}${g.flags.map((f) => `<span class="flag">${esc(f)}</span>`).join('')}<span>${where}</span>${tab === 'Needs a look' ? `<span>${esc([...g.surfaces].join(', '))}</span>` : ''}</div>
+  </div>`;
+}
+function list() {
+  const rows = G.filter((g) => inTab(g) && matches(g));
+  // Group the rows under cards by where they live, flagged first.
+  const bySurface = new Map();
+  for (const g of rows) { const s = tab === 'Needs a look' ? g.surface : tab; (bySurface.get(s) ?? bySurface.set(s, []).get(s)).push(g); }
+  const html = [...bySurface.entries()].map(([s, gs]) => {
+    gs.sort((a, b) => (b.flags.length > 0) - (a.flags.length > 0) || a.old.localeCompare(b.old));
+    return `<section class="card"><div class="ch"><h2>${esc(s)}</h2><span class="n">${gs.length}</span><button class="btn all" data-all="${esc(s)}">Set all shown to Change</button></div>${gs.map(rowHtml).join('')}</section>`;
+  }).join('');
+  document.getElementById('list').innerHTML = html || '<div class="card empty">Nothing matches.</div>';
+}
+function render() { tally(); nav(); list(); }
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tab],[data-d],[data-more],[data-all]');
+  if (!t) return;
+  if (t.dataset.tab) { tab = t.dataset.tab; render(); return; }
+  if (t.dataset.more) { const g = byId.get(t.dataset.more); t.outerHTML = g.where.slice(1).map((w) => `<code>${esc(w)}</code>`).join(' '); return; }
+  if (t.dataset.all) {
+    for (const g of G.filter((g) => inTab(g) && matches(g) && (tab !== 'Needs a look' || g.surface === t.dataset.all))) D[g.key] = { d: 'change' };
+    save(); render(); return;
+  }
+  const g = byId.get(t.closest('.row').dataset.id);
+  const key = g.key;
+  D[key] = t.dataset.d === 'edit' ? { d: 'edit', text: decisionOf(g).text ?? g.new } : { d: t.dataset.d };
+  save();
+  t.closest('.row').outerHTML = rowHtml(g);
+  tally();
+  if (t.dataset.d === 'edit') document.querySelector(`[data-edit="${g.id}"]`)?.focus();
+});
+document.addEventListener('input', (e) => {
+  if (e.target.dataset.edit) { D[byId.get(e.target.dataset.edit).key] = { d: 'edit', text: e.target.value }; save(); tally(); }
+  if (e.target.id === 'q') { q = e.target.value; list(); }
+});
+document.getElementById('flagged').addEventListener('change', (e) => { flaggedOnly = e.target.checked; list(); });
+document.getElementById('copy').addEventListener('click', async () => {
+  // Only what differs from the page's defaults, so the paste stays short.
+  const out = { audit: A.summary.builtAt, keep: [], change: [], edit: [] };
+  for (const g of G) {
+    const d = decisionOf(g), def = SOFT_DEFAULT_KEEP(g.flags) ? 'keep' : 'change';
+    if (d.d === 'edit') out.edit.push({ from: g.old, to: d.text });
+    else if (d.d !== def) out[d.d].push(g.old);
+  }
+  const text = 'Title Case decisions: ' + JSON.stringify(out);
+  try { await navigator.clipboard.writeText(text); toast(`Copied: ${out.keep.length} keep, ${out.change.length} change, ${out.edit.length} edited (only the ones that differ from the defaults)`); }
+  catch { prompt('Copy this:', text); }
+});
+function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = 'none'), 3500); }
+render();
+</script>
+</body>
+</html>

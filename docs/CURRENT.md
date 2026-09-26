@@ -1,10 +1,16 @@
 # CURRENT — pick up here
 
 > **NEXT: TITLE CASE (T0–T6), THEN THE GAME PAGE BUILD (2026-09-26).**
-> 1. **Title Case plan: `docs/design/title-case-plan.md`**, waiting on the
->    operator's §7 answers (stat labels? Scan's frozen words? capitalise
->    section subs? "vs"). T1 is an audit the operator approves before any
->    string changes. It lands before the game page build.
+> 1. **Title Case: T0 + T1 DONE, the audit is WAITING ON THE OPERATOR.**
+>    Review page `http://localhost:8125/title-case/` (`docs/design/title-case/`,
+>    built by `node --import tsx scripts/title-case-audit.ts`): 976 distinct
+>    changes, 171 flagged. The operator pastes back "Title Case decisions: {…}"
+>    (only what differs from the defaults: keep / change / edit). Next is T2:
+>    apply it (TS and Python `RankingDef` titles in one commit, plus the 20 test
+>    files that name labels). Rule: `lib/text/titleCase.ts`, tests
+>    `tests/title-case-rule.test.ts`; plan `docs/design/title-case-plan.md`
+>    (answers in §7: stat labels, Scan INCLUDED, subs start capitalised, "vs"
+>    kept).
 > 2. **Game page mockup: approved for a 1:1 build (`2e2e836`).**
 >    `docs/design/game-page/` (open `http://localhost:8125/game-page/`; the
 >    README is the spec). Seven sports × pre/live/final × desktop/phone, real
