@@ -146,6 +146,13 @@ export async function readMoney(gameId: string, subjectId = ''): Promise<MoneyPa
   };
 }
 
+// PULLS (audit 2026-09-26): a pull is recorded per SOURCE (D14 keeps every
+// one), but a book is only "pulled" while NO source still quotes it at that
+// line and side. Relays re-list alternates constantly — in one day 415k of
+// 622k game-line pulls were actionnetwork's, 97% back within ~15 min — and a
+// relay dropping its copy while the book's own site still shows the price is
+// not the book taking the line down. So every read below keeps an OPEN pull
+// only when the book has no current row there; returned pulls stay (history).
 // ---------------------------------------------------------------------------
 // Player
 // ---------------------------------------------------------------------------
@@ -166,7 +173,8 @@ export async function readPlayerOdds(sport: string, gameId: string, subjectId: s
     pgAll<{ market_key: string; side: string; bookmaker: string; line: number | null; last_american_odds: number | null;
       pulled_at: unknown; returned_at: unknown }>(
       `SELECT market_key, side, bookmaker, line, last_american_odds, pulled_at, returned_at
-         FROM prop_odds_pulls WHERE game_id = ? AND subject_id = ? AND pulled_at >= ?::timestamptz`,
+         FROM prop_odds_pulls p WHERE game_id = ? AND subject_id = ? AND pulled_at >= ?::timestamptz
+          AND (returned_at IS NOT NULL OR NOT EXISTS (SELECT 1 FROM prop_odds c WHERE c.game_id = p.game_id AND c.subject_id = p.subject_id AND c.market_key = p.market_key AND c.side = p.side AND c.bookmaker = p.bookmaker AND c.line IS NOT DISTINCT FROM p.line))`,
       [gameId, subjectId, since]),
     latency(sport),
     readMoney(gameId, subjectId),
@@ -328,9 +336,11 @@ export async function readGameOdds(sport: string, gameId: string, opts?: { live?
       last_american_odds: number | null; pulled_at: unknown; returned_at: unknown }>(
       live
         ? `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
-             FROM game_line_pulls WHERE sport = ? AND game_id = ? AND (returned_at IS NULL OR returned_at >= ?::timestamptz)`
+             FROM game_line_pulls p WHERE sport = ? AND game_id = ? AND (returned_at IS NULL OR returned_at >= ?::timestamptz)
+              AND (returned_at IS NOT NULL OR NOT EXISTS (SELECT 1 FROM game_lines c WHERE c.sport = p.sport AND c.game_id = p.game_id AND c.period = p.period AND c.market = p.market AND c.side = p.side AND c.bookmaker = p.bookmaker AND c.point IS NOT DISTINCT FROM p.point))`
         : `SELECT period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
-             FROM game_line_pulls WHERE sport = ? AND game_id = ? AND pulled_at >= ?::timestamptz`, [g, gameId, pullsSince]),
+             FROM game_line_pulls p WHERE sport = ? AND game_id = ? AND pulled_at >= ?::timestamptz
+              AND (returned_at IS NOT NULL OR NOT EXISTS (SELECT 1 FROM game_lines c WHERE c.sport = p.sport AND c.game_id = p.game_id AND c.period = p.period AND c.market = p.market AND c.side = p.side AND c.bookmaker = p.bookmaker AND c.point IS NOT DISTINCT FROM p.point))`, [g, gameId, pullsSince]),
     live ? none : pgAll<{ subject: string; data: Record<string, unknown> }>(
       `SELECT subject, data FROM game_reference WHERE sport = ? AND game_id = ? AND kind = 'power_rating'`, [g, gameId]),
     live ? none : latency(sport),
@@ -454,7 +464,8 @@ export async function readSlateOdds(sport: string, date: string, gameIds: string
          FROM market_openers WHERE kind = 'game' AND game_id = ANY(?) AND period = 'fg' AND market IN ('ml', 'sp', 'tot')`, [gameIds]),
     pgAll<PullDbRow & { game_id: string }>(
       `SELECT game_id, period, market, side, bookmaker, point, last_american_odds, pulled_at, returned_at
-         FROM game_line_pulls WHERE sport = ? AND game_id = ANY(?) AND period = 'fg' AND returned_at IS NULL AND pulled_at >= ?::timestamptz`,
+         FROM game_line_pulls p WHERE sport = ? AND game_id = ANY(?) AND period = 'fg' AND returned_at IS NULL AND pulled_at >= ?::timestamptz
+          AND NOT EXISTS (SELECT 1 FROM game_lines c WHERE c.sport = p.sport AND c.game_id = p.game_id AND c.period = p.period AND c.market = p.market AND c.side = p.side AND c.bookmaker = p.bookmaker AND c.point IS NOT DISTINCT FROM p.point)`,
       [g, gameIds, since]),
     pgAll<{ game_id: string; market: string; side: string; source: string; book: string | null; pct_money: number | null; pct_bets: number | null }>(
       `SELECT DISTINCT ON (game_id, market, side, source, book) game_id, market, side, source, book, pct_money, pct_bets
@@ -490,7 +501,7 @@ export async function readScanExtras(gameIds: string[]): Promise<ScanExtras> {
         GROUP BY subject_id, market, point`, [gameIds]),
     pgAll<{ subject_id: string; market_key: string; line: number | null; n: string }>(
       `SELECT subject_id, market_key, line, count(DISTINCT bookmaker) AS n
-         FROM prop_odds_pulls WHERE game_id = ANY(?) AND returned_at IS NULL
+         FROM prop_odds_pulls p WHERE game_id = ANY(?) AND returned_at IS NULL AND NOT EXISTS (SELECT 1 FROM prop_odds c WHERE c.game_id = p.game_id AND c.subject_id = p.subject_id AND c.market_key = p.market_key AND c.side = p.side AND c.bookmaker = p.bookmaker AND c.line IS NOT DISTINCT FROM p.line)
         GROUP BY subject_id, market_key, line`, [gameIds]),
     readEdges({ gameIds, kind: 'prop' }),
   ]);
