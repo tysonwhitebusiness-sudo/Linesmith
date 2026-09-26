@@ -6,7 +6,15 @@ import { Card, EmptyState } from '../ui';
 import { droppingList, moneylineMovers, pulledList, steamMovers, type SlateOddsGame } from '@/lib/odds/section/slate';
 import { fmtAmerican, fmtClock, fmtLine } from '@/lib/odds/section/format';
 
-export interface SlateGameRef { label: string; href?: string | null; home?: string }
+export interface SlateGameRef {
+  label: string;
+  href?: string | null;
+  home?: string;
+  /** slate-polish v4: both teams with their logos, for the logo-and-abbreviation game mark. */
+  teams?: { away: { abbr: string; logoUrl?: string | null }; home: { abbr: string; logoUrl?: string | null } };
+  /** The game has started: its live prices are dimmed and marked in the Market hub. */
+  live?: boolean;
+}
 
 const MARKET: Record<string, string> = { ml: 'Moneyline', sp: 'Spread', tot: 'Total' };
 

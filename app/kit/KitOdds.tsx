@@ -6,6 +6,7 @@ import { Depth } from '@/components/odds/Depth';
 import { EdgeCard } from '@/components/odds/EdgeCard';
 import { ScanEdgeCell } from '@/components/odds/ScanEdgeCell';
 import { SlateEdges } from '@/components/odds/SlateEdges';
+import { SlateEvCard } from '@/components/odds/SlateEvCard';
 import { SlipLegPrice } from '@/components/odds/SlipLegPrice';
 import { slipBest } from '@/lib/odds/slipBest';
 import { GameLineCompact } from '@/components/odds/GameLineCompact';
@@ -27,7 +28,7 @@ import { LiveProvider, STILL } from '@/components/odds/live';
 import { Card, DataTable, FlashValue, LiveDot } from '@/components/ui';
 import { boardRows } from '@/lib/odds/section/board';
 import { fmtAmerican } from '@/lib/odds/section/format';
-import { KIT_NOW, kitEdgeView, kitEdges, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
+import { KIT_NOW, kitEdgeRanking, kitEdgeView, kitEdges, kitOneBookMarket, kitPropMarket, kitSlateGames } from '@/lib/odds/section/kitFixture';
 import { marketSpec } from '@/lib/odds/section/types';
 
 /**
@@ -122,6 +123,8 @@ export function KitOdds() {
         <Card title="Market hub · Edges" flush>
           <SlateEdges edges={kitEdges()} refs={new Map([['kit-2', { label: 'ATL @ GB', href: null, home: 'GB' }]])} />
           <SlateEdges edges={[]} refs={new Map()} />
+          <SlateEvCard ranking={kitEdgeRanking()} refs={new Map([['kit-1', { label: 'CHC @ BOS', teams: { away: { abbr: 'CHC', logoUrl: 'https://www.mlbstatic.com/team-logos/112.svg' }, home: { abbr: 'BOS', logoUrl: 'https://www.mlbstatic.com/team-logos/111.svg' } } }], ['kit-2', { label: 'ATL @ GB', teams: { away: { abbr: 'ATL' }, home: { abbr: 'GB' } } }]])} sport="mlb" nameOf={() => 'Tarik Skubal'} />
+          <SlateEvCard ranking={{ status: 'stale', reason: 'The edge check last ran 22 min ago.' }} refs={new Map()} sport="mlb" />
         </Card>
         <Card title="Every book" scope="at 65.5" flush>
           <PriceBoard market={m} spec={sp} line={65.5} rows={rows} sideLabels={labels} userBook="fanduel" latency={[]} now={KIT_NOW} />

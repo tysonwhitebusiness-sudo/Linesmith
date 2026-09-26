@@ -41,7 +41,8 @@ import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
 import { SlateSpotlights, useSlateFlags } from './slate/SlateSpotlights';
 import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
 import { SlateMovers, moversShown, useSlateMovers } from './slate/SlateMovers';
-import { useEdges, useScanExtras, useSlateOdds } from './odds/useOdds';
+import { useEdgeRanking, useEdges, useScanExtras, useSlateOdds } from './odds/useOdds';
+import { SlateEvCard } from './odds/SlateEvCard';
 import { LiveProvider } from './odds/live';
 import { SlateModel, useSlateModel } from './slate/SlateModel';
 import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
@@ -194,13 +195,31 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const slateOdds = useSlateOdds(sport === 'golf' ? null : sport, slateRead.data?.date ?? null, slateCards.map((c) => c.id), snapshot?.fetchedAt ?? null);
   const slateOddsById = useMemo(() => new Map((slateOdds.data?.games ?? []).map((g) => [g.gameId, g])), [slateOdds.data]);
   const slateRefs = useMemo(
-    () => new Map(slateCards.map((c) => [c.id, { label: `${c.away.abbr ?? c.away.name} @ ${c.home.abbr ?? c.home.name}`, href: c.href ?? null, home: c.home.abbr ?? c.home.name }])),
+    () =>
+      new Map(
+        slateCards.map((c) => [
+          c.id,
+          {
+            label: `${c.away.abbr ?? c.away.name} @ ${c.home.abbr ?? c.home.name}`,
+            href: c.href ?? null,
+            home: c.home.abbr ?? c.home.name,
+            // slate-polish v4: the logos for every game mark, and whether it has started.
+            teams: {
+              away: { abbr: c.away.abbr ?? c.away.name, logoUrl: c.away.logoUrl ?? null },
+              home: { abbr: c.home.abbr ?? c.home.name, logoUrl: c.home.logoUrl ?? null },
+            },
+            live: c.status === 'live',
+          },
+        ]),
+      ),
     [slateCards],
   );
   // D22 — Scan's Open → now and pulled marker, for the same games.
   const scanExtras = useScanExtras(sport === 'golf' ? [] : slateCards.map((c) => c.id), snapshot?.fetchedAt ?? null);
   // P11 — the market edges passing every gate, for the game cards and the Market hub.
   const slateEdges = useEdges(sport === 'golf' ? [] : slateCards.map((c) => c.id), snapshot?.fetchedAt ?? null);
+  // slate-polish D — the Edge / EV ranking, from the same job's candidates.
+  const edgeRanking = useEdgeRanking(sport === 'golf' ? [] : slateCards.map((c) => c.id), snapshot?.fetchedAt ?? null);
   const moversRead = useSlateMovers(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S4 — the Specials, from `slate_rankings` (the table M3 actually wrote).
   const specialsRead = useSlateSpecials(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
@@ -474,6 +493,9 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
       ...(weather ? [weather] : []),
     ];
   }, [flagsRead.flags, filteredBeforePriceGate, slateRead.data, sport, league]);
+
+  // The Edge / EV card's prop rows carry only the player's id.
+  const subjectNames = useMemo(() => new Map(filteredBeforePriceGate.map((c) => [c.subjectId, c.subjectName])), [filteredBeforePriceGate]);
 
   // S5 — Your lines, joined against the same candidates the board draws.
   const yourLines = useMemo(
@@ -857,7 +879,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} sport={sport} teamLogoBySubject={teamLogoBySubject} odds={slateOdds.data?.games} refs={slateRefs} edges={slateEdges?.edges} />}
             </LiveProvider>
 
-            <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
+            <SlateSpotlights
+              cards={spotlights}
+              loading={loading && filteredBeforePriceGate.length === 0}
+              lead={sport === 'golf' ? null : <SlateEvCard ranking={edgeRanking} refs={slateRefs} sport={sport} nameOf={(id) => subjectNames.get(id) ?? null} />}
+            />
 
             <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} sport={sport} />
 

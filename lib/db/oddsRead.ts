@@ -21,6 +21,8 @@ import type {
   MarketEdge,
   EdgeCandidate,
   EdgeView,
+  EdgeRanking,
+  EdgeRankRow,
 } from '@/lib/odds/section/types';
 import { marketSpec } from '@/lib/odds/section/types';
 import { detectSteam, lineMoves } from '@/lib/odds/section/steam';
@@ -642,4 +644,54 @@ export async function readEdgeView(scope: { gameIds: string[]; subjectId?: strin
   });
   return { status: paused ? 'paused' : 'on', reason: paused ? String(f.edge_auto_off?.reason ?? 'The self-check is holding edges back.') : null,
     asOf: new Date(Date.now() - age * 1000).toISOString(), candidates };
+}
+
+/**
+ * The Slate's Edge / EV ranking (slate-polish D): the best soft price on each
+ * market line of these games against Pinnacle's no-vig price, as
+ * marketEdgeJob stored it in `market_edge_candidates` — real edges first
+ * (passing every gate, or held only by the self-check), then the highest EV.
+ *
+ * WHAT IS LEFT OUT, and why: a line whose first failure is gate 1 (no sharp
+ * reference to trust) or gate 8 (over the 8% cap or a lone outlier — a
+ * probable data error, not an offer), and any EV above that same cap. The
+ * rest is shown with its status, so a night with no edge still says what the
+ * best prices were and why none passed — the card is never blank.
+ *
+ * It honours the operator's switch and a stopped job the same way
+ * `readEdgeView` does; the self-check does NOT hide it — its rows show as
+ * held, which is the honest reading of that state.
+ */
+export async function readEdgeRanking(scope: { gameIds: string[]; limit?: number }): Promise<EdgeRanking> {
+  const f = await readFlags();
+  if (f.edge_display?.enabled === false) return { status: 'off', reason: 'Edges are switched off.' };
+  const age = await edgeJobAge();
+  if (age == null || age > 900) {
+    return { status: 'stale', reason: age == null ? 'The edge check has not run yet.' : `The edge check last ran ${Math.round(age / 60)} min ago.` };
+  }
+  const paused = f.edge_auto_off?.on === true;
+  const rows = await pgAll<{ kind: 'prop' | 'game'; game_id: string; subject_id: string; period: string; market: string;
+    line: number | null; best: Record<string, any> | string }>(
+    `SELECT kind, game_id, subject_id, period, market, line, best FROM market_edge_candidates
+      WHERE game_id = ANY(?) AND best IS NOT NULL
+        AND coalesce(best->>'first_failure', '') NOT IN ('g1_reference', 'g8_cap_outlier')
+        AND (best->>'ev')::float <= 0.08
+      ORDER BY (coalesce(best->>'first_failure', '') IN ('', 'g9_self_check')) DESC, (best->>'ev')::float DESC
+      LIMIT ?`,
+    [scope.gameIds, scope.limit ?? 10]);
+  const out: EdgeRankRow[] = rows.map(r => {
+    const b = (typeof r.best === 'string' ? JSON.parse(r.best) : r.best) as Record<string, any>;
+    const first: string | null = b.first_failure ?? null;
+    const failed = first ? (b.gates ?? []).find((g: [string, boolean, string]) => g[0] === first) : null;
+    return {
+      kind: r.kind, gameId: r.game_id, subjectId: r.subject_id,
+      marketKey: r.kind === 'game' ? `${r.period}_${r.market}` : r.market,
+      line: r.line == null ? null : Number(r.line), side: b.side, book: b.book, price: b.price,
+      fair: b.fair, fairPrice: americanOf(b.fair), ev: b.ev,
+      status: first == null ? 'edge' : first === 'g9_self_check' ? 'held' : 'unverified',
+      gate: first, detail: failed ? String(failed[2] ?? '') : null,
+    };
+  });
+  return { status: paused ? 'paused' : 'on', reason: paused ? String(f.edge_auto_off?.reason ?? 'The self-check is holding edges back.') : null,
+    asOf: new Date(Date.now() - age * 1000).toISOString(), rows: out };
 }

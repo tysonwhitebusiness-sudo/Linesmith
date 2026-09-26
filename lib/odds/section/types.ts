@@ -172,6 +172,39 @@ export interface EdgeCandidate {
   } | null;
 }
 
+/**
+ * One row of the Slate's Edge / EV ranking (slate-polish D, operator-approved
+ * 2026-09-26): a market line's best soft price against Pinnacle's no-vig
+ * price, as Python stored it in `market_edge_candidates`. Every number is
+ * read, never computed on the page (tests/scan-no-edge.test.ts).
+ */
+export interface EdgeRankRow {
+  kind: 'prop' | 'game';
+  gameId: string;
+  subjectId: string;
+  marketKey: string;
+  line: number | null;       // side A's line (a spread's home point)
+  side: string;
+  book: string;
+  price: number;
+  fair: number;
+  fairPrice: number;
+  ev: number;
+  /** Passes every gate; passes every gate but the self-check is holding edges; or fails a gate. */
+  status: 'edge' | 'held' | 'unverified';
+  /** The first failed gate, and what it said (`g2_time`, "soft checked 429s ago > 3 min"). */
+  gate: string | null;
+  detail: string | null;
+}
+
+/** The ranking and why it may be short: the same states as `EdgeView`. */
+export interface EdgeRanking {
+  status: 'on' | 'paused' | 'off' | 'stale';
+  reason: string | null;
+  asOf?: string;
+  rows?: EdgeRankRow[];
+}
+
 /** Whether edges show, and why not: the operator's switch, the self-check, or a stopped job. */
 export interface EdgeView {
   status: 'on' | 'paused' | 'off' | 'stale';

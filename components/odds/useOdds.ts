@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { GameOddsPayload, MarketEdge, PlayerOddsPayload } from '@/lib/odds/section/types';
+import type { EdgeRanking, GameOddsPayload, MarketEdge, PlayerOddsPayload } from '@/lib/odds/section/types';
 import type { SlateOddsPayload } from '@/lib/odds/section/slate';
 import type { ScanExtras } from '@/lib/odds/section/scanCells';
 import { REFRESH_MS } from '@/lib/odds/section/cadence';
@@ -171,6 +171,29 @@ export function useEdges(gameIds: string[], refreshKey?: unknown): { edges?: Mar
       if (document.visibilityState === 'visible') {
         try {
           const r = await fetch(`/api/odds/edges?ids=${encodeURIComponent(ids)}`);
+          if (r.ok && !stopped) setData(await r.json());
+        } catch { /* the next poll retries */ }
+      }
+      if (!stopped) timer = setTimeout(run, REFRESH_MS.slate);
+    };
+    void run();
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, [ids, refreshKey]);
+  return data;
+}
+
+/** The Slate's Edge / EV ranking (slate-polish D), polled on the Slate's cadence like the edges. */
+export function useEdgeRanking(gameIds: string[], refreshKey?: unknown): EdgeRanking | null {
+  const ids = [...new Set(gameIds)].sort().slice(0, 80).join(',');
+  const [data, setData] = useState<EdgeRanking | null>(null);
+  useEffect(() => {
+    if (!ids) { setData(null); return; }
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const run = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const r = await fetch(`/api/odds/edges?ids=${encodeURIComponent(ids)}&rank=10`);
           if (r.ok && !stopped) setData(await r.json());
         } catch { /* the next poll retries */ }
       }

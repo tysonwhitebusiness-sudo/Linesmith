@@ -235,6 +235,8 @@ const MARKET_EDGE_ALLOWLIST = [
   'components/odds/EdgeCard.tsx',
   'components/odds/ScanEdgeCell.tsx',
   'components/odds/SlateEdges.tsx',
+  // slate-polish D: the Edge / EV ranking card (reads `market_edge_candidates` fields only).
+  'components/odds/SlateEvCard.tsx',
   'components/slate/GameCard.tsx',
 ];
 

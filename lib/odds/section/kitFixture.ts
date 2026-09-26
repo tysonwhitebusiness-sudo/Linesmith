@@ -6,7 +6,7 @@
  * best prices that cross (negative hold). Not real data, and never shown
  * outside `/kit` and tests.
  */
-import type { EdgeView, MarketEdge } from './types';
+import type { EdgeRanking, EdgeView, MarketEdge } from './types';
 import type { SlateOddsGame } from './slate';
 import type { OddsMarket, OddsQuote } from './types';
 
@@ -117,5 +117,24 @@ export function kitEdgeView(status: EdgeView['status'] = 'on'): EdgeView {
       best: { side: 'over', book: 'draftkings', price: -125, fair: 0.531, fairPrice: -113, implied: 0.5556, edgePts: -0.0246, ev: -0.024,
         passed: false, firstFailure: 'g6_conservative', gates: g(6) },
     }],
+  };
+}
+
+/** The Slate's Edge / EV ranking on /kit: one of each status, and the self-check's pause. */
+export function kitEdgeRanking(): EdgeRanking {
+  const row = (o: Partial<EdgeRanking['rows'] extends (infer R)[] | undefined ? R : never>) => ({
+    kind: 'game' as const, gameId: 'kit-1', subjectId: '', marketKey: 'fg_tot', line: 8.5, side: 'over', book: 'draftkings',
+    price: -105, fair: 0.54, fairPrice: -117, ev: 0.031, status: 'edge' as const, gate: null, detail: null, ...o,
+  });
+  return {
+    status: 'paused',
+    reason: '5 of 62 passing edges above 5% EV (14650 market-sides evaluated)',
+    asOf: new Date(KIT_NOW).toISOString(),
+    rows: [
+      row({ status: 'held', gate: 'g9_self_check', detail: '5 of 62 passing edges above 5% EV' }),
+      row({ gameId: 'kit-2', marketKey: 'fg_ml', side: 'home', line: null, book: 'bet365', price: -147, fair: 0.63, fairPrice: -172, ev: 0.063, status: 'unverified', gate: 'g2_time', detail: 'no measured delay for relay oddsjam/bet365' }),
+      row({ marketKey: 'fg_sp', side: 'away', line: -1.5, book: 'betrivers', price: 102, fair: 0.51, fairPrice: -105, ev: 0.033, status: 'unverified', gate: 'g2_time', detail: 'soft checked 340s ago > 3 min' }),
+      row({ kind: 'prop', subjectId: 'kit-p1', marketKey: 'strikeouts', side: 'over', line: 5.5, book: 'fanduel', price: -130, fair: 0.55, fairPrice: -122, ev: -0.027, status: 'unverified', gate: 'g6_conservative', detail: '' }),
+    ],
   };
 }
