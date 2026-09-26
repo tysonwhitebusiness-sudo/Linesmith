@@ -1,20 +1,19 @@
 # CURRENT — pick up here
 
-> **GAME PAGE REDESIGN — MOCKUP BUILT, AWAITING REVIEW (2026-09-26):
-> `docs/design/game-page/` (open `http://localhost:8125/game-page/`; README
-> there lists what changed and the operator's questions).** Seven sports ×
-> pre/live/final × desktop/phone, all real payloads through the app's adapters;
-> NFL/NBA/NHL/soccer live are finished games cut at a real play (no live game
-> today). Hero = option A (team-colour split band + situation plate) with the
-> MLB at-bat face-off. Order: operator review → gameplan → build; historical
-> pages after approval (`docs/design/game-page-notes-2026-09-26.md`). Also
-> built: dev-only MLB replay `/mlb/game/<pk>?replay=<yyyymmdd_hhmmss UTC>&speed=<n>`.
-> 2026-09-26 later: mockup restyled to the app's real design, measured from the
-> live page (fonts, palette, SectionBand/SectionNav, Card, DataTable,
-> SegmentedToggle, Chip, StatusMark, TopBar + game strip, chart tokens); README
-> lists the three things that are new (64px score, richer surfaces, team colour
-> in cards). **Capitalisation (Title Case) audit is parked until the mockups are
-> approved** (operator, 2026-09-26).
+> **NEXT: TITLE CASE (T0–T6), THEN THE GAME PAGE BUILD (2026-09-26).**
+> 1. **Title Case plan: `docs/design/title-case-plan.md`**, waiting on the
+>    operator's §7 answers (stat labels? Scan's frozen words? capitalise
+>    section subs? "vs"). T1 is an audit the operator approves before any
+>    string changes. It lands before the game page build.
+> 2. **Game page mockup: approved for a 1:1 build (`2e2e836`).**
+>    `docs/design/game-page/` (open `http://localhost:8125/game-page/`; the
+>    README is the spec). Seven sports × pre/live/final × desktop/phone, real
+>    payloads through the app's adapters, restyled to the app's measured design.
+>    Operator 2026-09-26: 64px scores OK, richer surfaces OK, team colour in
+>    cards OK, but **a team is marked by its logo, never a colour dot** (a dot
+>    only as a chart's key). The build gameplan comes after Title Case;
+>    historical pages after that (`docs/design/game-page-notes-2026-09-26.md`).
+>    Dev-only MLB replay: `/mlb/game/<pk>?replay=<yyyymmdd_hhmmss UTC>&speed=<n>`.
 
 > **SLATE POLISH + TYPE SYSTEM 1 — BUILT (2026-09-26, `9608acf`…`10be1bb`).**
 > Built to the approved mockup v4 (`docs/design/slate-polish/index.html`): one
