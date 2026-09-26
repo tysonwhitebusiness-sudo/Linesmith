@@ -1,5 +1,21 @@
 # CURRENT — pick up here
 
+> **SLATE POLISH + TYPE SYSTEM 1 — BUILT (2026-09-26, `9608acf`…`10be1bb`).**
+> Built to the approved mockup v4 (`docs/design/slate-polish/index.html`): one
+> row anatomy (`components/slate/SlateSubject.tsx`); kit `ClampText`,
+> `StatusMark`, `FormBars`, `HeatNumber`, `PercentileCell` reworked (number +
+> heat bar + percentile, colour only in the pool's best/worst fifth);
+> Spotlights, Specials, Flags today, Movers, Market; the Edge / EV card
+> (`components/odds/SlateEvCard.tsx`, `/api/odds/edges?rank=`); fonts app-wide
+> (Barlow Condensed + Roboto Condensed via next/font, Scan included). 768/768
+> tests, tsc clean, rendered at 1440 and 400. `next build` not run locally (the
+> :3000 prod server uses `.next`).
+> **Needs the operator: redeploy the Render worker at `2b5b558` or later.** It
+> was OOM-killed every ~6 min inside slateRankingsJob (the 22.9 MB
+> `mlb:snapshot` parsed once per MLB ranking), so marketEdgeJob has not run
+> since 14:30 UTC and the Edge / EV card says "stale" until it does. After the
+> deploy: confirm `python-harness:job-run:marketEdgeJob` is fresh.
+
 > **P0–P13 AUDIT — DONE (2026-09-26): `docs/design/odds-build/AUDIT-P0-P13-2026-09-26.md`.**
 > Fixed in the audit: CI red since 09-06 (dead steps), `test_scraper_volume`,
 > relay pull noise read as "pulled" (`3922de1`), the exact sharp price time
