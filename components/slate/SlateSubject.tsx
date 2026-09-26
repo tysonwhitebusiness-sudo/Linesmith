@@ -83,6 +83,7 @@ export function PlayerSubject({
   opp,
   read,
   rank,
+  sub,
 }: {
   name: string;
   headshot?: string | null;
@@ -93,6 +94,8 @@ export function PlayerSubject({
   read?: string | null;
   /** Inside the cell, not a column: `DataTable` pins the first column, and it must be the player that stays on screen. */
   rank?: number | null;
+  /** In place of team vs opponent, where the row knows the game but not the player's side of it (Movers, Market). */
+  sub?: ReactNode;
 }) {
   return (
     <span className="flex min-w-0 items-start gap-2.5">
@@ -100,7 +103,7 @@ export function PlayerSubject({
       <Avatar label={name} src={headshot ?? undefined} fallbackSrc={fallback ?? undefined} size={36} decorative />
       <span className="flex min-w-0 flex-col">
         <NameLink name={name} href={href} />
-        <TeamVs team={team} opp={opp} />
+        {sub ? <span className="mt-0.5 text-label text-ink-muted">{sub}</span> : <TeamVs team={team} opp={opp} />}
         {read ? <ReadLine text={read} /> : null}
       </span>
     </span>

@@ -5,10 +5,9 @@ import type { MarketEdge } from '@/lib/odds/section/types';
 import type { SlateGameRef } from '../odds/SlateOddsMovers';
 import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useState } from 'react';
-import { Avatar, Card, Chip, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { Card, DataTable, EmptyState, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { GameMark, PlayerSubject } from './SlateSubject';
 import { BookLogo, bookLabel } from '../BookLogo';
-import { TeamLogo } from '../SubjectAvatar';
-import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
 import { headshotFor } from '@/lib/sports/shared/identity';
 import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
 
@@ -21,6 +20,10 @@ import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
  * different numbers is a fact about the books. Neither is a claim that anything
  * is mispriced, and nothing here computes, sorts by or colours a difference
  * against a model.
+ *
+ * slate-polish v4: the Slate's row anatomy (face, name, the game under it with
+ * its logos), the market as its own column, the odd book's price in bold red
+ * against the median, the other line in bold amber, the books as logos.
  *
  * Movers, S2's third card, is its own section now (`SlateMovers.tsx`, MV3):
  * the noise that kept it out was live in-game pricing, cut since (SL-29).
@@ -39,76 +42,69 @@ function marketLabel(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const OUTLIER_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id: string) => string | undefined): Column<OutlierRow>[] => [
+type Refs = Map<string, SlateGameRef> | undefined;
+
+/** A player row's subject: face, name, and the game under it (a prop row does not say which side the player is on). */
+function subject(r: { subjectId: string; subjectName: string | null; gameId: string }, faceOf: (id: string) => string | null, refs: Refs) {
+  const g = refs?.get(r.gameId);
+  return (
+    <PlayerSubject
+      name={r.subjectName ?? r.subjectId}
+      headshot={faceOf(r.subjectId)}
+      sub={g?.teams ? <GameMark away={g.teams.away} home={g.teams.home} className="text-label font-normal text-ink-muted" /> : (g?.label ?? null)}
+    />
+  );
+}
+
+const OUTLIER_COLUMNS = (faceOf: (id: string) => string | null, refs: Refs): Column<OutlierRow>[] => [
+  { key: 'subject', label: 'Player', sortable: false, render: (r) => subject(r, faceOf, refs) },
   {
-    key: 'subject',
-    label: 'Player',
+    key: 'market',
+    label: 'Market',
     sortable: false,
     render: (r) => (
-      <span className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-1.5">
-          <span className="relative block shrink-0">
-            <Avatar label={r.subjectName ?? r.subjectId} src={faceOf(r.subjectId) ?? undefined} size={24} decorative />
-            {logoOf(r.subjectId) ? (
-              <span className="absolute -bottom-0.5 -right-0.5 grid size-[14px] place-items-center rounded-full bg-card ring-1 ring-line">
-                <TeamLogo logoUrl={logoOf(r.subjectId)} size={9} />
-              </span>
-            ) : null}
-          </span>
-          <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
-        </span>
-        <span className="truncate text-label text-ink-muted">
-          {marketLabel(r.market)} {r.side === 'under' ? 'Under' : 'Over'} {r.line}
-        </span>
+      <span className="flex flex-col whitespace-nowrap">
+        <span className="text-ink">{marketLabel(r.market)}</span>
+        <span className="text-label text-ink-muted">{r.side === 'under' ? 'Under' : 'Over'} {r.line}</span>
       </span>
     ),
   },
-  { key: 'bookmaker', label: 'Book', sortable: false, render: (r) => (
-    <span className="flex items-center gap-1.5">
-      <BookLogo bookId={r.bookmaker} size={18} withLabel />
-    </span>
-  ) },
-  { key: 'odds', label: 'Price', numeric: true, render: (r) => american(r.odds) },
+  {
+    key: 'bookmaker',
+    label: 'Book',
+    sortable: false,
+    render: (r) => (
+      <span className="inline-flex items-center gap-2 whitespace-nowrap">
+        <BookLogo bookId={r.bookmaker} size={16} withLabel />
+        <b className="font-bold tabular-nums text-bad-ink">{american(r.odds)}</b>
+      </span>
+    ),
+  },
   {
     key: 'medianOdds',
     label: 'Others',
     numeric: true,
     info: 'The median of every book quoting the same player, market and line. Gaps above 15 implied points are dropped as stale or exchange quotes rather than shown as bargains.',
-    render: (r) => american(r.medianOdds),
-  },
-  { key: 'gapPts', label: 'Gap', numeric: true, render: (r) => <Chip tone="warn" size="sm">{r.gapPts.toFixed(1)} pts</Chip> },
-  { key: 'books', label: 'Books', numeric: true },
-];
-
-const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id: string) => string | undefined): Column<DisagreementRow>[] => [
-  {
-    key: 'subject',
-    label: 'Player',
-    sortable: false,
     render: (r) => (
-      <span className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-1.5">
-          <span className="relative block shrink-0">
-            <Avatar label={r.subjectName ?? r.subjectId} src={faceOf(r.subjectId) ?? undefined} size={24} decorative />
-            {logoOf(r.subjectId) ? (
-              <span className="absolute -bottom-0.5 -right-0.5 grid size-[14px] place-items-center rounded-full bg-card ring-1 ring-line">
-                <TeamLogo logoUrl={logoOf(r.subjectId)} size={9} />
-              </span>
-            ) : null}
-          </span>
-          <span className="truncate text-ink">{r.subjectName ?? r.subjectId}</span>
-        </span>
-        <span className="truncate text-label text-ink-muted">{marketLabel(r.market)}</span>
+      <span className="flex flex-col items-end">
+        <span className="tabular-nums text-ink">{american(r.medianOdds)}</span>
+        <span className="text-label text-ink-muted">median · {r.books} books</span>
       </span>
     ),
   },
+  { key: 'gapPts', label: 'Gap', numeric: true, render: (r) => <b className="font-bold tabular-nums text-warn-ink">{r.gapPts.toFixed(1)} pts</b> },
+];
+
+const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, refs: Refs): Column<DisagreementRow>[] => [
+  { key: 'subject', label: 'Player', sortable: false, render: (r) => subject(r, faceOf, refs) },
+  { key: 'market', label: 'Market', sortable: false, render: (r) => <span className="whitespace-nowrap text-ink">{marketLabel(r.market)}</span> },
   {
     key: 'mainLine',
     label: 'Most books',
     numeric: true,
     render: (r) => (
-      <span>
-        {r.mainLine} <span className="text-ink-muted">({r.mainBooks})</span>
+      <span className="whitespace-nowrap">
+        <b className="font-bold text-ink">{r.mainLine}</b> <span className="text-ink-muted">× {r.mainBooks}</span>
       </span>
     ),
   },
@@ -117,8 +113,8 @@ const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id
     label: 'Others',
     numeric: true,
     render: (r) => (
-      <span>
-        {r.otherLine} <span className="text-ink-muted">({r.otherBooks})</span>
+      <span className="whitespace-nowrap">
+        <b className="font-bold text-warn-ink">{r.otherLine}</b> <span className="text-ink-muted">× {r.otherBooks}</span>
       </span>
     ),
   },
@@ -142,10 +138,11 @@ const DISAGREEMENT_COLUMNS = (faceOf: (id: string) => string | null, logoOf: (id
   },
 ];
 
-export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, refs, edges }: {
+export function SlateMarket({ data, loading, sport, odds, refs, edges }: {
   data: SlateMarketData | null;
   loading: boolean;
   sport: string;
+  /** Unused since v4 (the row shows the game's logos, not the player's badge); kept so callers need not change. */
   teamLogoBySubject?: Map<string, string>;
   /** O4: the slate's game-line odds, for the Market hub under the prop cards. */
   odds?: SlateOddsGame[];
@@ -156,7 +153,6 @@ export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, ref
   const outliers = data?.outliers ?? [];
   const splits = data?.disagreements ?? [];
   const faceOf = (id: string): string | null => headshotFor(sport, id);
-  const logoOf = (id: string): string | undefined => teamLogoBySubject?.get(athleteIdOf(id));
   const hasOdds = !!odds?.some(g => g.books > 0);
   if (!loading && outliers.length === 0 && splits.length === 0 && !hasOdds) return null;
 
@@ -173,7 +169,7 @@ export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, ref
           caption="A price gap between books, not a model edge."
         >
           {outliers.length > 0 ? (
-            <DataTable caption="Price outliers" columns={OUTLIER_COLUMNS(faceOf, logoOf)} rows={outliers} rowKey={(r, i) => `${r.subjectId}-${r.market}-${r.bookmaker}-${i}`} />
+            <DataTable caption="Price outliers" columns={OUTLIER_COLUMNS(faceOf, refs)} rows={outliers} rowKey={(r, i) => `${r.subjectId}-${r.market}-${r.bookmaker}-${i}`} />
           ) : loading ? null : (
             <EmptyState title="No outliers right now" reason="Every line with at least five books quoting it is priced within four points of the rest." />
           )}
@@ -188,7 +184,7 @@ export function SlateMarket({ data, loading, sport, teamLogoBySubject, odds, ref
           caption="Where books disagree on the line itself. A price gap, not a model edge."
         >
           {splits.length > 0 ? (
-            <DataTable caption="Line disagreements" columns={DISAGREEMENT_COLUMNS(faceOf, logoOf)} rows={splits} rowKey={(r, i) => `${r.subjectId}-${r.market}-${i}`} />
+            <DataTable caption="Line disagreements" columns={DISAGREEMENT_COLUMNS(faceOf, refs)} rows={splits} rowKey={(r, i) => `${r.subjectId}-${r.market}-${i}`} />
           ) : loading ? null : (
             <EmptyState title="The books agree" reason="Every market on this slate is hung at one line." />
           )}

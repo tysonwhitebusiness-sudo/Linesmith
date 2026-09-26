@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { BookLogo, bookLabel } from '../BookLogo';
-import { Card, DataTable, EmptyState, Tabs } from '../ui';
+import { Card, DataTable, EmptyState, Tabs, cx } from '../ui';
+import { GameMark } from '../slate/SlateSubject';
 import type { SlateGameRef } from './SlateOddsMovers';
 import { boardBooks, holdList, type SlateOddsGame } from '@/lib/odds/section/slate';
 import { fmtAmerican, fmtLine, fmtPct } from '@/lib/odds/section/format';
@@ -26,6 +27,21 @@ export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; r
   const priced = games.filter(g => g.books > 0);
   const cols = boardBooks(priced);
   const name = (id: string) => refs.get(id)?.label ?? id;
+  // slate-polish v4: a game is its two logos; a started game is marked LIVE
+  // and its row dimmed — its prices are in-game, not the pre-game board's.
+  const game = (id: string) => {
+    const r = refs.get(id);
+    const mark = r?.teams ? <GameMark away={r.teams.away} home={r.teams.home} href={r.href} /> : <b>{name(id)}</b>;
+    return r?.live ? (
+      <span className="inline-flex items-center gap-1.5">
+        {mark}
+        <span className="text-overline font-bold uppercase text-bad-ink">Live</span>
+      </span>
+    ) : (
+      mark
+    );
+  };
+  const dim = (g: { gameId: string }) => (refs.get(g.gameId)?.live ? 'opacity-50' : undefined);
   const disagree = priced.filter(g => g.totalLines.length > 1);
   const hold = holdList(priced);
   const gaps = slateMoneyGaps(games);
@@ -54,7 +70,7 @@ export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; r
             rows={gaps}
             rowKey={g => g.gameId}
             columns={[
-              { key: 'g', label: 'Game · home moneyline', sortable: false, render: g => <b>{name(g.gameId)}</b> },
+              { key: 'g', label: 'Game · home moneyline', sortable: false, render: g => game(g.gameId) },
               { key: 'm', label: 'DK money %', numeric: true, sortable: false, render: g => `${g.money}%` },
               { key: 'b', label: 'DK bets %', numeric: true, sortable: false, render: g => `${g.bets}%` },
               { key: 'gap', label: 'Money − bets', numeric: true, sortable: false,
@@ -67,9 +83,10 @@ export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; r
           caption="Every book's moneyline per game"
           density="compact"
           rows={priced}
+          rowClassName={dim}
           rowKey={g => g.gameId}
           columns={[
-            { key: 'g', label: 'Game · moneyline', sortable: false, render: g => <b>{name(g.gameId)}</b> },
+            { key: 'g', label: 'Game · moneyline', sortable: false, render: g => game(g.gameId) },
             ...cols.map(b => ({
               key: b, sortable: false, numeric: true,
               label: <BookLogo bookId={b} size={14} withLabel />,
@@ -91,7 +108,7 @@ export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; r
           rows={priced}
           rowKey={g => g.gameId}
           columns={[
-            { key: 'g', label: 'Game', sortable: false, render: g => <b>{name(g.gameId)}</b> },
+            { key: 'g', label: 'Game', sortable: false, render: g => game(g.gameId) },
             { key: 'm', label: 'Home moneyline open → now', sortable: false, numeric: true, render: g => g.moved
               ? <span>{fmtAmerican(g.moved.open)} → <b>{fmtAmerican(g.moved.now)}</b> <span className="text-label text-ink-muted">{bookLabel(g.moved.book)}</span></span> : '—' },
             { key: 's', label: 'Spread open → now', sortable: false, numeric: true, render: g => g.spread.open != null
@@ -107,7 +124,7 @@ export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; r
           rows={hold}
           rowKey={g => g.gameId}
           columns={[
-            { key: 'g', label: 'Game · moneyline', sortable: false, render: g => <b>{name(g.gameId)}</b> },
+            { key: 'g', label: 'Game · moneyline', sortable: false, render: g => game(g.gameId) },
             { key: 'a', label: 'Best away', sortable: false, render: g => <span className="inline-flex items-center gap-1.5">{fmtAmerican(g.ml.away!.price)} <BookLogo bookId={g.ml.away!.book} size={14} /></span> },
             { key: 'h', label: 'Best home', sortable: false, render: g => <span className="inline-flex items-center gap-1.5">{fmtAmerican(g.ml.home!.price)} <BookLogo bookId={g.ml.home!.book} size={14} /></span> },
             { key: 'x', label: 'Hold at best', sortable: false, numeric: true, render: g => <b>{fmtPct(g.ml.hold!)}</b> },
@@ -120,7 +137,7 @@ export function SlateOddsHub({ games, refs, edges }: { games: SlateOddsGame[]; r
           rows={disagree}
           rowKey={g => g.gameId}
           columns={[
-            { key: 'g', label: 'Game · total', sortable: false, render: g => <b>{name(g.gameId)}</b> },
+            { key: 'g', label: 'Game · total', sortable: false, render: g => game(g.gameId) },
             { key: 'd', label: 'Books disagree', sortable: false, wrap: true, render: g => (
               <span className="flex flex-wrap gap-x-3 gap-y-1">
                 {g.totalLines.map(l => (

@@ -3,7 +3,8 @@
 import { SlateOddsMovers, type SlateGameRef } from '../odds/SlateOddsMovers';
 import type { SlateOddsGame } from '@/lib/odds/section/slate';
 import { useEffect, useMemo, useState } from 'react';
-import { Avatar, Card, Chip, DataTable, EmptyState, SegmentedToggle, Tabs, type Column, SectionBand } from '@/components/ui';
+import { Card, DataTable, EmptyState, SegmentedToggle, Tabs, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { GameMark, PlayerSubject } from './SlateSubject';
 import { Sparkline } from '@/components/charts';
 import { espnHeadshot, mlbHeadshot } from '@/lib/sports/shared/identity';
 import type { ConsensusMover, MoverKind, MoverWindow } from '@/lib/slate/marketMoves';
@@ -16,8 +17,12 @@ import type { ConsensusMover, MoverKind, MoverWindow } from '@/lib/slate/marketM
  * pre-game only, first seen to now, with exchanges and pick'em apps left out
  * (`lib/slate/marketMoves.ts`). A single book re-pricing on its own never makes
  * a row. Movement is market information, not a prediction, and the caption
- * says so. Nothing here compares a move to a model, and nothing is coloured
- * as good or bad.
+ * says so. Nothing here compares a move to a model.
+ *
+ * slate-polish v4: a prop row is the Slate's row anatomy (face, name, the game
+ * under it), a game-line row is the two logos, and the consensus move is
+ * coloured by its DIRECTION — toward the side named green, away red, always
+ * with its arrow — never by whether it is good for anyone.
  */
 
 export interface SlateMoversData {
@@ -80,37 +85,52 @@ function moverHeadshot(sport: string, subjectId: string | null): string | null {
   return null;
 }
 
-function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number, sport: string): Column<ConsensusMover>[] {
+/** A small bold word with its reason on hover — Steam and Split, which were chips. */
+function Mark({ word, why }: { word: string; why: string }) {
+  return (
+    <Tooltip content={why}>
+      <span className="text-label font-bold uppercase tracking-wide text-warn-ink">{word}</span>
+    </Tooltip>
+  );
+}
+
+function columnsFor(kind: MoverKind, win: MoverWindow, sport: string, refs?: Map<string, SlateGameRef>): Column<ConsensusMover>[] {
+  const gameOf = (m: ConsensusMover) => {
+    const r = refs?.get(m.gameId);
+    return r?.teams ? <GameMark away={r.teams.away} home={r.teams.home} href={r.href} className="text-label font-normal text-ink-muted" /> : m.matchup;
+  };
+  const marks = (m: ConsensusMover) => (
+    <>
+      {m.steam ? <Mark word="Steam" why="At least three books moved the same way within 30 minutes." /> : null}
+      {m.split ? <Mark word="Split" why="The line moved one way and the price at the main line the other." /> : null}
+    </>
+  );
   return [
     {
       key: 'subject',
       label: kind === 'props' ? 'Player' : 'Game',
       sortable: false,
-      render: (m) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="flex items-center gap-1.5">
-            {kind === 'props' && m.subjectId ? (
-              <Avatar label={m.subjectName ?? m.subjectId} src={moverHeadshot(sport, m.subjectId) ?? undefined} size={24} decorative />
-            ) : null}
-            <span className="truncate text-ink">{kind === 'props' ? (m.subjectName ?? m.subjectId) : (m.matchup ?? m.gameId)}</span>
-            {m.steam ? (
-              <Chip size="sm" shape="box" title="At least three books moved the same way within 30 minutes.">
-                Steam
-              </Chip>
-            ) : null}
-            {m.split ? (
-              <Chip size="sm" shape="box" title="The line moved one way and the price at the main line the other.">
-                Split
-              </Chip>
+      render: (m) =>
+        kind === 'props' ? (
+          <span className="flex items-start gap-2">
+            <PlayerSubject name={m.subjectName ?? m.subjectId ?? ''} headshot={m.subjectId ? moverHeadshot(sport, m.subjectId) : null} sub={gameOf(m)} />
+            <span className="flex gap-2 pt-0.5">{marks(m)}</span>
+          </span>
+        ) : (
+          <span className="flex flex-col">
+            <span className="flex items-center gap-2">
+              {refs?.get(m.gameId)?.teams ? (
+                <GameMark away={refs.get(m.gameId)!.teams!.away} home={refs.get(m.gameId)!.teams!.home} href={refs.get(m.gameId)!.href} />
+              ) : (
+                <span className="font-semibold text-ink">{m.matchup ?? m.gameId}</span>
+              )}
+              {marks(m)}
+            </span>
+            {m.otherLinesMoved > 0 ? (
+              <span className="text-label text-ink-muted">also moved at {m.otherLinesMoved} other line{m.otherLinesMoved === 1 ? '' : 's'}</span>
             ) : null}
           </span>
-          <span className="truncate text-label text-ink-muted">
-            {[kind === 'props' ? m.matchup : null, m.otherLinesMoved > 0 ? `also moved at ${m.otherLinesMoved} other line${m.otherLinesMoved === 1 ? '' : 's'}` : null]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
-        </span>
-      ),
+        ),
     },
     {
       key: 'market',
@@ -139,7 +159,8 @@ function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number, sport: s
       info: 'The consensus price at the main line, first seen and now: the median implied probability across at least three books, shown as American odds. The opening price is not held, so this starts from the first price we saw.',
       render: (m) => (
         <span className="whitespace-nowrap">
-          {american(m.priceFirst)} <span className="text-ink-muted">→</span> {american(m.priceNow)}
+          {american(m.priceFirst)} <span className="text-ink-muted">→</span>{' '}
+          <b className={cx('font-bold', m.moves[win] > 0 ? 'text-good-ink' : m.moves[win] < 0 ? 'text-bad-ink' : 'text-ink')}>{american(m.priceNow)}</b>
         </span>
       ),
     },
@@ -149,8 +170,12 @@ function columnsFor(kind: MoverKind, win: MoverWindow, maxMove: number, sport: s
       numeric: true,
       info: 'Implied-probability points, consensus, in the chosen window. Movement is market information, not a prediction.',
       sortValue: (m) => Math.abs(m.moves[win]),
-      render: (m) => `${m.moves[win] > 0 ? '+' : ''}${m.moves[win].toFixed(1)}`,
-      bar: (m) => (maxMove > 0 ? Math.abs(m.moves[win]) / maxMove : 0),
+      // v4: the move in its direction's colour with its arrow, not a grey bar.
+      render: (m) => (
+        <b className={cx('whitespace-nowrap font-bold tabular-nums', m.moves[win] > 0 ? 'text-good-ink' : m.moves[win] < 0 ? 'text-bad-ink' : 'text-ink')}>
+          {m.moves[win] > 0 ? '▲' : m.moves[win] < 0 ? '▼' : ''} {Math.abs(m.moves[win]).toFixed(1)}
+        </b>
+      ),
     },
     {
       key: 'books',
@@ -200,7 +225,6 @@ export function SlateMovers({ data, loading, sport, odds, refs }: {
   // Open on whichever tab has something, props first.
   const active: MoverKind = lists[kind].length > 0 || lists[kind === 'props' ? 'lines' : 'props'].length === 0 ? kind : kind === 'props' ? 'lines' : 'props';
   const rows = lists[active];
-  const maxMove = rows.reduce((m, r) => Math.max(m, Math.abs(r.moves[win])), 0);
 
   return (
     <section id="slate-movers" className="mb-6 scroll-mt-[150px]">
@@ -228,7 +252,7 @@ export function SlateMovers({ data, loading, sport, odds, refs }: {
         {rows.length > 0 ? (
           <DataTable<ConsensusMover>
             caption={`Movers, ${active === 'props' ? 'props' : 'game lines'}`}
-            columns={columnsFor(active, win, maxMove, sport)}
+            columns={columnsFor(active, win, sport, refs)}
             rows={rows}
             rowKey={(m) => `${m.gameId}|${m.subjectId ?? ''}|${m.market}|${m.side}`}
             paging={{ mode: 'more', pageSize: 20 }}
