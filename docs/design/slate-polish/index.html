@@ -44,8 +44,10 @@ tr.read td{padding:0 12px 8px 58px;font-size:12.5px;color:var(--ink2);cursor:poi
 tr.read .txt{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 tr.read.open .txt{white-space:normal}
 tr.read b{color:var(--good-ink)}
-tr.read b.b{color:var(--bad-ink)}tr.read b.w{color:var(--warn-ink)}
 .note b:not([class]){color:var(--ink)}
+.why{font-size:11.5px;color:var(--ink3);margin:1px 0 0 20px;white-space:nowrap}
+.ev{font-size:15px}
+.banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff8e8;border-bottom:1px solid var(--soft);font-size:13px}
 /* the subject: headshot/logos · name over team vs opponent */
 .subj{display:flex;align-items:center;gap:10px;min-width:190px}
 .subj .nm{font-weight:650;white-space:nowrap;line-height:1.2}
@@ -86,6 +88,22 @@ tr.read b.b{color:var(--bad-ink)}tr.read b.w{color:var(--warn-ink)}
 .live td{opacity:.45}
 .livetag{font-size:10px;font-weight:800;color:var(--bad-ink);letter-spacing:.04em;margin-left:4px}
 .best{background:var(--good);color:var(--good-on);border-radius:4px;padding:0 4px;font-weight:700}
+.grid.wide{grid-template-columns:repeat(auto-fill,minmax(660px,1fr))}
+.fx{width:108px;display:flex;flex-direction:column;gap:1px}
+.fx .big{font-size:16px;font-variant-numeric:tabular-nums;line-height:1.2}
+.fx .lbl{font-size:11.5px;color:var(--ink3);line-height:1.25;min-height:2.5em}
+.fx .pr{display:flex;align-items:center;gap:6px}
+.fx .pr .bar{flex:1;height:4px;background:var(--sunk);border-radius:2px;overflow:hidden}.fx .pr .bar>span{display:block;height:100%}
+.fx .pr i{font-style:normal;font-size:11px;font-variant-numeric:tabular-nums}
+.fl b{font-size:18px}.fl{white-space:nowrap}
+.strip{position:relative;display:inline-flex;align-items:flex-end;gap:3px;height:28px;padding:0 3px;border-bottom:1px solid var(--line)}
+.gb{position:relative;display:inline-flex;align-items:flex-end;height:100%;width:9px;outline:none}
+.gb i{display:block;width:9px;border-radius:2px 2px 0 0}
+.gb:hover i,.gb:focus i{box-shadow:0 0 0 2px var(--ink)}
+.ln{position:absolute;left:0;right:0;border-top:1.5px dashed var(--ink3);pointer-events:none}
+.tip{display:none;position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:var(--char);color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;line-height:1.35;white-space:nowrap;z-index:5;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.tip img{width:22px;height:22px}.tip em{font-style:normal;font-weight:700}.tip .g{color:#5ee89a}.tip .b{color:#ff8a8c}
+.gb:hover .tip,.gb:focus .tip{display:flex}
 @media (max-width:640px){.grid{grid-template-columns:1fr}.hide-ph{display:none}tr.read td{padding-left:12px}.subj{min-width:150px}}
 </style>
 </head>
@@ -96,6 +114,7 @@ tr.read b.b{color:var(--bad-ink)}tr.read b.w{color:var(--warn-ink)}
   <div id="root"></div>
 </div>
 <script src="mockup-data.js"></script>
+<script src="games.js"></script>
 <script>
 const S = window.SP;
 for (const c of S.spotlights) for (const r of c.rows) if (r.headshotUrl && !S.heads[r.subjectId]) S.heads[r.subjectId] = r.headshotUrl;
@@ -118,16 +137,42 @@ const game = id => { const c = cardOf(id); return c ? `<div class="subj"><span c
 const matchup = id => { const c = cardOf(id); return c ? `<span class="mu">${logo(c.away.abbr)}${esc(c.away.abbr)} <span class="vs">@</span> ${logo(c.home.abbr)}${esc(c.home.abbr)}</span>` : ''; };
 /** a percentile cell: bold coloured value at the ends of the pool, plain in the middle */
 const pcell = (text, p) => { if (p == null) return `<span class="tn m">${esc(text)}</span>`; const t = p / 100; const cls = p >= 80 ? 'g' : p <= 20 ? 'b' : ''; return `<span class="pc"><b class="${cls}">${esc(text)}</b><i style="color:${heatInk(t)}">${ord(Math.round(p))}</i><span class="bar"><span style="width:${p}%;background:${heat(t)}"></span></span></span>`; };
-/** Long text, anywhere: numbers bold green (a read line cites only factors in the pool's top 40%),
- *  verdict words bold in their own colour — so the line can be scanned without being read. */
-const WORDS = [[/\b(best|highest|most|leads?|hot|strong|favou?rable|out to|blowing out|hit)\b/gi, 'g'],
-               [/\b(worst|lowest|missed|cold|weak|in from|rain|over the [\w-]+ limit|not measured|unmeasured)\b/gi, 'b'],
-               [/\b(held|paused|borderline|not verified|unverified)\b/gi, 'w']];
-const rich = s => { let h = esc(s).replace(/([+−-]?\d[\d.,]*(?:\s?(?:mph|ft|pts|s|min)\b|%|°)?)/g, '<b>$1</b>'); for (const [re, c] of WORDS) h = h.replace(re, m => `<b class="${c}">${m}</b>`); return h; };
+/** Long text: ONE colour per sentence — its numbers bold green (a read line cites only factors in
+ *  the pool's top 40%); the words stay plain ink. No per-word colouring. */
+const rich = s => esc(s).replace(/([+−-]?\d[\d.,]*(?:\s?(?:mph|ft|pts)\b|%|°)?)/g, '<b>$1</b>');
 const readRow = (cols, html) => html ? `<tr class="read"><td colspan="${cols}"><span class="txt">${html}</span></td></tr>` : '';
-/** `read` is plain text from the data (formatted with rich) or `{html}` already built */
-const row = (cells, read, cols) => `<tr class="row${read ? ' has-read' : ''}">${cells}</tr>${readRow(cols, read == null ? '' : read.html ?? rich(read))}`;
+const row = (cells, read, cols) => `<tr class="row${read ? ' has-read' : ''}">${cells}</tr>${readRow(cols, read ? rich(read) : '')}`;
 const dots = (n, hit) => { const all = Math.abs(n); const k = Math.min(all, 7); const col = hit ? 'var(--good)' : 'var(--bad)'; return `<span class="dots" data-n="${all}" data-c="${col}">${Array.from({ length: k }, () => `<i style="background:${col}"></i>`).join('')}${all > 7 ? `<button class="more" type="button">+${all - 7}</button>` : ''}</span>`; };
+/** A factor in plain units: [the number, the sentence's words for it]. */
+const FX = {
+  park_factor: v => [`${v >= 1 ? '+' : '−'}${Math.abs(Math.round((v - 1) * 100))}%`, 'runs vs an average park'],
+  opp_staff_hr_rate: v => [`${Math.round(v * 100)}%`, 'of games the staff allows a HR'],
+  wind_out: v => v > 0.5 ? [`${v.toFixed(0)} mph`, 'wind blowing out'] : v < -0.5 ? [`${Math.abs(v).toFixed(0)} mph`, 'wind blowing in'] : ['Calm', 'no real wind'],
+  k_per_9: v => [v.toFixed(1), 'strikeouts per 9 innings'],
+  opp_k_pct: v => [`${v.toFixed(1)}%`, 'opponent strikeout rate'],
+  slg_vs_hand: v => [v.toFixed(3).replace(/^0/, ''), 'slugging vs this hand'],
+  hr_per_pa: v => [`${v.toFixed(1)}%`, 'of his trips end in a HR'],
+  vs_hand_hr_pa: v => [`${v.toFixed(1)}%`, 'HR rate vs this hand'],
+  starter_hr_per_start: v => [v.toFixed(2), 'HRs the starter allows per start'],
+  temp_f: v => [`${v.toFixed(0)}°`, 'at first pitch'],
+  barrel_pct: v => [`${v.toFixed(1)}%`, 'barrel rate'],
+  max_ev: v => [`${v.toFixed(1)}`, 'mph, his hardest-hit ball'],
+  avg_hr_dist: v => [`${v.toFixed(0)} ft`, 'average HR distance'],
+  hr_430: v => [`${v}`, 'homers of 430+ ft'],
+  sp_hr9: v => [v.toFixed(2), 'HR per 9 by the starter'],
+  projected_k: v => [v.toFixed(1), 'projected strikeouts'],
+  k_per_start: v => [v.toFixed(1), 'strikeouts per start'],
+  opp_k_per_game: v => [v.toFixed(1), 'opponent strikeouts per game'],
+};
+const fxCell = (key, v, p) => { if (v == null) return `<div class="fx"><b class="big m">—</b></div>`; const [big, lbl] = (FX[key] || (x => [String(x), key]))(v); const cls = p == null ? '' : p >= 80 ? 'g' : p <= 20 ? 'b' : ''; return `<div class="fx"><b class="big ${cls}">${esc(big)}</b><span class="lbl">${esc(lbl)}</span>${p != null ? `<span class="pr"><span class="bar"><span style="width:${p}%;background:${heat(p / 100)}"></span></span><i style="color:${heatInk(p / 100)}">${ord(Math.round(p))}</i></span>` : ''}</div>`; };
+/** The last 10 games as bars against the line; hover a bar for the game. */
+const MLB = { 108: 'LAA', 109: 'ARI', 110: 'BAL', 111: 'BOS', 112: 'CHC', 113: 'CIN', 114: 'CLE', 115: 'COL', 116: 'DET', 117: 'HOU', 118: 'KC', 119: 'LAD', 120: 'WSH', 121: 'NYM', 133: 'ATH', 134: 'PIT', 135: 'SD', 136: 'SEA', 137: 'SF', 138: 'STL', 139: 'TB', 140: 'TEX', 141: 'TOR', 142: 'MIN', 143: 'PHI', 144: 'ATL', 145: 'CWS', 146: 'MIA', 147: 'NYY', 158: 'MIL' };
+const STAT = { 'hit-in-game': 'H–AB', 'vs-RHP': 'H–AB', 'vs-LHP': 'H–AB', 'batter-strikeouts': 'K', walks: 'BB', rbis: 'RBI', singles: '1B', 'total-bases': 'TB', 'pitcher-hits-allowed': 'hits allowed', 'pitcher-strikeouts': 'K', runs: 'R' };
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const strip = key => { const g = (window.GAMES || {})[key]; if (!g) return '<span class="m">—</span>'; const H = 26; const max = Math.max(g.line * 2, ...g.games.map(x => x.v), 1);
+  return `<span class="strip">${g.games.map((x, i) => { const h = Math.max(3, Math.round(x.v / max * H)); const [, m, d] = (x.d || '').split('-');
+    const when = x.d ? `${MON[+m - 1]} ${+d} · ${x.home ? 'vs' : '@'} ${MLB[x.opp] || x.opp}` : `${g.games.length - i} game${g.games.length - i > 1 ? 's' : ''} ago`;
+    return `<span class="gb" tabindex="0"><i style="height:${h}px;background:${x.hit ? 'var(--good)' : 'var(--bad)'}"></i><span class="tip">${x.d ? `<img src="https://www.mlbstatic.com/team-logos/${x.opp}.svg" alt="">` : ''}<span><b>${when}</b><br>${esc(x.txt)} ${STAT[g.dim] || ''} · <em class="${x.hit ? 'g' : 'b'}">${x.hit ? 'cleared' : 'missed'} ${g.line}</em></span></span></span>`; }).join('')}<span class="ln" style="bottom:${Math.round(g.line / max * H)}px"></span></span>`; };
 const ICON = {
   ok: `<svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#00d26a"/><path d="M4.5 8.2 7 10.6l4.6-5" stroke="#04311a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   hold: `<svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#ffb020"/><path d="M6.2 5v6M9.8 5v6" stroke="#5a3a00" stroke-width="1.8" stroke-linecap="round"/></svg>`,
@@ -147,35 +192,37 @@ const out = [];
 {
   const verified = r => r.first == null || r.first === 'g9_self_check';
   const rows = S.ev.filter(r => r.ev <= 0.08).sort((a, b) => (verified(b) - verified(a)) || b.ev - a.ev).slice(0, 10);
-  const status = r => r.first == null ? `<span class="st g">${ICON.ok}Edge</span>`
-    : r.first === 'g9_self_check' ? `<span class="st w" title="Passes every gate; the self-check is holding all edges back tonight">${ICON.hold}Held</span>`
-    : `<span class="st m" title="${esc(r.why || '')}">${ICON.no}Unverified</span>`;
-  // Written as HTML: the verdict word leads in its colour, the number that decides it is bold red.
-  const NV = '<b class="w">Not verified</b> —';
-  const reason = r => r.first == null ? { html: `<b class="g">Passes every gate</b> — <b>${pct(r.ev)}</b> over Pinnacle's no-vig price, at the lowest of three de-vig methods.` }
-    : r.first === 'g9_self_check' ? { html: `<b class="g">Passes every gate</b>; <b class="w">held</b> because the self-check paused edges tonight (<b class="b">${esc(r.why)}</b>).` }
-    : /no measured delay/.test(r.why) ? { html: `${NV} this book's price comes through an aggregator whose delay is <b class="b">not measured</b>.` }
-    : /soft checked/.test(r.why) ? { html: `${NV} the book's price was last re-checked <b class="b">${(r.why.match(/\d+/) || [''])[0]} s ago</b>, over the <b>3-minute</b> limit.` }
-    : /sharp price time unknown/.test(r.why) ? { html: `${NV} <b class="b">not enough price history</b> to line this book up with Pinnacle's price time.` } : { html: `${NV} ${esc(r.why)}.` };
+  // No sentence under these rows: the status column says it — icon, one word, and 2–3 grey words of reason.
+  const secs = n => n >= 120 ? `${Math.round(n / 60)} min` : `${n} s`;
+  const why = r => r.first == null ? '' : r.first === 'g9_self_check' ? 'passes every gate'
+    : /no measured delay/.test(r.why) ? 'relay delay unmeasured'
+    : /soft checked/.test(r.why) ? `price ${secs(+(r.why.match(/\d+/) || [0])[0])} old`
+    : /sharp price time unknown/.test(r.why) ? 'no price history' : esc(r.why.split(/[:(]/)[0]);
+  const status = r => {
+    const w = r.first == null ? `<span class="st g">${ICON.ok}Edge</span>`
+      : r.first === 'g9_self_check' ? `<span class="st w">${ICON.hold}Held</span>`
+      : `<span class="st m">${ICON.no}Unverified</span>`;
+    const y = why(r); return w + (y ? `<div class="why">${y}</div>` : '');
+  };
   const mkt = r => { const s = sideAbbr(r.gameId, r.side); return r.market === 'ml' ? `<b>Moneyline</b> ${esc(s)}` : r.market === 'sp' ? `<b>Run line</b> ${esc(s)} ${fl(r.side === 'away' ? -r.line : r.line, true)}` : `<b>Total</b> ${esc(s)} ${fl(r.line)}`; };
-  const body = `<div class="scroll"><table><thead><tr><th>#</th><th>Game</th><th>Market</th><th>Best price</th><th class="r">Fair</th><th class="r">EV</th><th>Status</th></tr></thead><tbody>${rows.map((r, i) => row(
-    `<td><span class="rank ${verified(r) ? 'top' : ''}">${i + 1}</span></td><td>${matchup(r.gameId)}</td><td class="mk">${mkt(r)}</td><td>${book(r.book)} <b class="tn">${fa(r.price)}</b></td><td class="r tn">${fa(toAm(r.fair))} <span class="m">${pct(r.fair, 0)}</span></td><td class="r tn"><span class="${r.ev > 0 ? 'g' : 'b'}">${r.ev > 0 ? '+' : '−'}${pct(Math.abs(r.ev))}</span></td><td>${status(r)}</td>`,
-    reason(r), 7)).join('')}</tbody></table></div>`;
+  const held = rows.find(r => r.first === 'g9_self_check');
+  const banner = held ? `<div class="banner">${ICON.hold}<b class="w">Edges paused tonight</b><span class="m">self-check · ${esc(held.why.replace(/\s*\(.*\)$/, ''))}</span></div>` : '';
+  const body = `${banner}<div class="scroll"><table><thead><tr><th>#</th><th>Game</th><th>Market</th><th>Best price</th><th class="r">Fair</th><th class="r">EV</th><th>Status</th></tr></thead><tbody>${rows.map((r, i) => row(
+    `<td><span class="rank ${verified(r) ? 'top' : ''}">${i + 1}</span></td><td>${matchup(r.gameId)}</td><td class="mk">${mkt(r)}</td><td>${book(r.book)} <b class="tn">${fa(r.price)}</b></td><td class="r tn m">${fa(toAm(r.fair))}</td><td class="r tn"><span class="ev ${r.ev > 0 ? 'g' : 'b'}">${r.ev > 0 ? '+' : '−'}${pct(Math.abs(r.ev))}</span></td><td>${status(r)}</td>`,
+    null, 7)).join('')}</tbody></table></div>`;
   out.push(band('New — Edge / EV, today', 'Spotlights'));
-  out.push(note(`Ranks today's lines by EV against Pinnacle's no-vig price. Real edges first (✓ Edge; ⏸ Held = passes every gate but the self-check paused edges tonight), then the best unverified offers. The reason sits on the line under each row; click a row to read it all. Left out: anything over the 8% cap (probable data errors) and lines with no sharp price.`));
+  out.push(note(`Ranks today's lines by EV against Pinnacle's no-vig price. Verified edges first, then the best unverified offers. No sentences: EV is the one coloured number; the status column says why in 2–3 words; a tonight-wide pause is said once, at the top.`));
   out.push(card('Edge / EV', rows.length, 'MLB · every book vs Pinnacle, margin removed', body, 'EV = fair probability × the book\'s decimal price − 1, at the lowest of three de-vig methods.'));
 }
 
 // ===================================================== Specials
 {
-  const unit = { hr_per_pa: v => v.toFixed(1) + '%', vs_hand_hr_pa: v => v.toFixed(1) + '%', opp_staff_hr_rate: v => (v * 100).toFixed(0) + '%', park_factor: v => v.toFixed(2), temp_f: v => v.toFixed(0) + '°', wind_out: v => v.toFixed(1) + ' mph', starter_hr_per_start: v => v.toFixed(2) };
-  const table = rk => { const f = rk.def.factors; const n = f.length + 3; return `<div class="scroll"><table><thead><tr><th>#</th><th>Player</th>${f.map(x => `<th class="r" title="${esc(x.info)}">${esc(x.label)}</th>`).join('')}<th class="r">Score</th></tr></thead><tbody>${rk.rows.slice(0, 8).map(r => {
-    const t = { team: r.team, opp: r.opponent };
-    const cells = `<td><span class="rank ${r.rank <= 3 ? 'top' : ''}">${r.rank}</span></td><td>${who(r.subjectId, r.subjectName, t)}</td>${f.map(x => { const v = r.values[x.key]; const txt = v == null ? '—' : (unit[x.key] ? unit[x.key](v) : (Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(0))); return `<td class="r">${pcell(txt, v == null ? null : r.percentiles[x.key])}</td>`; }).join('')}<td class="r"><span class="score" style="color:${heatInk(r.score / 100)}">${r.score.toFixed(0)}</span></td>`;
-    return row(cells, r.read, n);
+  const table = rk => { const f = rk.def.factors; return `<div class="scroll"><table><thead><tr><th>#</th><th>Player</th>${f.map(x => `<th>${esc(x.label)}</th>`).join('')}<th class="r">Score</th></tr></thead><tbody>${rk.rows.slice(0, 8).map(r => {
+    const cells = `<td><span class="rank ${r.rank <= 3 ? 'top' : ''}">${r.rank}</span></td><td>${who(r.subjectId, r.subjectName, { team: r.team, opp: r.opponent })}</td>${f.map(x => `<td>${fxCell(x.key, r.values[x.key], r.percentiles[x.key])}</td>`).join('')}<td class="r"><span class="score" style="color:${heatInk(r.score / 100)}">${r.score.toFixed(0)}</span></td>`;
+    return row(cells, null, 0);
   }).join('')}</tbody></table></div>`; };
   out.push(band('Specials', ''));
-  out.push(note(`Each factor: the value (<span class="g">bold green</span> in the pool's top 20%, <span class="b">bold red</span> in the bottom 20%), its percentile, and a heat bar. Score as a bold number in the same heat. The sentence is one line under the row — click the row to open it.`));
+  out.push(note(`Each factor is its own fixed column: the number in plain units (<span class="g">bold green</span> in today's top 20%, <span class="b">bold red</span> in the bottom 20%, plain otherwise), the sentence's own words under it, then the heat bar and percentile. The factors ARE the sentence, so there is no separate paragraph to read.`));
   out.push(`<section class="card"><div class="ch"><h3>Specials<span class="cnt">${S.specials.length}</span></h3><div class="scope">promos, ranked · graded next morning</div></div><div class="tabs">${S.specials.map((r, i) => `<button aria-pressed="${i === 0}" data-sp="${i}">${esc(r.def.title)}</button>`).join('')}</div><div id="sp-body">${table(S.specials[0])}</div></section>`);
   window.__sp = S.specials.map(table);
 }
@@ -183,35 +230,33 @@ const out = [];
 // ===================================================== Spotlights
 {
   out.push(band('Spotlights', ''));
-  out.push(note(`Hit rate in heat colour with <span class="g">▲</span>/<span class="b">▼</span> against the season; streaks as dots (green = hit, red = missed) — 7 shown, <b>+N</b> opens the rest; percentile cells on the ranked factors; weather as icons with the bad values in colour.`));
+  out.push(note(`Streaks and hit rates: the last 10 games as bars — height is what he did, the dashed line is the line, <span class="g">green</span> cleared it, <span class="b">red</span> did not. Hover a bar for the date, opponent and stat line. Factor cards use the same plain-unit columns as Specials.`));
   const cards = [];
   for (const c of S.spotlights) {
     let body = '';
     if (c.id === 'hit-rate-leaders') {
-      body = `<table><thead><tr><th>Player</th><th>Market</th><th class="r">Last 10</th><th class="r hide-ph">Season</th><th>Run</th></tr></thead><tbody>${c.rows.map(r => {
+      body = `<table><thead><tr><th>Player</th><th>Market</th><th>Last 10 games</th><th class="r">Rate</th><th class="r hide-ph">Season</th></tr></thead><tbody>${c.rows.map(r => {
         const rate = parseFloat(r.values.rate.text) / 100, season = parseFloat(r.values.season.text) / 100, d = isNaN(season) ? null : rate - season;
-        const run = parseInt((r.values.streak.text || '0').replace('−', '-'), 10) || 0;
-        return row(`<td>${who(r.subjectId, r.subjectName)}</td><td class="mk">${esc(r.market.split('·')[0].trim())}</td><td class="r tn"><span class="${rate >= .8 ? 'g' : rate <= .3 ? 'b' : ''}" style="font-size:15px">${esc(r.values.rate.text)}</span><div class="m" style="font-size:11px">${esc(r.values.sample.text)}</div></td><td class="r hide-ph tn">${esc(r.values.season.text)}${d != null ? `<div class="${d >= 0 ? 'g' : 'b'}" style="font-size:12px">${d >= 0 ? '▲' : '▼'} ${Math.abs(d * 100).toFixed(0)}</div>` : ''}</td><td>${run ? dots(run, run > 0) : '<span class="m">—</span>'}</td>`, null, 5);
+        return row(`<td>${who(r.subjectId, r.subjectName)}</td><td class="mk">${esc(r.market.split('·')[0].trim())}<div class="m" style="font-size:11.5px">${esc((r.market.split('·')[1] || '').trim())}</div></td><td>${strip(r.key)}</td><td class="r tn"><b class="${rate >= .8 ? 'g' : rate <= .3 ? 'b' : ''}" style="font-size:16px">${esc(r.values.rate.text)}</b><div class="m" style="font-size:11px">${esc(r.values.sample.text)}</div></td><td class="r hide-ph tn">${esc(r.values.season.text)}${d != null ? `<div class="${d >= 0 ? 'g' : 'b'}" style="font-size:12px">${d >= 0 ? '▲' : '▼'} ${Math.abs(d * 100).toFixed(0)}</div>` : ''}</td>`, null, 0);
       }).join('')}</tbody></table>`;
     } else if (c.id === 'active-streaks') {
-      body = `<table><thead><tr><th>Player</th><th>Market</th><th>Run</th><th class="r">Games</th></tr></thead><tbody>${c.rows.map(r => {
+      body = `<table><thead><tr><th>Player</th><th>Market</th><th>Last 10 games</th><th class="r">Streak</th></tr></thead><tbody>${c.rows.map(r => {
         const hit = r.values.direction.text !== 'Missed'; const n = parseInt(r.values.games.text, 10);
-        return row(`<td>${who(r.subjectId, r.subjectName)}</td><td class="mk">${esc(r.market)}</td><td>${dots(n, hit)}</td><td class="r tn"><span class="${hit ? 'g' : 'b'}" style="font-size:15px">${n}</span><div class="m" style="font-size:11px">${hit ? 'hit' : 'missed'}</div></td>`, null, 4);
+        return row(`<td>${who(r.subjectId, r.subjectName)}</td><td class="mk">${esc(r.market.split('·')[0].trim())}<div class="m" style="font-size:11.5px">${esc((r.market.split('·')[1] || '').trim())}</div></td><td>${strip(r.key)}</td><td class="r tn"><b class="${hit ? 'g' : 'b'}" style="font-size:16px">${n} straight</b><div class="m" style="font-size:11px">${hit ? 'cleared it' : 'missed it'}</div></td>`, null, 0);
       }).join('')}</tbody></table>`;
     } else if (c.id === 'weather-games') {
       body = `<table><tbody>${c.rows.map(r => row(`<td>${game(r.subjectId)}</td><td>${wx(S.weather[r.subjectId])}</td>`, null, 2)).join('')}</tbody></table>`;
     } else {
       const flags = S.flags.filter(f => f.rankingId === c.id);
       const n = c.columns.length + 1;
-      body = `<div class="scroll"><table><thead><tr><th>${c.subjectLabel === 'Game' ? 'Game' : 'Player'}</th>${c.columns.map(col => `<th class="r" title="${esc(col.info || '')}">${esc(col.label)}</th>`).join('')}</tr></thead><tbody>${flags.slice(0, 8).map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent })}</td>${c.columns.map(col => {
+      body = `<div class="scroll"><table><thead><tr><th>${c.subjectLabel === 'Game' ? 'Game' : 'Player'}</th>${c.columns.map(col => `<th>${esc(col.label)}</th>`).join('')}</tr></thead><tbody>${flags.slice(0, 8).map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent })}</td>${c.columns.map(col => {
         const fx = f.factors.find(x => x.key === col.key);
-        const txt = fx?.value == null ? '—' : col.key === 'opp_staff_hr_rate' ? (fx.value * 100).toFixed(1) + '%' : col.key === 'wind_out' ? `${fx.value.toFixed(1)} mph` : Math.abs(fx.value) < 10 ? fx.value.toFixed(2) : fx.value.toFixed(1);
-        return `<td class="r">${pcell(txt, fx?.percentile ?? null)}</td>`;
-      }).join('')}`, f.read, n)).join('')}</tbody></table></div>`;
+        return `<td>${fxCell(col.key, fx?.value, fx?.percentile)}</td>`;
+      }).join('')}`, null, 0)).join('')}</tbody></table></div>`;
     }
     cards.push(card(esc(c.title), c.rows.length, esc(c.scope || ''), body));
   }
-  out.push(`<div class="grid">${cards.join('')}</div>`);
+  out.push(`<div class="grid wide">${cards.join('')}</div>`);
 }
 
 // ===================================================== Flags today (game page)
@@ -220,8 +265,8 @@ const out = [];
   const gid = Object.keys(by).sort((a, b) => by[b].length - by[a].length)[0];
   const rows = by[gid];
   out.push(band('Flags today — game page', ''));
-  out.push(note(`Same row anatomy and the same one-line sentence. The flag's name and place are plain text in their own column; each factor is its value in heat colour with the percentile beside it.`));
-  const body = `<div class="scroll"><table><thead><tr><th>Subject</th><th>Flag</th><th>Factors</th></tr></thead><tbody>${rows.map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent })}</td><td class="mk"><b>${esc(f.title)}</b><div class="m" style="font-size:11.5px">${ord(f.rank)} of ${f.of} today</div></td><td><span style="display:inline-flex;gap:14px;flex-wrap:wrap">${f.factors.map(x => { const p = x.percentile; const v = x.value == null ? '—' : x.key === 'opp_staff_hr_rate' ? (x.value * 100).toFixed(1) + '%' : (Math.abs(x.value) < 10 ? x.value.toFixed(2) : x.value.toFixed(1)); return `<span style="white-space:nowrap"><span class="m" style="font-size:12px">${esc(x.label)}</span> <b class="${p == null ? '' : p >= 80 ? 'g' : p <= 20 ? 'b' : ''}">${v}</b>${p != null ? ` <span style="font-size:11px;color:${heatInk(p / 100)}">${ord(p)}</span>` : ''}</span>`; }).join('')}</span></td>`, f.read, 3)).join('')}</tbody></table></div>`;
+  out.push(note(`Same columns as Spotlights: the flag's place as a big number with its name under it, then each factor in plain units with the sentence's words under the number.`));
+  const body = `<div class="scroll"><table><thead><tr><th>Subject</th><th>Flag</th><th colspan="3">Why</th></tr></thead><tbody>${rows.map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent })}</td><td><div class="fl"><b class="${f.rank <= 3 ? 'g' : ''}">${ord(f.rank)}</b><span class="m"> of ${f.of}</span></div><div style="font-size:12px;color:var(--ink2)">${esc(f.title)}</div></td>${[0, 1, 2].map(i => `<td>${f.factors[i] ? fxCell(f.factors[i].key, f.factors[i].value, f.factors[i].percentile) : ''}</td>`).join('')}`, null, 0)).join('')}</tbody></table></div>`;
   out.push(card('Flags today', rows.length, 'updates until the first game', body));
 }
 
