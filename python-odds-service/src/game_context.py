@@ -28,6 +28,7 @@ when it's a string and `position` from `meta.role` (R6-F8: the role is what
 separates a pitcher's strikeouts from a batter's).
 """
 import asyncio
+import gc as _pygc
 import json
 import re
 import time
@@ -36,7 +37,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from db import read_snapshot, read_snapshot_with_age, write_snapshot
+from db import read_snapshot, read_snapshot_with_age, snapshot_stamp, write_snapshot
 from entity_resolution import RosterEntry
 
 
@@ -105,15 +106,40 @@ def _roster_for_mlb_game(subjects: list[dict], game_pk) -> list[RosterEntry]:
     return roster
 
 
+# (snapshot fetched_at, [each game's Game(...) keyword arguments]) — see load_mlb_games.
+_MLB_MEMO: tuple | None = None
+
+
 async def load_mlb_games() -> list[Game]:
+    """Today's MLB games, from the TS app's `mlb:snapshot`.
+
+    PARSED ONCE PER VERSION (2026-09-26). The snapshot is 22.9 MB of JSON now
+    (6.6 MB when this loader got its 32 call sites) and `json.loads` of it
+    costs ~150-200 MB in Python for the moment it is held. slateRankingsJob
+    alone calls this once per MLB ranking — first to find the first pitch,
+    then in the builders — and on a worker sitting near 340 MB the repeated
+    parses put it over its 512 MB limit: it was OOM-killed every ~6 minutes,
+    silently, mid-job (Render logs, 16:09-16:34 UTC), so the queue never
+    reached marketEdgeJob. Measured locally: 225 MB peak working set from the
+    parses against under 90 MB for every ranking's own work.
+
+    So the loader asks for the snapshot's `fetched_at` first (8 bytes) and,
+    when it has not changed, rebuilds the games from the arguments it kept —
+    fresh `Game` objects every call, so no caller can see another's edits.
+    """
+    global _MLB_MEMO
+    stamp = await snapshot_stamp("mlb:snapshot")
+    if stamp is not None and _MLB_MEMO is not None and _MLB_MEMO[0] == stamp:
+        return [Game(**{**kw, "roster": list(kw["roster"])}) for kw in _MLB_MEMO[1]]
     payload = await read_snapshot("mlb:snapshot")
     if not payload:
         return []
     data = json.loads(payload)
+    del payload
     raw_games = ((data.get("context") or {}).get("other") or {}).get("games") or []
     subjects = data.get("subjects") or []
 
-    games: list[Game] = []
+    kws: list[dict] = []
     for g in raw_games:
         matchup = g.get("matchup") or ""
         parts = [p.strip() for p in matchup.split("@")]
@@ -125,8 +151,8 @@ async def load_mlb_games() -> list[Game]:
             continue  # gameContext.ts drops games missing either name — mirrored here
         state = (g.get("state") or "")
         game_pk = g.get("gamePk")
-        games.append(
-            Game(
+        kws.append(
+            dict(
                 sport="mlb",
                 game_id=str(game_pk),
                 away_team_name=away_name,
@@ -145,7 +171,13 @@ async def load_mlb_games() -> list[Game]:
                 venue=g.get("venue"),
             )
         )
-    return games
+    # Only the small arguments outlive this call; drop the parsed blob now,
+    # not whenever the collector next runs.
+    del data, raw_games, subjects
+    _pygc.collect()
+    if stamp is not None:
+        _MLB_MEMO = (stamp, kws)
+    return [Game(**{**kw, "roster": list(kw["roster"])}) for kw in kws]
 
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"

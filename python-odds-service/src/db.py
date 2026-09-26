@@ -222,6 +222,13 @@ async def _snapshot_validated(cache_key: str) -> tuple[str, "datetime"] | None:
     return payload, actual
 
 
+async def snapshot_stamp(cache_key: str):
+    """A snapshot's `fetched_at` alone (~8 bytes on the wire), so a reader can
+    tell whether it changed without reading or parsing it."""
+    pool = await get_pool()
+    return await pool.fetchval("SELECT fetched_at FROM snapshot_cache WHERE cache_key = $1", cache_key)
+
+
 async def read_snapshot(cache_key: str) -> str | None:
     got = await _snapshot_validated(cache_key)
     return got[0] if got else None
