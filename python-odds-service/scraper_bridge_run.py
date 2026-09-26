@@ -270,6 +270,7 @@ class Bridge:
         self.pending_cursor: dict[str, int] | None = None
         self.unsaved_cursor: dict[str, int] | None = None
         self.backfill_queue: list[tuple] = []
+        self.endpoints_seeded = False
         self.backfill_rows: dict[str, int] = {}
         self.unmatched_counter: Counter = Counter()
         self.unresolved_day = None
@@ -420,6 +421,8 @@ class Bridge:
             await self.flush()
             if self.outbox:
                 return
+        if not self.endpoints_seeded:
+            self._seed_endpoint_games()
         batch = self.read()
         offers, snaps, events = batch["offers"], batch["snaps"], batch["events"]
         if self.args.cycle_log:
@@ -690,6 +693,33 @@ class Bridge:
         refs = self._references(rows, openers)
         self.ref_dirty = True
         return openers + refs
+
+    def _seed_endpoint_games(self) -> None:
+        """Which games each scraper endpoint covers, rebuilt at start-up (audit
+        2026-09-26). The map was learned only from CHANGES, in memory, so after a
+        restart a game whose price had not moved was never confirmed again: its
+        `scraper_checks.last_ok_at` froze while the scraper re-read it every
+        minute, and 74% of edge gate-2 failures were "sharp checked N min ago"
+        on Pinnacle prices that were in fact current. One indexed lookup per
+        linked source event: the endpoint of its newest offer."""
+        now = now_utc()
+        n = 0
+        t = time.time()
+        for key, v in self.res.links.items():
+            st = parse_ts(v[3])
+            if st is None or not (now - timedelta(hours=12) <= st <= now + timedelta(days=5)):
+                continue
+            for src, ext in self.scraper.execute("SELECT source, external_id FROM game_links WHERE game_key = ?", (key,)):
+                row = self.scraper.execute(
+                    "SELECT s.endpoint FROM offers o INDEXED BY ix_offers_event_external_id "
+                    "JOIN snapshots s ON s.id = o.snapshot_id "
+                    "WHERE o.event_external_id = ? AND o.source = ? ORDER BY o.id DESC LIMIT 1", (ext, src)).fetchone()
+                if row and row[0]:
+                    self.endpoint_games[(src, row[0])].add(v[1])
+                    n += 1
+        self.endpoints_seeded = True
+        self.stats["endpoint_games_seeded"] = n
+        print(f"[bridge] endpoint map seeded: {n} source events in {time.time() - t:.1f}s", flush=True)
 
     def _backfill(self) -> list:
         """Standing prices for newly linked games (P6, found live 2026-09-25).
