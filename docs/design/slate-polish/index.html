@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Slate polish · mockup v2</title>
+<title>Slate polish · type options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600&family=Roboto+Condensed:wght@400;500;700&display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.font = (new URLSearchParams(location.search).get('font') || '1').replace(/[^123]/g, '') || '1';</script>
 <style>
 :root{
   --paper:#eceef1;--card:#fbfbfc;--sunk:#f4f5f7;--line:#dcdee2;--soft:#e6e8eb;--hair:#eff0f2;
@@ -13,7 +16,17 @@
   --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.4 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+html[data-font="1"]{--f-head:'Barlow Condensed';--f-data:'Roboto Condensed';--f-body:'Roboto Condensed';--nm:16px;--h3:17px}
+html[data-font="2"]{--f-head:'Oswald';--f-data:'Inter';--f-body:'Inter';--nm:15px;--h3:15px}
+html[data-font="3"]{--f-head:'Barlow Condensed';--f-data:'Inter';--f-body:'Inter';--nm:16px;--h3:17px}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.4 var(--f-body),ui-sans-serif,system-ui,sans-serif}
+h1,.band h2,.ch h3,.subj .nm,.mu,.fl b,.tabs button{font-family:var(--f-head),sans-serif}
+.ch h3{font-size:var(--h3);text-transform:uppercase;letter-spacing:.03em;font-weight:600}.band h2{text-transform:uppercase;letter-spacing:.02em;font-weight:600}
+.subj .nm{font-size:var(--nm);font-weight:600!important}.mu{font-weight:600;font-size:15px}
+html[data-font="2"] .ch h3,html[data-font="2"] .band h2,html[data-font="2"] .subj .nm{font-weight:500!important}
+.tn,.fx .big,.score,.rank,.ev,.pc b,.st,th,.strip,.tip,.bk span,.rd b,.cnt{font-family:var(--f-data),sans-serif}
+.fontbar{position:sticky;top:0;z-index:20;display:flex;gap:6px;align-items:center;padding:8px 16px;background:var(--char);color:#fff;font:13px/1 Inter,sans-serif}
+.fontbar a{color:#cfd3d9;text-decoration:none;padding:6px 10px;border-radius:6px}.fontbar a.on{background:#fff;color:var(--char);font-weight:600}
 .wrap{max-width:1360px;margin:0 auto;padding:24px 16px 80px}
 h1{font-size:24px;margin:0 0 4px}
 .sub{color:var(--ink3);margin:0 0 20px}
@@ -89,9 +102,12 @@ tr.read b{color:var(--good-ink)}
 .livetag{font-size:10px;font-weight:800;color:var(--bad-ink);letter-spacing:.04em;margin-left:4px}
 .best{background:var(--good);color:var(--good-on);border-radius:4px;padding:0 4px;font-weight:700}
 .grid.wide{grid-template-columns:repeat(auto-fill,minmax(660px,1fr))}
-.fx{width:108px;display:flex;flex-direction:column;gap:1px}
+.fx{width:96px;gap:3px;display:flex;flex-direction:column;gap:1px}
 .fx .big{font-size:16px;font-variant-numeric:tabular-nums;line-height:1.2}
-.fx .lbl{font-size:11.5px;color:var(--ink3);line-height:1.25;min-height:2.5em}
+.fxl{font-size:11.5px;color:var(--ink3);margin-right:5px;white-space:nowrap}
+.rd{width:290px;margin-top:4px;font-size:12.5px;line-height:1.35;color:var(--ink2);white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.rd.open{-webkit-line-clamp:unset;display:block}.rd b{color:var(--good-ink)}
+.subj{align-items:flex-start}.subj .hs,.subj .pair{margin-top:2px}
 .fx .pr{display:flex;align-items:center;gap:6px}
 .fx .pr .bar{flex:1;height:4px;background:var(--sunk);border-radius:2px;overflow:hidden}.fx .pr .bar>span{display:block;height:100%}
 .fx .pr i{font-style:normal;font-size:11px;font-variant-numeric:tabular-nums}
@@ -108,6 +124,8 @@ tr.read b{color:var(--good-ink)}
 </style>
 </head>
 <body>
+<nav class="fontbar"><span style="margin-right:6px">Type</span><a href="?font=1" data-f="1">1 · Barlow Condensed + Roboto Condensed</a><a href="?font=2" data-f="2">2 · Oswald + Inter</a><a href="?font=3" data-f="3">3 · Barlow Condensed + Inter</a></nav>
+<script>document.querySelectorAll('.fontbar a').forEach(a => a.classList.toggle('on', a.dataset.f === document.documentElement.dataset.font));</script>
 <div class="wrap">
   <h1>Slate polish — mockup v2 (real data, MLB, 2026-09-26)</h1>
   <p class="sub">Rules: one row anatomy everywhere (face or logos · <b>name</b> over team vs opponent); the market is plain text in its own column; status is an icon + one word; the sentence sits on one line under its row — click the row for all of it; streak dots show 7, then a <b>+N</b> button opens the rest; <span class="g">bold green</span> = good, <span class="b">bold red</span> = bad, <span class="w">amber</span> = caution, plain ink = neutral. No pills.</p>
@@ -132,8 +150,10 @@ const logo = (abbr, cls = '') => S.logos[abbr] ? `<img class="lg ${cls}" src="${
 const head = id => S.heads[id] ? `<img class="hs" src="${S.heads[id]}" alt="">` : `<span class="hs"></span>`;
 const book = (id, label = true) => { const b = S.books[id] || { label: id }; const src = b.domain ? `https://www.google.com/s2/favicons?domain=${b.domain}&sz=32` : ''; return `<span class="bk" title="${esc(b.label || id)}">${src ? `<img src="${src}" alt="">` : ''}${label ? `<span>${esc(b.label || id)}</span>` : ''}</span>`; };
 /** name over team vs opponent — the one row anatomy */
-const who = (id, name, t) => { t = t || S.playerTeam[id]; return `<div class="subj">${head(id)}<div><div class="nm">${esc(name)}</div>${t ? `<div class="tm">${logo(t.team)}<span>${esc(t.team)}</span><span class="vs">vs</span>${logo(t.opp)}<span>${esc(t.opp)}</span></div>` : ''}</div></div>`; };
-const game = id => { const c = cardOf(id); return c ? `<div class="subj"><span class="pair">${logo(c.away.abbr, 'big')}${logo(c.home.abbr, 'big')}</span><div><div class="nm">${esc(c.away.abbr)} @ ${esc(c.home.abbr)}</div><div class="tm">${esc(c.statusText)}${c.venue ? ' · ' + esc(c.venue) : ''}</div></div></div>` : esc(id); };
+/** The sentence sits under the name at one fixed width, 2 lines, click for the rest. */
+const rd = read => read ? `<div class="rd">${rich(read)}</div>` : '';
+const who = (id, name, t, read) => { t = t || S.playerTeam[id]; return `<div class="subj">${head(id)}<div><div class="nm">${esc(name)}</div>${t ? `<div class="tm">${logo(t.team)}<span>${esc(t.team)}</span><span class="vs">vs</span>${logo(t.opp)}<span>${esc(t.opp)}</span></div>` : ''}${rd(read)}</div></div>`; };
+const game = (id, read) => { const c = cardOf(id); return c ? `<div class="subj"><span class="pair">${logo(c.away.abbr, 'big')}${logo(c.home.abbr, 'big')}</span><div><div class="nm">${esc(c.away.abbr)} @ ${esc(c.home.abbr)}</div><div class="tm">${esc(c.statusText)}${c.venue ? ' · ' + esc(c.venue) : ''}</div>${rd(read)}</div></div>` : esc(id); };
 const matchup = id => { const c = cardOf(id); return c ? `<span class="mu">${logo(c.away.abbr)}${esc(c.away.abbr)} <span class="vs">@</span> ${logo(c.home.abbr)}${esc(c.home.abbr)}</span>` : ''; };
 /** a percentile cell: bold coloured value at the ends of the pool, plain in the middle */
 const pcell = (text, p) => { if (p == null) return `<span class="tn m">${esc(text)}</span>`; const t = p / 100; const cls = p >= 80 ? 'g' : p <= 20 ? 'b' : ''; return `<span class="pc"><b class="${cls}">${esc(text)}</b><i style="color:${heatInk(t)}">${ord(Math.round(p))}</i><span class="bar"><span style="width:${p}%;background:${heat(t)}"></span></span></span>`; };
@@ -147,7 +167,7 @@ const dots = (n, hit) => { const all = Math.abs(n); const k = Math.min(all, 7); 
 const FX = {
   park_factor: v => [`${v >= 1 ? '+' : '−'}${Math.abs(Math.round((v - 1) * 100))}%`, 'runs vs an average park'],
   opp_staff_hr_rate: v => [`${Math.round(v * 100)}%`, 'of games the staff allows a HR'],
-  wind_out: v => v > 0.5 ? [`${v.toFixed(0)} mph`, 'wind blowing out'] : v < -0.5 ? [`${Math.abs(v).toFixed(0)} mph`, 'wind blowing in'] : ['Calm', 'no real wind'],
+  wind_out: v => v > 0.5 ? [`${v.toFixed(0)} mph`] : v < -0.5 ? [`${Math.abs(v).toFixed(0)} mph in`] : ['Calm'],
   k_per_9: v => [v.toFixed(1), 'strikeouts per 9 innings'],
   opp_k_pct: v => [`${v.toFixed(1)}%`, 'opponent strikeout rate'],
   slg_vs_hand: v => [v.toFixed(3).replace(/^0/, ''), 'slugging vs this hand'],
@@ -164,7 +184,7 @@ const FX = {
   k_per_start: v => [v.toFixed(1), 'strikeouts per start'],
   opp_k_per_game: v => [v.toFixed(1), 'opponent strikeouts per game'],
 };
-const fxCell = (key, v, p) => { if (v == null) return `<div class="fx"><b class="big m">—</b></div>`; const [big, lbl] = (FX[key] || (x => [String(x), key]))(v); const cls = p == null ? '' : p >= 80 ? 'g' : p <= 20 ? 'b' : ''; return `<div class="fx"><b class="big ${cls}">${esc(big)}</b><span class="lbl">${esc(lbl)}</span>${p != null ? `<span class="pr"><span class="bar"><span style="width:${p}%;background:${heat(p / 100)}"></span></span><i style="color:${heatInk(p / 100)}">${ord(Math.round(p))}</i></span>` : ''}</div>`; };
+const fxCell = (key, v, p, label) => { const lab = label ? `<span class="fxl">${esc(label)}</span>` : ''; if (v == null) return `<div class="fx"><span>${lab}<b class="big m">—</b></span></div>`; const [big] = (FX[key] || (x => [String(x)]))(v); const cls = p == null ? '' : p >= 80 ? 'g' : p <= 20 ? 'b' : ''; return `<div class="fx"><span>${lab}<b class="big ${cls}">${esc(big)}</b></span>${p != null ? `<span class="pr"><span class="bar"><span style="width:${p}%;background:${heat(p / 100)}"></span></span><i style="color:${heatInk(p / 100)}">${ord(Math.round(p))}</i></span>` : ''}</div>`; };
 /** The last 10 games as bars against the line; hover a bar for the game. */
 const MLB = { 108: 'LAA', 109: 'ARI', 110: 'BAL', 111: 'BOS', 112: 'CHC', 113: 'CIN', 114: 'CLE', 115: 'COL', 116: 'DET', 117: 'HOU', 118: 'KC', 119: 'LAD', 120: 'WSH', 121: 'NYM', 133: 'ATH', 134: 'PIT', 135: 'SD', 136: 'SEA', 137: 'SF', 138: 'STL', 139: 'TB', 140: 'TEX', 141: 'TOR', 142: 'MIN', 143: 'PHI', 144: 'ATL', 145: 'CWS', 146: 'MIA', 147: 'NYY', 158: 'MIL' };
 const STAT = { 'hit-in-game': 'H–AB', 'vs-RHP': 'H–AB', 'vs-LHP': 'H–AB', 'batter-strikeouts': 'K', walks: 'BB', rbis: 'RBI', singles: '1B', 'total-bases': 'TB', 'pitcher-hits-allowed': 'hits allowed', 'pitcher-strikeouts': 'K', runs: 'R' };
@@ -218,11 +238,11 @@ const out = [];
 // ===================================================== Specials
 {
   const table = rk => { const f = rk.def.factors; return `<div class="scroll"><table><thead><tr><th>#</th><th>Player</th>${f.map(x => `<th>${esc(x.label)}</th>`).join('')}<th class="r">Score</th></tr></thead><tbody>${rk.rows.slice(0, 8).map(r => {
-    const cells = `<td><span class="rank ${r.rank <= 3 ? 'top' : ''}">${r.rank}</span></td><td>${who(r.subjectId, r.subjectName, { team: r.team, opp: r.opponent })}</td>${f.map(x => `<td>${fxCell(x.key, r.values[x.key], r.percentiles[x.key])}</td>`).join('')}<td class="r"><span class="score" style="color:${heatInk(r.score / 100)}">${r.score.toFixed(0)}</span></td>`;
+    const cells = `<td><span class="rank ${r.rank <= 3 ? 'top' : ''}">${r.rank}</span></td><td>${who(r.subjectId, r.subjectName, { team: r.team, opp: r.opponent }, r.read)}</td>${f.map(x => `<td>${fxCell(x.key, r.values[x.key], r.percentiles[x.key])}</td>`).join('')}<td class="r"><span class="score" style="color:${heatInk(r.score / 100)}">${r.score.toFixed(0)}</span></td>`;
     return row(cells, null, 0);
   }).join('')}</tbody></table></div>`; };
   out.push(band('Specials', ''));
-  out.push(note(`Each factor is its own fixed column: the number in plain units (<span class="g">bold green</span> in today's top 20%, <span class="b">bold red</span> in the bottom 20%, plain otherwise), the sentence's own words under it, then the heat bar and percentile. The factors ARE the sentence, so there is no separate paragraph to read.`));
+  out.push(note(`The sentence sits under the player's name at one fixed width (2 lines; click for the rest), its numbers in <b class="g">bold green</b>. Each factor column is just the number — <span class="g">bold green</span> in today's top 20%, <span class="b">bold red</span> in the bottom 20% — its heat bar and percentile; the header says what it is.`));
   out.push(`<section class="card"><div class="ch"><h3>Specials<span class="cnt">${S.specials.length}</span></h3><div class="scope">promos, ranked · graded next morning</div></div><div class="tabs">${S.specials.map((r, i) => `<button aria-pressed="${i === 0}" data-sp="${i}">${esc(r.def.title)}</button>`).join('')}</div><div id="sp-body">${table(S.specials[0])}</div></section>`);
   window.__sp = S.specials.map(table);
 }
@@ -249,7 +269,7 @@ const out = [];
     } else {
       const flags = S.flags.filter(f => f.rankingId === c.id);
       const n = c.columns.length + 1;
-      body = `<div class="scroll"><table><thead><tr><th>${c.subjectLabel === 'Game' ? 'Game' : 'Player'}</th>${c.columns.map(col => `<th>${esc(col.label)}</th>`).join('')}</tr></thead><tbody>${flags.slice(0, 8).map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent })}</td>${c.columns.map(col => {
+      body = `<div class="scroll"><table><thead><tr><th>${c.subjectLabel === 'Game' ? 'Game' : 'Player'}</th>${c.columns.map(col => `<th>${esc(col.label)}</th>`).join('')}</tr></thead><tbody>${flags.slice(0, 8).map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId, f.read) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent }, f.read)}</td>${c.columns.map(col => {
         const fx = f.factors.find(x => x.key === col.key);
         return `<td>${fxCell(col.key, fx?.value, fx?.percentile)}</td>`;
       }).join('')}`, null, 0)).join('')}</tbody></table></div>`;
@@ -265,8 +285,8 @@ const out = [];
   const gid = Object.keys(by).sort((a, b) => by[b].length - by[a].length)[0];
   const rows = by[gid];
   out.push(band('Flags today — game page', ''));
-  out.push(note(`Same columns as Spotlights: the flag's place as a big number with its name under it, then each factor in plain units with the sentence's words under the number.`));
-  const body = `<div class="scroll"><table><thead><tr><th>Subject</th><th>Flag</th><th colspan="3">Why</th></tr></thead><tbody>${rows.map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent })}</td><td><div class="fl"><b class="${f.rank <= 3 ? 'g' : ''}">${ord(f.rank)}</b><span class="m"> of ${f.of}</span></div><div style="font-size:12px;color:var(--ink2)">${esc(f.title)}</div></td>${[0, 1, 2].map(i => `<td>${f.factors[i] ? fxCell(f.factors[i].key, f.factors[i].value, f.factors[i].percentile) : ''}</td>`).join('')}`, null, 0)).join('')}</tbody></table></div>`;
+  out.push(note(`Same anatomy: the sentence under the name; the flag's place; then each factor as its short label and number, bar and percentile — the factors differ by flag, so the label rides with the number.`));
+  const body = `<div class="scroll"><table><thead><tr><th>Subject</th><th>Flag</th><th colspan="3">Factors</th></tr></thead><tbody>${rows.map(f => row(`<td>${f.subjectKind === 'game' ? game(f.subjectId, f.read) : who(f.subjectId, f.subjectName, { team: f.team, opp: f.opponent }, f.read)}</td><td><div class="fl"><b class="${f.rank <= 3 ? 'g' : ''}">${ord(f.rank)}</b><span class="m"> of ${f.of}</span></div><div style="font-size:12px;color:var(--ink2)">${esc(f.title)}</div></td>${[0, 1, 2].map(i => `<td>${f.factors[i] ? fxCell(f.factors[i].key, f.factors[i].value, f.factors[i].percentile, f.factors[i].label) : ''}</td>`).join('')}`, null, 0)).join('')}</tbody></table></div>`;
   out.push(card('Flags today', rows.length, 'updates until the first game', body));
 }
 
@@ -302,6 +322,7 @@ document.addEventListener('click', e => {
   if (less) { e.stopPropagation(); const d = less.parentElement; const n = +d.dataset.n, c = d.dataset.c; d.innerHTML = Array.from({ length: 7 }, () => `<i style="background:${c}"></i>`).join('') + `<button class="more" type="button">+${n - 7}</button>`; return; }
   const tab = e.target.closest('[data-sp]');
   if (tab) { document.querySelectorAll('[data-sp]').forEach(x => x.setAttribute('aria-pressed', x === tab)); document.getElementById('sp-body').innerHTML = window.__sp[+tab.dataset.sp]; return; }
+  const r2 = e.target.closest('.rd'); if (r2) { r2.classList.toggle('open'); return; }
   const tr = e.target.closest('tr.row.has-read, tr.read');
   if (tr) { const read = tr.classList.contains('read') ? tr : tr.nextElementSibling; read?.classList.toggle('open'); }
 });
