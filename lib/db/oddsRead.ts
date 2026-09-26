@@ -573,9 +573,10 @@ export async function readEdges(scope: { gameIds: string[]; subjectId?: string; 
             edge_pts, ev, reference, soft_checked_at, soft_since, sharp_checked_at, passing_since, single_source
        FROM market_edges
       WHERE game_id = ANY(?) AND (?::text IS NULL OR subject_id = ?) AND (?::text IS NULL OR kind = ?)
-        -- Fail safe: marketEdgeJob rewrites this table every 2 minutes. If it
+        -- Fail safe: marketEdgeJob rewrites this table every 2-5 minutes (the
+        -- worker runs one job at a time, so "every 2 min" is a floor). If it
         -- stops, its last edges must not stay on the pages as if current.
-        AND computed_at > now() - interval '5 minutes'
+        AND computed_at > now() - interval '10 minutes'
       ORDER BY ev DESC`,
     [scope.gameIds, scope.subjectId ?? null, scope.subjectId ?? null, scope.kind ?? null, scope.kind ?? null]);
   return rows.map(r => {
@@ -614,7 +615,8 @@ export async function readEdgeView(scope: { gameIds: string[]; subjectId?: strin
   const f = await readFlags();
   if (f.edge_display?.enabled === false) return { status: 'off', reason: 'Edges are switched off.' };
   const age = await edgeJobAge();
-  if (age == null || age > 300) {
+  // The worker's queue runs this job every 2-5 min; 15 min without a run means it stopped.
+  if (age == null || age > 900) {
     return { status: 'stale', reason: age == null ? 'The edge check has not run yet.' : `The edge check last ran ${Math.round(age / 60)} min ago.` };
   }
   const paused = f.edge_auto_off?.on === true;
@@ -638,5 +640,6 @@ export async function readEdgeView(scope: { gameIds: string[]; subjectId?: strin
       } : null,
     };
   });
-  return { status: paused ? 'paused' : 'on', reason: paused ? String(f.edge_auto_off?.reason ?? 'The self-check is holding edges back.') : null, candidates };
+  return { status: paused ? 'paused' : 'on', reason: paused ? String(f.edge_auto_off?.reason ?? 'The self-check is holding edges back.') : null,
+    asOf: new Date(Date.now() - age * 1000).toISOString(), candidates };
 }

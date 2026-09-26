@@ -131,7 +131,7 @@ export function EdgeCard({ edges, view, marketKey, spec, line, sideLabels, sharp
         <Collapse open={!!top} id={`edge-${marketKey}`}>
           {top ? <EdgeDetail e={top} label={label(top.side)} now={Math.max(now, tick)} /> : null}
         </Collapse>
-        {!top && cand?.best ? <CandidateDetail c={cand} /> : null}
+        {!top && cand?.best ? <CandidateDetail c={cand} asOf={view?.asOf} /> : null}
         {!top && !cand?.best ? (
           <div className="mt-2 flex items-start gap-3">
             <BookLogo bookId="pinnacle" size={22} />
@@ -165,7 +165,7 @@ export function EdgeCard({ edges, view, marketKey, spec, line, sideLabels, sharp
 }
 
 /** The NO EDGE state with numbers: the best soft price against the fair price, and every gate's verdict. */
-function CandidateDetail({ c }: { c: EdgeCandidate }) {
+function CandidateDetail({ c, asOf }: { c: EdgeCandidate; asOf?: string }) {
   const b = c.best!;
   const lo = Math.min(b.implied, b.fair) - 0.025;
   const hi = Math.max(b.implied, b.fair) + 0.025;
@@ -198,6 +198,7 @@ function CandidateDetail({ c }: { c: EdgeCandidate }) {
         </div>
       ) : null}
       {fails ? <div className="mt-2 text-body-sm text-ink-secondary" data-edge-why>{whyNot(b.firstFailure, fails.detail, b.ev)}</div> : null}
+      {asOf ? <div className="mt-1 text-label text-ink-muted">Checked {fmtClock(asOf, Date.parse(asOf))} · the edge check runs every few minutes</div> : null}
       <div className="mt-3 flex justify-between text-label">
         <b>Gates</b>
         <span className={`font-semibold ${fails ? 'text-bad-ink' : 'text-good-ink'}`}>{b.gates.filter(g => g.ok).length} of {b.gates.length} pass</span>

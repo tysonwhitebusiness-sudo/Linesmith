@@ -283,4 +283,6 @@ test('edges reach a page only while the kill switch and the self-check allow', (
   const code = stripComments(read('lib/db/oddsRead.ts'));
   assert.match(code, /edge_display\?\.enabled !== false && f\.edge_auto_off\?\.on !== true/);
   assert.match(code, /if \(!scope\.gameIds\.length \|\| !\(await edgesVisible\(\)\)\) return null;/);
+  // A stopped job's edges never stay on a page (the queue runs it every 2-5 min).
+  assert.match(code, /AND computed_at > now\(\) - interval '10 minutes'/);
 });

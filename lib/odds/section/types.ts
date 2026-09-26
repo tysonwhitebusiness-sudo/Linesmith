@@ -176,6 +176,8 @@ export interface EdgeCandidate {
 export interface EdgeView {
   status: 'on' | 'paused' | 'off' | 'stale';
   reason: string | null;
+  /** When the edge check last ran (the candidates' time). */
+  asOf?: string;
   /** Absent when `off` or `stale` (no numbers are shown then). */
   candidates?: EdgeCandidate[];
 }
