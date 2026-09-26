@@ -432,7 +432,9 @@ test('a hit rate needs a real sample, and says how big it is', () => {
     ['Ten Games'],
     'a two-game record is not a hit rate',
   );
-  assert.ok(card.columns.some((c) => c.key === 'sample'), 'the sample must be a column');
+  // v4 (slate-polish, 2026-09-26): the sample is the grey line UNDER the
+  // rate rather than a column of its own — still printed on every row.
+  assert.equal(card.rows[0].values.rate.sub, '9 of 10', 'the sample must be printed with the rate');
 });
 
 test('every spotlight factor names its source', () => {

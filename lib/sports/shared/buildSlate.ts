@@ -361,6 +361,9 @@ export function buildSlateGames({ games, lines, propCounts, spec, date }: BuildS
       model: spec.model?.(game) ?? null,
       context: spec.context?.(game) ?? [],
       weatherFlag: weatherFlag(game),
+      weather: weatherFlag(game) && game.weather
+        ? { windMph: game.weather.windMph ?? null, windDir: game.weather.windDir ?? null, rainPct: game.weather.rainPct ?? null, tempF: game.weather.tempF ?? null }
+        : null,
       href: spec.href?.(game) ?? null,
       propCount: props,
     };

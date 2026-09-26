@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Avatar, Card, DataTable, EmptyState, PercentileCell, ResultMark, Tabs, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { Avatar, Card, DataTable, EmptyState, HeatNumber, PercentileCell, ResultMark, Tabs, Tooltip, cx, type Column, SectionBand } from '@/components/ui';
+import { PlayerSubject } from './SlateSubject';
 import { TeamLogo } from '../SubjectAvatar';
 import { headshotFor, teamLogoFor } from '@/lib/sports/shared/identity';
 import type { ReceiptRow, ReceiptSlate, SpecialRanking, SpecialRow, SpecialsData } from '@/lib/slate/specials';
@@ -22,26 +23,6 @@ import { formatFactor } from '@/lib/slate/specialsFormat';
  */
 
 
-function ordinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
-}
-
-/**
- * The "why", from the percentiles: the two factors this player ranks highest
- * on across today's pool, in plain words. It never invents a factor the row
- * does not carry, because the job skips a factor it could not measure.
- */
-function whyOf(row: SpecialRow, ranking: SpecialRanking): string {
-  const top = ranking.def.factors
-    .filter((f) => row.percentiles[f.key] != null)
-    .sort((a, b) => row.percentiles[b.key] - row.percentiles[a.key])
-    .slice(0, 2);
-  if (top.length === 0) return 'No factor could be measured for this player today.';
-  const parts = top.map((f) => `${ordinal(row.percentiles[f.key])} percentile on ${f.label}`);
-  return `Ranks here mostly on ${parts.join(' and ')} across today's pool.`;
-}
 
 /** A team mark in the "team vs opponent" line: logo + abbreviation, plain text when a sport has no logo. */
 function TeamMark({ sport, teamId, abbr }: { sport: string; teamId: string | null; abbr: string | null }) {
@@ -60,27 +41,19 @@ function columnsFor(ranking: SpecialRanking, sport: string): Column<SpecialRow>[
       key: 'subject',
       label: 'Player',
       sortable: false,
+      wrap: true,
+      // v4: the one row anatomy — face, name, team vs opponent with logos, and
+      // the sentence (Python's, from this player's two strongest factors) at
+      // one width under them.
       render: (r) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="flex items-center gap-1.5">
-            <span className="w-4 shrink-0 text-right text-label tabular-nums text-ink-muted">{r.rank}</span>
-            <Avatar label={r.subjectName} src={headshotFor(sport, r.subjectId) ?? undefined} size={24} decorative />
-            <span className="truncate font-semibold text-ink text-body-sm">{r.subjectName}</span>
-          </span>
-          <span className="flex flex-wrap items-center gap-1.5 text-label text-ink-muted">
-            <TeamMark sport={sport} teamId={r.teamId} abbr={r.team} />
-            {r.opponent ? (
-              <>
-                <span>vs</span>
-                <TeamMark sport={sport} teamId={r.opponentId} abbr={r.opponent} />
-              </>
-            ) : null}
-          </span>
-          {/* C5: the one-line read, written deterministically in Python from
-              this player's two strongest factors. It sits under the name
-              because it is about THIS row, unlike the card's caption. */}
-          {r.read ? <span className="mt-0.5 text-label text-ink-secondary">{r.read}</span> : null}
-        </span>
+        <PlayerSubject
+          rank={r.rank}
+          name={r.subjectName}
+          headshot={headshotFor(sport, r.subjectId)}
+          team={r.team ? { abbr: r.team, logoUrl: teamLogoFor(sport, r.teamId, r.team) } : null}
+          opp={r.opponent ? { abbr: r.opponent, logoUrl: teamLogoFor(sport, r.opponentId, r.opponent) } : null}
+          read={r.read}
+        />
       ),
     },
     ...ranking.def.factors.map<Column<SpecialRow>>((f) => ({
@@ -100,8 +73,8 @@ function columnsFor(ranking: SpecialRanking, sport: string): Column<SpecialRow>[
       numeric: true,
       sortable: false,
       info: "The mean of each factor's percentile across today's pool. Equal weights until a pre-registered backtest sets them. A ranking of the factors, not a probability.",
-      render: (r) => r.score.toFixed(1),
-      bar: (r) => Math.max(0, Math.min(1, r.score / 100)),
+      // v4: a bold number in the heat ramp, not a grey bar that said "bigger".
+      render: (r) => <HeatNumber value={r.score} />,
     },
   ];
 }
@@ -334,7 +307,6 @@ export function SlateSpecials({ data, loading, sport }: { data: SpecialsData | n
               columns={columnsFor(active, sport)}
               rows={active.rows}
               rowKey={(r) => `${r.rank}-${r.subjectId}`}
-              expand={(r) => <p className="text-body-sm text-ink-secondary">{whyOf(r, active)}</p>}
             />
           ) : (
             <EmptyState title="Nothing ranked" reason="The job found no candidates for this ranking today." />

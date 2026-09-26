@@ -33,6 +33,36 @@ export interface SpotlightValue {
   text: string;
   /** 0..1, for the magnitude bar. Omitted where the number has no scale. */
   bar?: number;
+  /** A factor's percentile across today's pool (0-100): drawn as the heat bar and ordinal. */
+  percentile?: number | null;
+  /** A second, grey line under the value ("9 of 10", "Over 0.5"). */
+  sub?: string | null;
+  /** Colour for a value that is a verdict on its own (a hit rate of 90%, a run of misses). */
+  tone?: 'good' | 'bad' | null;
+  /** The value against a baseline: "▲ 12" in good ink, "▼ 8" in bad. */
+  delta?: { text: string; up: boolean } | null;
+}
+
+/** A team on a row: its abbreviation and logo. */
+export interface SpotlightTeam {
+  abbr: string;
+  logoUrl?: string | null;
+}
+
+/** One game in a row's form strip (the shape `FormBars` draws). */
+export interface SpotlightGame {
+  value: number | null;
+  hit: boolean | null;
+  label: string;
+  detail?: string | null;
+}
+
+/** A game's forecast, for the weather card's icons. */
+export interface SpotlightWeather {
+  windMph: number | null;
+  windDir: string | null;
+  rainPct: number | null;
+  tempF: number | null;
 }
 
 export interface SpotlightRow {
@@ -56,6 +86,18 @@ export interface SpotlightRow {
   logoUrl?: string | null;
   /** C4: the team mark only (golf has none), for the small badge on the row. */
   teamLogoUrl?: string | null;
+  /** v4: team vs opponent, drawn with their logos under the name. */
+  team?: SpotlightTeam | null;
+  opp?: SpotlightTeam | null;
+  /** v4: a GAME subject's two teams and its detail line, for the logo pair. */
+  game?: { away: SpotlightTeam; home: SpotlightTeam; sub?: string | null } | null;
+  /** v4: the sentence under the name (fixed width, two lines). Set where it says more than the columns. */
+  read?: string | null;
+  /** v3: the last games against the line, for a `form` column. */
+  games?: SpotlightGame[];
+  line?: number | null;
+  /** v4: the forecast, for a `weather` column. */
+  weather?: SpotlightWeather | null;
 }
 
 /** The images the candidate's own meta already carries. */
@@ -75,6 +117,14 @@ export interface SpotlightColumn {
   /** Names the SOURCE, per the spec: every factor says where it came from. */
   info: string;
   numeric?: boolean;
+  /**
+   * How the cell draws (slate-polish v4). The DATA names it, never the sport:
+   * `market` two lines (market, then side and line); `form` the row's last
+   * games as bars against the line; `rate` a bold value with its `sub`,
+   * `tone` and `delta`; `factor` the value with its percentile; `weather` the
+   * forecast as icons. Unset is plain text.
+   */
+  kind?: 'market' | 'form' | 'rate' | 'factor' | 'weather';
 }
 
 export interface SpotlightCard {
@@ -111,6 +161,41 @@ function contextOf(c: PickCandidate): string | null {
   const opp = typeof meta?.opponent === 'string' ? meta.opponent : typeof meta?.opponentName === 'string' ? meta.opponentName : null;
   if (team && opp) return `${team} vs ${opp}`;
   return team ?? opp ?? null;
+}
+
+/** The row's team and opponent, with their logos, from the candidate's own meta. */
+function teamsOf(c: PickCandidate, sport: string): { team: SpotlightTeam | null; opp: SpotlightTeam | null } {
+  const m = (c.subjectMeta ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  // Ids arrive as numbers for MLB (StatsAPI's), strings elsewhere.
+  const id = (v: unknown) => (typeof v === 'number' ? String(v) : str(v));
+  const team = str(m.teamAbbrev) ?? str(m.team);
+  const opp = str(m.opponent);
+  return {
+    team: team ? { abbr: team, logoUrl: str(m.teamLogoUrl) ?? teamLogoFor(sport, id(m.teamId), team) } : null,
+    opp: opp ? { abbr: opp, logoUrl: str(m.opponentLogoUrl) ?? teamLogoFor(sport, id(m.opponentId), opp) } : null,
+  };
+}
+
+/**
+ * The last `n` periods as a form strip (v3). A result token is a number, or
+ * "H-AB" for a hit-in-game row, so the leading number is the value; a token
+ * with none ("E", "hit") draws a stub rather than a guessed height. The label
+ * is the period's own ("Aug 4 @ WSH") where the history holds one.
+ */
+function formOf(c: PickCandidate, sport: string, n = 10): SpotlightGame[] {
+  const recent = (c.history ?? []).slice(-n);
+  const one = periodNounSingular(sport);
+  return recent.map((e, i) => {
+    const v = Number.parseFloat(String(e.result));
+    const ago = recent.length - i;
+    return {
+      value: Number.isFinite(v) ? v : null,
+      hit: e.category === c.category,
+      label: e.periodLabel ?? `${ago} ${ago === 1 ? one : periodNoun(sport)} ago`,
+      detail: String(e.result),
+    };
+  });
 }
 
 function hrefOf(c: PickCandidate, sport: string, league?: string | null): string | null {
@@ -214,11 +299,23 @@ export function hitRateLeaders(candidates: PickCandidate[], opts: SpotlightOptio
       market: marketOf(r.c),
       context: contextOf(r.c),
       values: {
-        rate: { text: pct(r.recent.rate), bar: r.recent.rate },
+        market: { text: r.c.dimensionLabel, sub: `${r.c.categoryLabel}${r.c.line != null ? ` ${r.c.line}` : ''}` },
+        rate: {
+          text: pct(r.recent.rate),
+          bar: r.recent.rate,
+          sub: `${r.recent.hits} of ${r.recent.total}`,
+          tone: r.recent.rate >= 0.8 ? 'good' : r.recent.rate <= 0.3 ? 'bad' : null,
+        },
         sample: { text: `${r.recent.hits} of ${r.recent.total}` },
-        season: { text: r.baselineRate == null ? '—' : pct(r.baselineRate) },
+        season: {
+          text: r.baselineRate == null ? '—' : pct(r.baselineRate),
+          delta: r.baselineRate == null ? null : { text: `${Math.abs(Math.round((r.recent.rate - r.baselineRate) * 100))}`, up: r.recent.rate >= r.baselineRate },
+        },
         streak: { text: r.streak === 0 ? '—' : r.streak > 0 ? `+${r.streak}` : String(r.streak) },
       },
+      ...teamsOf(r.c, sport),
+      games: formOf(r.c, sport, window),
+      line: r.c.line ?? null,
       why:
         r.baselineRate == null
           ? `Cleared this line in ${r.recent.hits} of the last ${r.recent.total} ${noun}.`
@@ -233,11 +330,13 @@ export function hitRateLeaders(candidates: PickCandidate[], opts: SpotlightOptio
     id: 'hit-rate-leaders',
     title: 'Hit-rate leaders',
     scope: `Last ${window} ${noun}`,
+    // v4: the sample rides under the rate and the streak is visible in the
+    // bars, so neither needs a column of its own any more.
     columns: [
-      { key: 'rate', label: 'Hit rate', info: `The share of the last ${window} ${noun} in which this player cleared this line. Counted from the logs, not from a model.`, numeric: true },
-      { key: 'sample', label: 'Sample', info: `How many of the last ${window} ${noun} are actually held. A rate needs at least ${minSample} of them to appear here at all.` },
-      { key: 'season', label: 'All held', info: `The same rate across every ${one} held for this player, so the recent window has something to be compared against.`, numeric: true },
-      { key: 'streak', label: 'Streak', info: `Consecutive most recent ${noun}. Positive is a run of clearing the line, negative a run of missing it.`, numeric: true },
+      { key: 'market', label: 'Market', info: 'The market and the line the rate is counted at.', kind: 'market' },
+      { key: 'form', label: `Last ${window}`, info: `Each of the last ${window} ${noun}: the bar is what this player did, the dashed rule the line; green cleared it, red missed. Hover a bar for the ${one}.`, kind: 'form' },
+      { key: 'rate', label: 'Hit rate', info: `The share of the last ${window} ${noun} in which this player cleared this line. Counted from the logs, not from a model. At least ${minSample} of them must be held.`, numeric: true, kind: 'rate' },
+      { key: 'season', label: 'All held', info: `The same rate across every ${one} held for this player, and how far the recent window sits above or below it.`, numeric: true, kind: 'rate' },
     ],
     rows,
     caption: `A count of what happened in the last ${window} ${noun}. It is not a prediction, and it is not compared to a price.`,
@@ -301,10 +400,14 @@ export function activeStreaks(candidates: PickCandidate[], opts: SpotlightOption
         market: marketOf(r.c),
         context: contextOf(r.c),
         values: {
-          streak: { text: `${isOver ? '+' : '−'}${n}`, bar: Math.min(1, n / 10) },
+          market: { text: r.c.dimensionLabel, sub: `${r.c.categoryLabel}${r.c.line != null ? ` ${r.c.line}` : ''}` },
+          streak: { text: `${n} straight`, bar: Math.min(1, n / 10), sub: isOver ? 'cleared it' : 'missed it', tone: isOver ? 'good' : 'bad' },
           direction: { text: isOver ? 'Cleared' : 'Missed' },
           games: { text: String(r.c.sampleSize) },
         },
+        ...teamsOf(r.c, sport),
+        games: formOf(r.c, sport),
+        line: r.c.line ?? null,
         why: `${isOver ? 'Cleared' : 'Missed'} this line in each of the last ${n} ${noun}.`,
         href: hrefOf(r.c, sport, league),
         ...subjectImages(r.c),
@@ -316,9 +419,9 @@ export function activeStreaks(candidates: PickCandidate[], opts: SpotlightOption
     title: 'Active streaks',
     scope: `${minStreak}+ ${noun} in a row`,
     columns: [
-      { key: 'streak', label: 'Run', info: `How many consecutive most recent ${noun} went the same way. Counted from the logs.`, numeric: true },
-      { key: 'direction', label: 'Which way', info: 'Whether the run is of clearing the line or of missing it. Both are shown: a run of misses is the same fact as a run of hits.' },
-      { key: 'games', label: 'Held', info: `How many ${noun} this player has in the history table at all, so a long run out of a short record is visible as one.`, numeric: true },
+      { key: 'market', label: 'Market', info: 'The market and the line the run is counted at.', kind: 'market' },
+      { key: 'form', label: 'Last 10', info: `The last 10 ${noun}: the bar is what this player did, the dashed rule the line; green cleared it, red missed. Hover a bar for the game.`, kind: 'form' },
+      { key: 'streak', label: 'Run', info: `How many consecutive most recent ${noun} went the same way, counted from the logs. Both directions are shown: a run of misses is the same fact as a run of hits.`, numeric: true, kind: 'rate' },
     ],
     rows,
     caption: `A count of consecutive ${noun}. A streak is what already happened; it says nothing about the next one.`,
@@ -356,7 +459,7 @@ export function flagSpotlightCards(flags: ResearchFlag[], opts: { sport: string;
       title: g.title,
       subjectLabel: first.subjectKind === 'game' ? 'Game' : 'Player',
       scope: g.frozen ? 'Frozen at the first game' : 'Updates until the first game',
-      columns: first.factors.map((f) => ({ key: f.key, label: f.label, info: f.info, numeric: true })),
+      columns: first.factors.map((f) => ({ key: f.key, label: f.label, info: f.info, numeric: true, kind: 'factor' as const })),
       rows: g.flags.map((f) => ({
         key: `${f.rankingId}:${f.subjectId}`,
         subjectId: f.subjectId,
@@ -369,7 +472,7 @@ export function flagSpotlightCards(flags: ResearchFlag[], opts: { sport: string;
         values: Object.fromEntries(
           f.factors.map((x) => [
             x.key,
-            { text: formatFactor(x.key, x.value), bar: x.percentile == null ? undefined : x.percentile / 100 },
+            { text: formatFactor(x.key, x.value), bar: x.percentile == null ? undefined : x.percentile / 100, percentile: x.value == null ? null : x.percentile },
           ]),
         ),
         why: f.read ?? g.promo,
@@ -378,6 +481,14 @@ export function flagSpotlightCards(flags: ResearchFlag[], opts: { sport: string;
         headshotUrl: f.subjectKind === 'player' ? headshotFor(sport, f.subjectId) : null,
         logoUrl: teamLogoFor(sport, f.teamId, f.team),
         teamLogoUrl: f.subjectKind === 'player' ? teamLogoFor(sport, f.teamId, f.team) : null,
+        // v4: a game subject's `team` is the away side and `opponent` the home.
+        team: f.subjectKind === 'player' && f.team ? { abbr: f.team, logoUrl: teamLogoFor(sport, f.teamId, f.team) } : null,
+        opp: f.subjectKind === 'player' && f.opponent ? { abbr: f.opponent, logoUrl: teamLogoFor(sport, f.opponentId, f.opponent) } : null,
+        game:
+          f.subjectKind === 'game' && f.team && f.opponent
+            ? { away: { abbr: f.team, logoUrl: teamLogoFor(sport, f.teamId, f.team) }, home: { abbr: f.opponent, logoUrl: teamLogoFor(sport, f.opponentId, f.opponent) } }
+            : null,
+        read: f.read ?? null,
       })),
       caption: `Where each one stands among today's slate on the factors named. A ranking of those factors, not a probability, and not compared to a price.${SOURCE_CREDIT[g.rankingId] ? ` ${SOURCE_CREDIT[g.rankingId]}` : ''}`,
       empty: 'Nothing qualified on this slate.',
@@ -406,7 +517,7 @@ export function weatherSpotlight(cards: SlateGameCard[]): SpotlightCard | null {
     title: 'Weather games',
     subjectLabel: 'Game',
     scope: 'Wind over 15 mph or rain over 50%',
-    columns: [{ key: 'forecast', label: 'Forecast', info: 'The venue forecast at the start, from Open-Meteo. Only shown where the wind is over 15 mph or rain over 50%; every other game holds a forecast too, on its own card.' }],
+    columns: [{ key: 'forecast', label: 'Forecast', info: 'The venue forecast at the start, from Open-Meteo. Only shown where the wind is over 15 mph or rain over 50%; every other game holds a forecast too, on its own card.', kind: 'weather' }],
     rows: flagged.map((c) => ({
       key: c.id,
       subjectId: c.id,
@@ -416,6 +527,14 @@ export function weatherSpotlight(cards: SlateGameCard[]): SpotlightCard | null {
       values: { forecast: { text: c.weatherFlag as string } },
       why: `${c.weatherFlag} at ${c.venue ?? 'the venue'}, ${c.statusText}.`,
       href: c.href ?? null,
+      game: {
+        away: { abbr: c.away.abbr ?? c.away.name, logoUrl: c.away.logoUrl ?? null },
+        home: { abbr: c.home.abbr ?? c.home.name, logoUrl: c.home.logoUrl ?? null },
+        sub: [c.statusText, c.venue].filter(Boolean).join(' · '),
+      },
+      // A cachedRoute serves the shape it cached: a card from before `weather`
+      // existed has none, and the cell falls back to the phrase.
+      weather: c.weather ?? null,
     })),
     caption: 'A forecast, not a forecast of anything that happens in the game. It is not ordered: these are the games where the weather is worth knowing.',
   };

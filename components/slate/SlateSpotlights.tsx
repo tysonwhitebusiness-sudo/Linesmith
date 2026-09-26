@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Avatar, Card, DataTable, EmptyState, type Column, SectionBand } from '@/components/ui';
-import { TeamLogo } from '../SubjectAvatar';
-import type { SpotlightCard, SpotlightRow } from '@/lib/slate/spotlights';
+import type { ReactNode } from 'react';
+import { Card, DataTable, EmptyState, FormBars, PercentileCell, cx, type Column, SectionBand } from '@/components/ui';
+import { GameSubject, PlayerSubject } from './SlateSubject';
+import { WeatherIcons } from './WeatherIcons';
+import type { SpotlightCard, SpotlightColumn, SpotlightRow } from '@/lib/slate/spotlights';
 import type { FlagsData, ResearchFlag } from '@/lib/slate/flags';
 
 /**
@@ -25,28 +27,64 @@ import type { FlagsData, ResearchFlag } from '@/lib/slate/flags';
  * so this file did not have to learn what a ranking is.
  */
 
+/** A row's subject, by what the row IS: a game (its two logos) or a player (face, teams, sentence). */
+function Subject({ r }: { r: SpotlightRow }) {
+  if (r.game) return <GameSubject away={r.game.away} home={r.game.home} sub={r.game.sub ?? r.context ?? undefined} href={r.href} read={r.read} />;
+  return <PlayerSubject name={r.subjectName} headshot={r.headshotUrl} fallback={r.logoUrl} href={r.href} team={r.team} opp={r.opp} read={r.read} />;
+}
+
+/**
+ * One cell, drawn by the column's declared `kind` (slate-polish v4) — the data
+ * says how it reads, never the sport. A value that is a verdict on its own
+ * (a 90% hit rate, a run of misses) is bold in its colour; everything else is
+ * plain ink, so colour only appears where it means something.
+ */
+function Cell({ r, c }: { r: SpotlightRow; c: SpotlightColumn }) {
+  const v = r.values[c.key];
+  switch (c.kind) {
+    case 'market':
+      return v ? (
+        <span className="flex flex-col whitespace-nowrap">
+          <span className="text-body-sm text-ink">{v.text}</span>
+          {v.sub ? <span className="text-label text-ink-muted">{v.sub}</span> : null}
+        </span>
+      ) : (
+        <span className="text-ink-muted">—</span>
+      );
+    case 'form':
+      return <FormBars games={r.games ?? []} line={r.line ?? null} label={`${r.subjectName}, ${c.label.toLowerCase()}`} />;
+    case 'rate':
+      return v ? (
+        <span className="flex flex-col items-end whitespace-nowrap">
+          <b className={cx('text-body font-bold tabular-nums', v.tone === 'good' ? 'text-good-ink' : v.tone === 'bad' ? 'text-bad-ink' : 'text-ink')}>{v.text}</b>
+          {v.sub ? <span className="text-label text-ink-muted">{v.sub}</span> : null}
+          {v.delta ? (
+            <span className={cx('text-label font-semibold tabular-nums', v.delta.up ? 'text-good-ink' : 'text-bad-ink')}>
+              {v.delta.up ? '▲' : '▼'} {v.delta.text}
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span className="text-ink-muted">—</span>
+      );
+    case 'factor':
+      return <PercentileCell value={v?.text ?? '—'} percentile={v?.percentile ?? null} />;
+    case 'weather':
+      return <WeatherIcons w={r.weather} fallback={v?.text} />;
+    default:
+      return <>{v?.text ?? '—'}</>;
+  }
+}
+
 function toColumns(card: SpotlightCard): Column<SpotlightRow>[] {
   return [
     {
       key: 'subject',
       label: card.subjectLabel ?? 'Player',
       sortable: false,
-      render: (r) => (
-        <span className="inline-flex min-w-0 items-center gap-2">
-          <span className="relative block shrink-0">
-            <Avatar label={r.subjectName} src={r.headshotUrl ?? undefined} fallbackSrc={r.logoUrl ?? undefined} size={24} href={r.href ?? undefined} decorative />
-            {r.teamLogoUrl ? (
-              <span className="absolute -bottom-0.5 -right-0.5 grid size-[14px] place-items-center rounded-full bg-card ring-1 ring-line">
-                <TeamLogo logoUrl={r.teamLogoUrl} size={9} />
-              </span>
-            ) : null}
-          </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-semibold text-ink text-body-sm">{r.subjectName}</span>
-            <span className="truncate text-label text-ink-muted">{[r.market, r.context].filter(Boolean).join(' · ')}</span>
-          </span>
-        </span>
-      ),
+      // The sentence under the name must be able to break onto its second line.
+      wrap: true,
+      render: (r) => <Subject r={r} />,
     },
     ...card.columns.map<Column<SpotlightRow>>((c) => ({
       key: c.key,
@@ -54,8 +92,10 @@ function toColumns(card: SpotlightCard): Column<SpotlightRow>[] {
       info: c.info,
       numeric: c.numeric,
       sortable: false,
-      render: (r) => r.values[c.key]?.text ?? '—',
-      bar: (r) => r.values[c.key]?.bar ?? null,
+      render: (r) => <Cell r={r} c={c} />,
+      // The grey magnitude bar is gone wherever the cell draws its own
+      // encoding (v4: "the same greyish bar that doesn't represent anything").
+      bar: c.kind ? undefined : (r) => r.values[c.key]?.bar ?? null,
     })),
   ];
 }
@@ -92,15 +132,21 @@ export function useSlateFlags(sport: string, league: string | null, date: string
   return { flags, loading };
 }
 
-export function SlateSpotlights({ cards, loading }: { cards: SpotlightCard[]; loading: boolean }) {
+export function SlateSpotlights({ cards, loading, lead }: {
+  cards: SpotlightCard[];
+  loading: boolean;
+  /** A full-width card above the grid — the Edge / EV ranking (slate-polish v4, D). */
+  lead?: ReactNode;
+}) {
   // Nothing to show and nothing loading means the sport has no candidates at
   // all — the Games section above already says so, and a second empty card
   // repeating it would be noise.
-  if (!loading && cards.every((c) => c.rows.length === 0)) return null;
+  if (!loading && !lead && cards.every((c) => c.rows.length === 0)) return null;
 
   return (
     <section id="slate-spotlights" className="mb-6 scroll-mt-[150px]">
       <SectionBand title="Spotlights" />
+      {lead ? <div className="mb-3">{lead}</div> : null}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {cards.map((card) => (
           <Card
@@ -118,22 +164,9 @@ export function SlateSpotlights({ cards, loading }: { cards: SpotlightCard[]; lo
                 columns={toColumns(card)}
                 rows={card.rows}
                 rowKey={(r) => r.key}
-                // The "why" OPENS from the row rather than sitting in a
-                // column: two of these cards sit side by side at 1440, and a
-                // wrapping sentence beside five factor columns was clipped.
-                expand={(r) => (
-                  <p className="text-body-sm text-ink-secondary">
-                    {r.why}
-                    {r.href ? (
-                      <>
-                        {' '}
-                        <a href={r.href} className="text-ink underline underline-offset-2">
-                          Open the player →
-                        </a>
-                      </>
-                    ) : null}
-                  </p>
-                )}
+                // v4: no row opens. A flag's sentence sits under the name at
+                // one width; the universal cards' "why" restated the bars and
+                // the rate beside them, so it is not drawn.
               />
             ) : loading ? null : (
               <EmptyState title="Nothing to spotlight" reason={card.empty ?? 'No rows qualify on this slate.'} />

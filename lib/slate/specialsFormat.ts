@@ -21,7 +21,10 @@ export const FACTOR_FORMAT: Record<string, 'pct' | 'fraction-pct'> = {
  */
 const PLAIN: Record<string, (v: number) => string> = {
   // A run-scoring factor, 1.00 = average.
-  park_factor: (v) => `${v >= 1 ? '+' : '−'}${Math.abs(Math.round((v - 1) * 100))}%`,
+  park_factor: (v) => {
+    const d = Math.round((v - 1) * 100);
+    return d === 0 ? 'Avg' : `${d > 0 ? '+' : '−'}${Math.abs(d)}%`;
+  },
   // The share of games the opposing staff allows a homer, stored as a fraction.
   opp_staff_hr_rate: (v) => `${Math.round(v * 100)}%`,
   // Signed: positive is blowing out, negative in.

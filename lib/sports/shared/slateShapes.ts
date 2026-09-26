@@ -97,6 +97,11 @@ export interface SlateGameCard {
    * `context`.
    */
   weatherFlag?: string | null;
+  /**
+   * The forecast behind `weatherFlag`, as numbers, for the Weather games
+   * card's icons (slate-polish v4). Set only where `weatherFlag` is.
+   */
+  weather?: { windMph: number | null; windDir: string | null; rainPct: number | null; tempF: number | null } | null;
   /** The game page. */
   href?: string | null;
   /** How many props this slate holds for this game. Null where none are held. */
